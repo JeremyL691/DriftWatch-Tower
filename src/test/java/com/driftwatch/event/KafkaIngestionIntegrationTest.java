@@ -40,8 +40,8 @@ class KafkaIngestionIntegrationTest {
         String eventId = "evt-" + UUID.randomUUID();
         DataEvent event = new DataEvent(
                 eventId, "binance", "market_tick",
-                Instant.parse("2026-05-25T09:00:00Z"),
-                Map.of("symbol", "BTC/USDT", "bid", 108000.1)
+                Instant.now(),
+                Map.of("symbol", "BTC/USDT", "bid", 108000.1, "trace", UUID.randomUUID().toString())
         );
 
         mockMvc.perform(post("/events")
@@ -51,5 +51,11 @@ class KafkaIngestionIntegrationTest {
 
         await().atMost(Duration.ofSeconds(15))
                 .untilAsserted(() -> assertThat(repository.existsByEventId(eventId)).isTrue());
+
+        var stored = repository.findAllByOrderByReceivedAtDesc(
+                org.springframework.data.domain.PageRequest.of(0, 50)).getContent().stream()
+                .filter(e -> e.getEventId().equals(eventId))
+                .findFirst().orElseThrow();
+        assertThat(stored.getQualityStatus()).isEqualTo("OK");
     }
 }
