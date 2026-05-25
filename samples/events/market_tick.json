@@ -1,0 +1,11 @@
+{
+  "event_id": "evt-001",
+  "source": "binance",
+  "event_type": "market_tick",
+  "event_timestamp": "2026-05-25T08:30:00Z",
+  "payload": {
+    "symbol": "BTC/USDT",
+    "bid": 108000.1,
+    "ask": 108002.4
+  }
+}

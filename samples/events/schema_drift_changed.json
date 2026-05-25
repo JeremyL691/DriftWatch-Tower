@@ -1,0 +1,12 @@
+{
+  "event_id": "demo-schema-drift",
+  "source": "demo-api",
+  "event_type": "demo_schema_event",
+  "event_timestamp": "2026-05-25T09:00:05Z",
+  "payload": {
+    "symbol": "BTC/USDT",
+    "bid": "100.0",
+    "spread": 1.0,
+    "trace": "demo-schema"
+  }
+}
