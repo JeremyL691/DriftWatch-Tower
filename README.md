@@ -2,14 +2,17 @@
 
 > Java/Spring Boot streaming data quality observability platform. Uses Kafka Streams to detect schema drift, duplicate events, late arrivals, null spikes, stale sources, and anomaly bursts in real time.
 
-**Status: Round 1 — event contract + PostgreSQL persistence.** REST ingestion, Flyway-managed `raw_events` table, payload hashing. Kafka, detectors, and the dashboard come in later rounds.
+**Status: Round 3 — first detectors.** `POST /events` publishes to the `raw-events` topic; a `@KafkaListener` consumer runs the registered quality detectors (duplicate event_id / payload hash, late event), persists the raw event with a `quality_status`, and writes `quality_alerts` rows. Demo scenarios and `GET /alerts` are live. More detectors and the dashboard come in later rounds.
 
 ## Prerequisites
 
 - Java 21+
-- PostgreSQL 16 running locally with database `driftwatch` and user `driftwatch` (password `driftwatch`)
+- PostgreSQL 16 with database `driftwatch` and user `driftwatch` (password `driftwatch`)
   - `brew install postgresql@16 && brew services start postgresql@16`
   - `createuser driftwatch -P` then `createdb -O driftwatch driftwatch`
+- Kafka (KRaft) on `localhost:9092`
+  - `brew install kafka && brew services start kafka`
+  - Or run the bundled stack: `docker compose up -d` (requires Docker Desktop)
 
 ## Quick start
 
@@ -28,7 +31,20 @@ curl -X POST http://localhost:8080/events \
 
 # List recent events (most-recent first)
 curl 'http://localhost:8080/events/recent?size=10'
+
+# Run a demo scenario and inspect resulting alerts
+curl -X POST http://localhost:8080/demo/run-scenario/duplicate-events
+curl -X POST http://localhost:8080/demo/run-scenario/late-events
+curl 'http://localhost:8080/alerts?size=10'
+curl 'http://localhost:8080/alerts?type=LATE_EVENT'
 ```
+
+## Detectors (Round 3)
+
+| Detector | Triggers | Severity |
+|---|---|---|
+| `DuplicateDetector` | Same `event_id` already persisted, or same `payload_hash` within `driftwatch.detector.duplicate.payload-window` (default 5m) under a different `event_id` | `INFO` |
+| `LateEventDetector` | `received_at − event_timestamp` > `driftwatch.detector.late.threshold` (default 5m). `WARN` once >10× threshold. | `INFO`/`WARN` |
 
 ## Tests
 
@@ -63,8 +79,8 @@ Full multi-round build plan: [docs/DriftWatch_Tower_Project_Guide.md](docs/Drift
 |------:|------|
 | 0 | Project skeleton ✅ |
 | 1 | Event contract + PostgreSQL persistence ✅ |
-| 2 | Kafka ingestion + Docker Compose |
-| 3 | Duplicate + late event detectors |
+| 2 | Kafka ingestion + Docker Compose ✅ |
+| 3 | Duplicate + late event detectors ✅ |
 | 4 | Schema drift detector |
 | 5 | Null spike + anomaly spike detectors |
 | 6 | Source health scoring |
@@ -74,4 +90,4 @@ Full multi-round build plan: [docs/DriftWatch_Tower_Project_Guide.md](docs/Drift
 
 ## Tech stack
 
-Java 21 · Spring Boot 3.3 · Spring Web · Actuator · Spring Data JPA · PostgreSQL 16 · Flyway · Jakarta Validation · JUnit 5 · (Kafka Streams, Testcontainers — added in later rounds)
+Java 21 · Spring Boot 3.3 · Spring Web · Actuator · Spring Data JPA · PostgreSQL 16 · Flyway · Jakarta Validation · Spring Kafka · Apache Kafka 4 (KRaft) · JUnit 5 · spring-kafka-test (`@EmbeddedKafka`) · Awaitility · (Kafka Streams, Testcontainers — added in later rounds)
