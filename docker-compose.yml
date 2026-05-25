@@ -1,0 +1,43 @@
+# DriftWatch Tower — local infrastructure
+#
+# Round 0 placeholder. Services are intentionally commented out until they are
+# wired up in later rounds (see docs/DriftWatch_Tower_Project_Guide.md §11).
+#
+#   Round 2: enable `kafka` + `postgres`, add the app service.
+#   Round 5+: optional Prometheus/Grafana additions.
+
+services: {}
+
+# services:
+#   postgres:
+#     image: postgres:16
+#     environment:
+#       POSTGRES_DB: driftwatch
+#       POSTGRES_USER: driftwatch
+#       POSTGRES_PASSWORD: driftwatch
+#     ports:
+#       - "5432:5432"
+#     volumes:
+#       - pgdata:/var/lib/postgresql/data
+#
+#   kafka:
+#     image: bitnami/kafka:3.7
+#     environment:
+#       KAFKA_CFG_NODE_ID: 1
+#       KAFKA_CFG_PROCESS_ROLES: controller,broker
+#       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+#       KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+#       KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+#       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+#       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+#     ports:
+#       - "9092:9092"
+#
+#   app:
+#     build: .
+#     depends_on: [postgres, kafka]
+#     ports:
+#       - "8080:8080"
+#
+# volumes:
+#   pgdata:
