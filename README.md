@@ -2,7 +2,7 @@
 
 > Java/Spring Boot streaming data quality observability platform. Uses Kafka Streams to detect schema drift, duplicate events, late arrivals, null spikes, stale sources, and anomaly bursts in real time.
 
-**Status: Round 3 — first detectors.** `POST /events` publishes to the `raw-events` topic; a `@KafkaListener` consumer runs the registered quality detectors (duplicate event_id / payload hash, late event), persists the raw event with a `quality_status`, and writes `quality_alerts` rows. Demo scenarios and `GET /alerts` are live. More detectors and the dashboard come in later rounds.
+**Status: Round 4 — schema drift detector.** Three quality detectors run on every consumed event: duplicate (event_id / payload hash), late event, and schema drift (vs. an inferred per-event_type baseline stored in `schema_versions`). `GET /schemas` exposes the registry; the `schema-drift` demo scenario produces a baseline + drifted payload. Windowed detectors and the dashboard come in later rounds.
 
 ## Prerequisites
 
@@ -35,8 +35,13 @@ curl 'http://localhost:8080/events/recent?size=10'
 # Run a demo scenario and inspect resulting alerts
 curl -X POST http://localhost:8080/demo/run-scenario/duplicate-events
 curl -X POST http://localhost:8080/demo/run-scenario/late-events
+curl -X POST http://localhost:8080/demo/run-scenario/schema-drift
 curl 'http://localhost:8080/alerts?size=10'
-curl 'http://localhost:8080/alerts?type=LATE_EVENT'
+curl 'http://localhost:8080/alerts?type=SCHEMA_DRIFT'
+
+# Schema registry
+curl http://localhost:8080/schemas
+curl http://localhost:8080/schemas/demo_schema_event
 ```
 
 ## Detectors (Round 3)
@@ -45,6 +50,7 @@ curl 'http://localhost:8080/alerts?type=LATE_EVENT'
 |---|---|---|
 | `DuplicateDetector` | Same `event_id` already persisted, or same `payload_hash` within `driftwatch.detector.duplicate.payload-window` (default 5m) under a different `event_id` | `INFO` |
 | `LateEventDetector` | `received_at − event_timestamp` > `driftwatch.detector.late.threshold` (default 5m). `WARN` once >10× threshold. | `INFO`/`WARN` |
+| `SchemaDriftDetector` | Inferred payload schema differs from the ACTIVE baseline for that `event_type` (missing / added / type-changed fields). New event_types are baselined silently. | `WARN` |
 
 ## Tests
 
@@ -81,7 +87,7 @@ Full multi-round build plan: [docs/DriftWatch_Tower_Project_Guide.md](docs/Drift
 | 1 | Event contract + PostgreSQL persistence ✅ |
 | 2 | Kafka ingestion + Docker Compose ✅ |
 | 3 | Duplicate + late event detectors ✅ |
-| 4 | Schema drift detector |
+| 4 | Schema drift detector ✅ |
 | 5 | Null spike + anomaly spike detectors |
 | 6 | Source health scoring |
 | 7 | Dashboard |
