@@ -25,6 +25,16 @@ public class RawEventService {
         this.objectMapper = objectMapper;
     }
 
+    /** Persist only if no row exists with this event_id. Returns true if a new row was inserted. */
+    @Transactional
+    public boolean ingestIfAbsent(DataEvent event) {
+        if (repository.existsByEventId(event.eventId())) {
+            return false;
+        }
+        ingest(event);
+        return true;
+    }
+
     @Transactional
     public RawEventEntity ingest(DataEvent event) {
         RawEventEntity entity = new RawEventEntity();
