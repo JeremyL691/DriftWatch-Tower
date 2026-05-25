@@ -31,13 +31,38 @@ public class DemoScenarioService {
                 List.of(evtId));
     }
 
+    public ScenarioRun runNormalFlow() {
+        Instant now = Instant.now();
+        String trace = "demo-normal-" + UUID.randomUUID();
+        String source = "demo-normal-source-" + UUID.randomUUID();
+        String eventType = "demo_normal_event";
+        List<String> eventIds = new java.util.ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            String eventId = trace + "-" + i;
+            DataEvent event = new DataEvent(
+                    eventId,
+                    source,
+                    eventType,
+                    now.plusSeconds(i),
+                    Map.of("symbol", "BTC/USDT", "bid", 108000.0 + i, "ask", 108001.0 + i, "trace", trace, "seq", i)
+            );
+            producer.publish(event);
+            eventIds.add(eventId);
+        }
+        return new ScenarioRun(
+                "normal-flow",
+                "Published a short healthy sequence for source " + source
+                        + " with stable schema and timely timestamps — expect no new quality alerts.",
+                eventIds
+        );
+    }
+
     public ScenarioRun runSchemaDrift() {
         Instant now = Instant.now();
         String baseEvt = "demo-schema-" + UUID.randomUUID();
         DataEvent baseline = new DataEvent(baseEvt + "-base", "demo-api", "demo_schema_event", now,
                 Map.of("symbol", "BTC/USDT", "bid", 100.0, "ask", 101.0, "trace", baseEvt));
         producer.publish(baseline);
-        try { Thread.sleep(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         DataEvent drift = new DataEvent(baseEvt + "-drift", "demo-api", "demo_schema_event", now,
                 Map.of("symbol", "BTC/USDT", "bid", "100.0", "spread", 1.0, "trace", baseEvt));
         producer.publish(drift);
@@ -62,41 +87,78 @@ public class DemoScenarioService {
     public ScenarioRun runNullSpike() {
         Instant now = Instant.now();
         String trace = "demo-null-" + UUID.randomUUID();
-        DataEvent baseline = new DataEvent(trace + "-base", "demo-api", "demo_null_event", now,
+        String source = "demo-null-source-" + UUID.randomUUID();
+        DataEvent baseline = new DataEvent(trace + "-base", source, "demo_null_event", now,
                 Map.of("symbol", "BTC/USDT", "bid", 108000.1, "ask", 108002.4, "trace", trace, "seq", 0));
         producer.publish(baseline);
 
         List<String> eventIds = new java.util.ArrayList<>();
         eventIds.add(baseline.eventId());
         for (int i = 1; i <= 5; i++) {
-            DataEvent spike = new DataEvent(trace + "-null-" + i, "demo-api", "demo_null_event", now.plusSeconds(i),
+            DataEvent spike = new DataEvent(trace + "-null-" + i, source, "demo_null_event", now.plusSeconds(i),
                     nullSpikePayload(trace, i));
             producer.publish(spike);
             eventIds.add(spike.eventId());
         }
         return new ScenarioRun("null-spike",
-                "Published a baseline followed by repeated null ask values in the same metric window — expect a NULL_SPIKE alert.",
+                "Published a baseline for source " + source
+                        + " followed by repeated null ask values in the same metric window — expect a NULL_SPIKE alert.",
                 eventIds);
     }
 
     public ScenarioRun runAnomalySpike() {
         Instant now = Instant.now();
         String trace = "demo-anomaly-" + UUID.randomUUID();
+        String source = "demo-anomaly-source-" + UUID.randomUUID();
         List<String> eventIds = new java.util.ArrayList<>();
 
-        publishAnomalyWindow(trace, now.minusSeconds(120), 2, eventIds);
-        publishAnomalyWindow(trace, now.minusSeconds(60), 2, eventIds);
-        publishAnomalyWindow(trace, now, 8, eventIds);
+        publishAnomalyWindow(source, trace, now.minusSeconds(120), 2, eventIds);
+        publishAnomalyWindow(source, trace, now.minusSeconds(60), 2, eventIds);
+        publishAnomalyWindow(source, trace, now, 8, eventIds);
 
         return new ScenarioRun("anomaly-spike",
-                "Published two calm windows followed by a burst in the current window — expect an ANOMALY_SPIKE alert.",
+                "Published two calm windows for source " + source
+                        + " followed by a burst in the current window — expect an ANOMALY_SPIKE alert.",
                 eventIds);
     }
 
-    private void publishAnomalyWindow(String trace, Instant baseTime, int count, List<String> eventIds) {
+    public ScenarioRun runStaleSource() {
+        Instant now = Instant.now();
+        String eventId = "demo-stale-" + UUID.randomUUID();
+        String source = "demo-stale-source-" + UUID.randomUUID();
+        DataEvent stale = new DataEvent(
+                eventId,
+                source,
+                "market_tick",
+                now.minusSeconds(900),
+                Map.of("symbol", "BTC/USDT", "bid", 108000.1, "ask", 108002.4, "trace", eventId)
+        );
+        producer.publish(stale);
+        return new ScenarioRun("stale-source",
+                "Published source " + source
+                        + " whose latest event_timestamp is 15 minutes old — expect source health to become STALE and a STALE_SOURCE alert.",
+                List.of(eventId));
+    }
+
+    public ScenarioRun runMixedIncident() {
+        List<String> eventIds = new java.util.ArrayList<>();
+        eventIds.addAll(runDuplicateEvents().eventIds());
+        eventIds.addAll(runLateEvents().eventIds());
+        eventIds.addAll(runSchemaDrift().eventIds());
+        eventIds.addAll(runNullSpike().eventIds());
+        eventIds.addAll(runAnomalySpike().eventIds());
+        eventIds.addAll(runStaleSource().eventIds());
+        return new ScenarioRun(
+                "mixed-incident",
+                "Published a combined incident stream covering duplicate, late, schema drift, null spike, anomaly spike, and stale source conditions.",
+                eventIds
+        );
+    }
+
+    private void publishAnomalyWindow(String source, String trace, Instant baseTime, int count, List<String> eventIds) {
         for (int i = 0; i < count; i++) {
             String eventId = trace + "-" + baseTime.getEpochSecond() + "-" + i;
-            DataEvent event = new DataEvent(eventId, "demo-api", "demo_anomaly_event", baseTime.plusSeconds(i),
+            DataEvent event = new DataEvent(eventId, source, "demo_anomaly_event", baseTime.plusSeconds(i),
                     Map.of("symbol", "BTC/USDT", "bid", 108000.0 + i, "ask", 108001.0 + i, "trace", trace, "seq", eventId));
             producer.publish(event);
             eventIds.add(eventId);

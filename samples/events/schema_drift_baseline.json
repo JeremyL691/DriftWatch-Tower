@@ -1,0 +1,12 @@
+{
+  "event_id": "demo-schema-base",
+  "source": "demo-api",
+  "event_type": "demo_schema_event",
+  "event_timestamp": "2026-05-25T09:00:00Z",
+  "payload": {
+    "symbol": "BTC/USDT",
+    "bid": 100.0,
+    "ask": 101.0,
+    "trace": "demo-schema"
+  }
+}

@@ -14,6 +14,10 @@ public class RawEventProducer {
     }
 
     public void publish(DataEvent event) {
-        kafkaTemplate.send(KafkaTopics.RAW_EVENTS, event.eventId(), event);
+        kafkaTemplate.send(KafkaTopics.RAW_EVENTS, partitionKey(event), event);
+    }
+
+    static String partitionKey(DataEvent event) {
+        return event.source() + "|" + event.eventType();
     }
 }

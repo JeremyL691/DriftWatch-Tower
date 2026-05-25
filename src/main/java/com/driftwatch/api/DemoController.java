@@ -21,10 +21,13 @@ public class DemoController {
     @PostMapping("/run-scenario/{scenario}")
     public ResponseEntity<ScenarioRun> run(@PathVariable String scenario) {
         return switch (scenario) {
+            case "normal-flow"      -> ResponseEntity.accepted().body(scenarios.runNormalFlow());
             case "duplicate-events" -> ResponseEntity.accepted().body(scenarios.runDuplicateEvents());
             case "late-events"      -> ResponseEntity.accepted().body(scenarios.runLateEvents());
             case "null-spike"       -> ResponseEntity.accepted().body(scenarios.runNullSpike());
             case "anomaly-spike"    -> ResponseEntity.accepted().body(scenarios.runAnomalySpike());
+            case "stale-source"     -> ResponseEntity.accepted().body(scenarios.runStaleSource());
+            case "mixed-incident"   -> ResponseEntity.accepted().body(scenarios.runMixedIncident());
             case "schema-drift"     -> ResponseEntity.accepted().body(scenarios.runSchemaDrift());
             default -> ResponseEntity.badRequest().build();
         };

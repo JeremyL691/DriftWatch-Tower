@@ -40,4 +40,14 @@ public interface MetricWindowRepository extends JpaRepository<MetricWindowEntity
                                                  @Param("metricName") String metricName,
                                                  @Param("cutoff") Instant cutoff,
                                                  Pageable pageable);
+
+    @Query("""
+            select max(m.metricValue) from MetricWindowEntity m
+            where m.source = :source
+              and m.metricName like concat(:metricPrefix, '%')
+              and m.windowEnd > :cutoff
+            """)
+    Double maxMetricValueBySourceAndMetricNamePrefixAndWindowEndAfter(@Param("source") String source,
+                                                                      @Param("metricPrefix") String metricPrefix,
+                                                                      @Param("cutoff") Instant cutoff);
 }

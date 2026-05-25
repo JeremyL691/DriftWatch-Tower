@@ -1,0 +1,12 @@
+{
+  "event_id": "demo-late-event",
+  "source": "demo-api",
+  "event_type": "market_tick",
+  "event_timestamp": "2026-05-25T08:20:00Z",
+  "payload": {
+    "symbol": "ETH/USDT",
+    "bid": 3500.0,
+    "ask": 3502.0,
+    "trace": "demo-late-event"
+  }
+}
