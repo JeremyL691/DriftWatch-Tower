@@ -19,9 +19,6 @@ public class SourceHealthCalculator {
     }
 
     public String status(double score, boolean stale) {
-        if (stale && score < 50.0d) {
-            return SourceHealthEntity.STATUS_UNHEALTHY;
-        }
         if (stale) {
             return SourceHealthEntity.STATUS_STALE;
         }
