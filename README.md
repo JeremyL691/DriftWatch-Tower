@@ -2,14 +2,32 @@
 
 > Java/Spring Boot streaming data quality observability platform. Uses Kafka Streams to detect schema drift, duplicate events, late arrivals, null spikes, stale sources, and anomaly bursts in real time.
 
-**Status: Round 0 — project skeleton.** Only the Spring Boot app and `/actuator/health` are wired up. Kafka, PostgreSQL, detectors, and the dashboard are built incrementally in later rounds.
+**Status: Round 1 — event contract + PostgreSQL persistence.** REST ingestion, Flyway-managed `raw_events` table, payload hashing. Kafka, detectors, and the dashboard come in later rounds.
+
+## Prerequisites
+
+- Java 21+
+- PostgreSQL 16 running locally with database `driftwatch` and user `driftwatch` (password `driftwatch`)
+  - `brew install postgresql@16 && brew services start postgresql@16`
+  - `createuser driftwatch -P` then `createdb -O driftwatch driftwatch`
 
 ## Quick start
 
 ```bash
 ./mvnw spring-boot:run
+
+# Health
 curl http://localhost:8080/actuator/health
-# => {"status":"UP", ...}
+
+# Ingest an event
+curl -X POST http://localhost:8080/events \
+  -H 'Content-Type: application/json' \
+  -d '{"event_id":"evt-001","source":"binance","event_type":"market_tick",
+       "event_timestamp":"2026-05-25T08:30:00Z",
+       "payload":{"symbol":"BTC/USDT","bid":108000.1,"ask":108002.4}}'
+
+# List recent events (most-recent first)
+curl 'http://localhost:8080/events/recent?size=10'
 ```
 
 ## Tests
@@ -44,7 +62,7 @@ Full multi-round build plan: [docs/DriftWatch_Tower_Project_Guide.md](docs/Drift
 | Round | Goal |
 |------:|------|
 | 0 | Project skeleton ✅ |
-| 1 | Event contract + PostgreSQL persistence |
+| 1 | Event contract + PostgreSQL persistence ✅ |
 | 2 | Kafka ingestion + Docker Compose |
 | 3 | Duplicate + late event detectors |
 | 4 | Schema drift detector |
@@ -56,4 +74,4 @@ Full multi-round build plan: [docs/DriftWatch_Tower_Project_Guide.md](docs/Drift
 
 ## Tech stack
 
-Java 21 · Spring Boot 3.3 · Spring Web · Actuator · (Kafka Streams, PostgreSQL, Flyway, JUnit 5, Testcontainers — added in later rounds)
+Java 21 · Spring Boot 3.3 · Spring Web · Actuator · Spring Data JPA · PostgreSQL 16 · Flyway · Jakarta Validation · JUnit 5 · (Kafka Streams, Testcontainers — added in later rounds)
