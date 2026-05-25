@@ -38,8 +38,11 @@ class KafkaIngestionIntegrationTest {
     @Test
     void postedEventFlowsThroughKafkaAndIsPersisted() throws Exception {
         String eventId = "evt-" + UUID.randomUUID();
+        // Use a per-test event_type so schema-drift detection doesn't pick up
+        // baselines created by other integration tests against the same database.
+        String eventType = "kafka_ingest_smoke_" + UUID.randomUUID().toString().replace("-", "");
         DataEvent event = new DataEvent(
-                eventId, "binance", "market_tick",
+                eventId, "binance", eventType,
                 Instant.now(),
                 Map.of("symbol", "BTC/USDT", "bid", 108000.1, "trace", UUID.randomUUID().toString())
         );
