@@ -2,14 +2,17 @@
 
 > Java/Spring Boot streaming data quality observability platform. Uses Kafka Streams to detect schema drift, duplicate events, late arrivals, null spikes, stale sources, and anomaly bursts in real time.
 
-**Status: Round 1 — event contract + PostgreSQL persistence.** REST ingestion, Flyway-managed `raw_events` table, payload hashing. Kafka, detectors, and the dashboard come in later rounds.
+**Status: Round 2 — Kafka ingestion.** `POST /events` publishes to the `raw-events` topic; a `@KafkaListener` consumer persists each message (idempotent by `event_id`). Detectors and the dashboard come in later rounds.
 
 ## Prerequisites
 
 - Java 21+
-- PostgreSQL 16 running locally with database `driftwatch` and user `driftwatch` (password `driftwatch`)
+- PostgreSQL 16 with database `driftwatch` and user `driftwatch` (password `driftwatch`)
   - `brew install postgresql@16 && brew services start postgresql@16`
   - `createuser driftwatch -P` then `createdb -O driftwatch driftwatch`
+- Kafka (KRaft) on `localhost:9092`
+  - `brew install kafka && brew services start kafka`
+  - Or run the bundled stack: `docker compose up -d` (requires Docker Desktop)
 
 ## Quick start
 
@@ -63,7 +66,7 @@ Full multi-round build plan: [docs/DriftWatch_Tower_Project_Guide.md](docs/Drift
 |------:|------|
 | 0 | Project skeleton ✅ |
 | 1 | Event contract + PostgreSQL persistence ✅ |
-| 2 | Kafka ingestion + Docker Compose |
+| 2 | Kafka ingestion + Docker Compose ✅ |
 | 3 | Duplicate + late event detectors |
 | 4 | Schema drift detector |
 | 5 | Null spike + anomaly spike detectors |
@@ -74,4 +77,4 @@ Full multi-round build plan: [docs/DriftWatch_Tower_Project_Guide.md](docs/Drift
 
 ## Tech stack
 
-Java 21 · Spring Boot 3.3 · Spring Web · Actuator · Spring Data JPA · PostgreSQL 16 · Flyway · Jakarta Validation · JUnit 5 · (Kafka Streams, Testcontainers — added in later rounds)
+Java 21 · Spring Boot 3.3 · Spring Web · Actuator · Spring Data JPA · PostgreSQL 16 · Flyway · Jakarta Validation · Spring Kafka · Apache Kafka 4 (KRaft) · JUnit 5 · spring-kafka-test (`@EmbeddedKafka`) · Awaitility · (Kafka Streams, Testcontainers — added in later rounds)
