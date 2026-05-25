@@ -24,9 +24,16 @@ class SourceHealthCalculatorTest {
     }
 
     @Test
-    void heavyPenaltiesBecomeUnhealthy() {
+    void staleSourcesStayMarkedStaleEvenWithHeavyPenalties() {
         double score = calculator.score(new SourceHealthCalculator.Inputs(0.8d, 0.6d, 0.9d, 5, true));
         assertThat(score).isLessThan(50.0d);
-        assertThat(calculator.status(score, true)).isEqualTo(SourceHealthEntity.STATUS_UNHEALTHY);
+        assertThat(calculator.status(score, true)).isEqualTo(SourceHealthEntity.STATUS_STALE);
+    }
+
+    @Test
+    void heavyPenaltiesBecomeUnhealthyWhenSourceIsNotStale() {
+        double score = calculator.score(new SourceHealthCalculator.Inputs(0.8d, 0.6d, 0.9d, 5, false));
+        assertThat(score).isLessThan(60.0d);
+        assertThat(calculator.status(score, false)).isEqualTo(SourceHealthEntity.STATUS_UNHEALTHY);
     }
 }
