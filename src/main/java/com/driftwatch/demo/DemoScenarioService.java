@@ -31,6 +31,22 @@ public class DemoScenarioService {
                 List.of(evtId));
     }
 
+    public ScenarioRun runSchemaDrift() {
+        Instant now = Instant.now();
+        String baseEvt = "demo-schema-" + UUID.randomUUID();
+        DataEvent baseline = new DataEvent(baseEvt + "-base", "demo-api", "demo_schema_event", now,
+                Map.of("symbol", "BTC/USDT", "bid", 100.0, "ask", 101.0, "trace", baseEvt));
+        producer.publish(baseline);
+        try { Thread.sleep(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+        DataEvent drift = new DataEvent(baseEvt + "-drift", "demo-api", "demo_schema_event", now,
+                Map.of("symbol", "BTC/USDT", "bid", "100.0", "spread", 1.0, "trace", baseEvt));
+        producer.publish(drift);
+        return new ScenarioRun("schema-drift",
+                "Published baseline {symbol,bid,ask} then a drifted payload where bid became STRING, "
+                        + "ask was dropped, and spread was added — expect a SCHEMA_DRIFT alert.",
+                List.of(baseline.eventId(), drift.eventId()));
+    }
+
     public ScenarioRun runLateEvents() {
         Instant now = Instant.now();
         String evtId = "demo-late-" + UUID.randomUUID();
