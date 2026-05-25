@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DriftWatch Tower Dashboard</title>
+    <link rel="stylesheet" href="/dashboard/styles.css">
+</head>
+<body>
+<div class="shell">
+    <header class="hero">
+        <div class="hero-copy">
+            <p class="eyebrow">DriftWatch Tower</p>
+            <h1>Streaming quality observability without leaving the browser.</h1>
+            <p class="lede">
+                Inspect alert bursts, source health, schema drift history, and live demo scenarios from one place.
+            </p>
+        </div>
+        <div class="hero-panel">
+            <div class="panel-kicker">Quick Links</div>
+            <a href="#overview">Overview</a>
+            <a href="#alerts">Alerts</a>
+            <a href="#health">Source Health</a>
+            <a href="#schemas">Schema Registry</a>
+            <a href="#demos">Demo Scenarios</a>
+        </div>
+    </header>
+
+    <main class="content">
+        <section id="overview" class="panel">
+            <div class="section-head">
+                <div>
+                    <p class="section-kicker">Overview</p>
+                    <h2>System pulse</h2>
+                </div>
+                <button id="refreshAll" class="ghost-button">Refresh</button>
+            </div>
+            <div class="stat-grid">
+                <article class="stat-card">
+                    <span>Total Events</span>
+                    <strong id="statTotalEvents">-</strong>
+                </article>
+                <article class="stat-card">
+                    <span>Active Sources</span>
+                    <strong id="statActiveSources">-</strong>
+                </article>
+                <article class="stat-card">
+                    <span>Alerts Last 24h</span>
+                    <strong id="statAlerts24h">-</strong>
+                </article>
+                <article class="stat-card">
+                    <span>Unhealthy Sources</span>
+                    <strong id="statUnhealthySources">-</strong>
+                </article>
+            </div>
+            <div class="split-grid">
+                <article class="subpanel">
+                    <div class="subpanel-head">
+                        <h3>Latest Detector Activity</h3>
+                        <span id="latestAlertsLabel" class="muted">Recent alerts</span>
+                    </div>
+                    <div id="latestAlerts" class="timeline"></div>
+                </article>
+                <article class="subpanel">
+                    <div class="subpanel-head">
+                        <h3>Recent Events</h3>
+                        <span class="muted">Last 8 ingested</span>
+                    </div>
+                    <div id="recentEvents" class="timeline"></div>
+                </article>
+            </div>
+        </section>
+
+        <section id="alerts" class="panel">
+            <div class="section-head">
+                <div>
+                    <p class="section-kicker">Alerts</p>
+                    <h2>Evidence-rich incident feed</h2>
+                </div>
+                <div class="filter-row">
+                    <label>
+                        <span>Source</span>
+                        <input id="alertSourceFilter" type="text" placeholder="binance or demo-api">
+                    </label>
+                    <label>
+                        <span>Type</span>
+                        <select id="alertTypeFilter">
+                            <option value="">All</option>
+                            <option value="DUPLICATE_EVENT">DUPLICATE_EVENT</option>
+                            <option value="LATE_EVENT">LATE_EVENT</option>
+                            <option value="SCHEMA_DRIFT">SCHEMA_DRIFT</option>
+                            <option value="NULL_SPIKE">NULL_SPIKE</option>
+                            <option value="ANOMALY_SPIKE">ANOMALY_SPIKE</option>
+                            <option value="STALE_SOURCE">STALE_SOURCE</option>
+                        </select>
+                    </label>
+                    <button id="applyAlertFilters" class="ghost-button">Apply</button>
+                </div>
+            </div>
+            <div id="alertsTable" class="table-shell"></div>
+        </section>
+
+        <section id="health" class="panel">
+            <div class="section-head">
+                <div>
+                    <p class="section-kicker">Source Health</p>
+                    <h2>Freshness and reliability scores</h2>
+                </div>
+                <span class="muted">Sorted by lowest health score first</span>
+            </div>
+            <div id="sourceHealthTable" class="table-shell"></div>
+        </section>
+
+        <section id="schemas" class="panel">
+            <div class="section-head">
+                <div>
+                    <p class="section-kicker">Schema Registry</p>
+                    <h2>Baseline vs drift history</h2>
+                </div>
+                <span class="muted">Grouped by event type</span>
+            </div>
+            <div id="schemasTable" class="table-shell"></div>
+        </section>
+
+        <section id="demos" class="panel">
+            <div class="section-head">
+                <div>
+                    <p class="section-kicker">Demo Scenarios</p>
+                    <h2>Trigger incidents on demand</h2>
+                </div>
+                <span class="muted">Dashboard refreshes after each run</span>
+            </div>
+            <div class="demo-grid">
+                <button class="scenario-button" data-scenario="normal-flow">Normal Flow</button>
+                <button class="scenario-button" data-scenario="schema-drift">Schema Drift</button>
+                <button class="scenario-button" data-scenario="duplicate-events">Duplicate Events</button>
+                <button class="scenario-button" data-scenario="late-events">Late Events</button>
+                <button class="scenario-button" data-scenario="null-spike">Null Spike</button>
+                <button class="scenario-button" data-scenario="stale-source">Stale Source</button>
+                <button class="scenario-button" data-scenario="anomaly-spike">Anomaly Spike</button>
+                <button class="scenario-button" data-scenario="mixed-incident">Mixed Incident</button>
+            </div>
+            <div id="scenarioStatus" class="status-card">
+                <strong>Scenario console</strong>
+                <p>Choose a scenario to publish demo events and watch the dashboard refresh.</p>
+            </div>
+        </section>
+    </main>
+</div>
+<script src="/dashboard/app.js"></script>
+</body>
+</html>

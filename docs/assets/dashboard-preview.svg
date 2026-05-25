@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" fill="none">
+  <rect width="1200" height="760" fill="#F3EDE3"/>
+  <rect x="34" y="28" width="1132" height="704" rx="30" fill="#FFFDF8" stroke="#D9CEBE"/>
+  <rect x="62" y="56" width="730" height="150" rx="28" fill="#FBF1E5" stroke="#E5C9A8"/>
+  <rect x="820" y="56" width="316" height="150" rx="28" fill="#F2F7F5" stroke="#9CC4BE"/>
+  <text x="88" y="100" fill="#A2432A" font-family="Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="2">DRIFTWATCH TOWER</text>
+  <text x="88" y="146" fill="#13212C" font-family="Georgia, serif" font-size="38" font-weight="700">Dashboard preview</text>
+  <text x="88" y="180" fill="#5F6F7B" font-family="Arial, sans-serif" font-size="18">Overview metrics, incident feed, source health, schema registry, and scenario controls</text>
+
+  <rect x="62" y="228" width="1074" height="118" rx="26" fill="#FFFDF8" stroke="#DED3C6"/>
+  <rect x="88" y="254" width="238" height="66" rx="20" fill="#FFF4EC" stroke="#D88E69"/>
+  <rect x="350" y="254" width="238" height="66" rx="20" fill="#F1F9F7" stroke="#73ABA4"/>
+  <rect x="612" y="254" width="238" height="66" rx="20" fill="#F8F1FF" stroke="#B39DD6"/>
+  <rect x="874" y="254" width="238" height="66" rx="20" fill="#FFF7EA" stroke="#D8B36A"/>
+
+  <rect x="62" y="370" width="524" height="160" rx="26" fill="#FCFBF8" stroke="#DED3C6"/>
+  <rect x="612" y="370" width="524" height="160" rx="26" fill="#FCFBF8" stroke="#DED3C6"/>
+  <rect x="88" y="408" width="470" height="26" rx="13" fill="#EFE6DA"/>
+  <rect x="88" y="446" width="432" height="26" rx="13" fill="#F4ECE0"/>
+  <rect x="638" y="408" width="468" height="26" rx="13" fill="#EFE6DA"/>
+  <rect x="638" y="446" width="442" height="26" rx="13" fill="#F4ECE0"/>
+
+  <rect x="62" y="554" width="1074" height="148" rx="26" fill="#FCFBF8" stroke="#DED3C6"/>
+  <rect x="88" y="590" width="160" height="44" rx="22" fill="#C04B2F"/>
+  <rect x="264" y="590" width="160" height="44" rx="22" fill="#C04B2F"/>
+  <rect x="440" y="590" width="160" height="44" rx="22" fill="#C04B2F"/>
+  <rect x="616" y="590" width="160" height="44" rx="22" fill="#C04B2F"/>
+  <rect x="792" y="590" width="160" height="44" rx="22" fill="#C04B2F"/>
+  <rect x="968" y="590" width="140" height="44" rx="22" fill="#C04B2F"/>
+
+  <text x="844" y="100" fill="#1F7A7A" font-family="Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="2">SECTIONS</text>
+  <text x="844" y="134" fill="#13212C" font-family="Arial, sans-serif" font-size="18">Overview</text>
+  <text x="844" y="160" fill="#13212C" font-family="Arial, sans-serif" font-size="18">Alerts</text>
+  <text x="844" y="186" fill="#13212C" font-family="Arial, sans-serif" font-size="18">Source health · Schemas · Demos</text>
+</svg>

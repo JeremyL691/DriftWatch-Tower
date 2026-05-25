@@ -6,6 +6,7 @@ import com.driftwatch.persistence.QualityAlertEntity;
 import com.driftwatch.persistence.QualityAlertRepository;
 import com.driftwatch.persistence.RawEventEntity;
 import com.driftwatch.persistence.RawEventRepository;
+import com.driftwatch.source.SourceHealthService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,17 +31,20 @@ public class QualityProcessor {
     private final List<QualityDetector> detectors;
     private final RawEventRepository rawEventRepository;
     private final QualityAlertRepository alertRepository;
+    private final SourceHealthService sourceHealthService;
     private final PayloadHasher hasher;
     private final ObjectMapper objectMapper;
 
     public QualityProcessor(List<QualityDetector> detectors,
                             RawEventRepository rawEventRepository,
                             QualityAlertRepository alertRepository,
+                            SourceHealthService sourceHealthService,
                             PayloadHasher hasher,
                             ObjectMapper objectMapper) {
         this.detectors = detectors;
         this.rawEventRepository = rawEventRepository;
         this.alertRepository = alertRepository;
+        this.sourceHealthService = sourceHealthService;
         this.hasher = hasher;
         this.objectMapper = objectMapper;
     }
@@ -78,6 +82,11 @@ public class QualityProcessor {
                 .collect(Collectors.toList());
         if (!alerts.isEmpty()) {
             alertRepository.saveAll(alerts);
+        }
+
+        List<QualityAlertEntity> sourceAlerts = sourceHealthService.refreshAllAndPersist(now);
+        if (!sourceAlerts.isEmpty()) {
+            alerts.addAll(sourceAlerts);
         }
 
         return new ProcessResult(raw, alerts);

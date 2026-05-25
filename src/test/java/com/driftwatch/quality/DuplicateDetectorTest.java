@@ -6,6 +6,7 @@ import com.driftwatch.persistence.RawEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -13,14 +14,19 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class DuplicateDetectorTest {
 
-    private final RawEventRepository repo = mock(RawEventRepository.class);
+    private final StubState state = new StubState();
+    private final RawEventRepository repo = (RawEventRepository) Proxy.newProxyInstance(
+            RawEventRepository.class.getClassLoader(),
+            new Class<?>[]{RawEventRepository.class},
+            (proxy, method, args) -> switch (method.getName()) {
+                case "existsByEventId" -> state.existingEventIds.contains((String) args[0]);
+                case "findFirstByPayloadHashAndReceivedAtAfterAndEventIdNot" -> state.payloadMatch;
+                case "toString" -> "StubRawEventRepository";
+                default -> defaultValue(method.getReturnType());
+            });
     private final DuplicateDetector detector =
             new DuplicateDetector(repo, new ObjectMapper(), Duration.ofMinutes(5));
 
@@ -33,18 +39,16 @@ class DuplicateDetectorTest {
 
     @Test
     void uniqueEventProducesNoAlerts() {
-        when(repo.existsByEventId(anyString())).thenReturn(false);
-        when(repo.findFirstByPayloadHashAndReceivedAtAfterAndEventIdNot(anyString(), any(), anyString()))
-                .thenReturn(Optional.empty());
+        state.existingEventIds = java.util.Set.of();
+        state.payloadMatch = Optional.empty();
 
         assertThat(detector.detect(ctx("e1", "h1"))).isEmpty();
     }
 
     @Test
     void repeatedEventIdProducesAlert() {
-        when(repo.existsByEventId("e1")).thenReturn(true);
-        when(repo.findFirstByPayloadHashAndReceivedAtAfterAndEventIdNot(anyString(), any(), anyString()))
-                .thenReturn(Optional.empty());
+        state.existingEventIds = java.util.Set.of("e1");
+        state.payloadMatch = Optional.empty();
 
         List<DraftAlert> alerts = detector.detect(ctx("e1", "h1"));
         assertThat(alerts).hasSize(1);
@@ -57,13 +61,30 @@ class DuplicateDetectorTest {
         RawEventEntity prev = new RawEventEntity();
         prev.setEventId("e-prev");
         prev.setReceivedAt(Instant.parse("2026-05-25T09:59:00Z"));
-        when(repo.existsByEventId("e2")).thenReturn(false);
-        when(repo.findFirstByPayloadHashAndReceivedAtAfterAndEventIdNot(anyString(), any(), anyString()))
-                .thenReturn(Optional.of(prev));
+        state.existingEventIds = java.util.Set.of();
+        state.payloadMatch = Optional.of(prev);
 
         List<DraftAlert> alerts = detector.detect(ctx("e2", "h-shared"));
         assertThat(alerts).hasSize(1);
         assertThat(alerts.get(0).evidence().get("duplicate_kind").asText()).isEqualTo("REPEATED_PAYLOAD");
         assertThat(alerts.get(0).evidence().get("first_event_id").asText()).isEqualTo("e-prev");
+    }
+
+    private static Object defaultValue(Class<?> returnType) {
+        if (!returnType.isPrimitive()) return null;
+        if (returnType == boolean.class) return false;
+        if (returnType == byte.class) return (byte) 0;
+        if (returnType == short.class) return (short) 0;
+        if (returnType == int.class) return 0;
+        if (returnType == long.class) return 0L;
+        if (returnType == float.class) return 0f;
+        if (returnType == double.class) return 0d;
+        if (returnType == char.class) return '\0';
+        return null;
+    }
+
+    private static final class StubState {
+        private java.util.Set<String> existingEventIds = java.util.Set.of();
+        private Optional<RawEventEntity> payloadMatch = Optional.empty();
     }
 }

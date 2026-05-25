@@ -31,9 +31,11 @@ public class AlertController {
             @RequestParam(defaultValue = "50") int size) {
         PageRequest pageable = PageRequest.of(page, size);
         Page<?> result;
-        if (type != null) {
+        if (type != null && source != null && !source.isBlank()) {
+            result = repository.findByAlertTypeAndSourceOrderByCreatedAtDesc(type, source, pageable);
+        } else if (type != null) {
             result = repository.findByAlertTypeOrderByCreatedAtDesc(type, pageable);
-        } else if (source != null) {
+        } else if (source != null && !source.isBlank()) {
             result = repository.findBySourceOrderByCreatedAtDesc(source, pageable);
         } else {
             result = repository.findAllByOrderByCreatedAtDesc(pageable);
