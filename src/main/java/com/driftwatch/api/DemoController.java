@@ -23,6 +23,8 @@ public class DemoController {
         return switch (scenario) {
             case "duplicate-events" -> ResponseEntity.accepted().body(scenarios.runDuplicateEvents());
             case "late-events"      -> ResponseEntity.accepted().body(scenarios.runLateEvents());
+            case "null-spike"       -> ResponseEntity.accepted().body(scenarios.runNullSpike());
+            case "anomaly-spike"    -> ResponseEntity.accepted().body(scenarios.runAnomalySpike());
             case "schema-drift"     -> ResponseEntity.accepted().body(scenarios.runSchemaDrift());
             default -> ResponseEntity.badRequest().build();
         };

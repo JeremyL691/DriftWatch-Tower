@@ -3,6 +3,7 @@ package com.driftwatch.quality;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -10,6 +11,7 @@ import java.util.List;
 
 /** Flags events whose received_at is more than {threshold} after event_timestamp. */
 @Component
+@Order(20)
 public class LateEventDetector implements QualityDetector {
 
     private final ObjectMapper objectMapper;

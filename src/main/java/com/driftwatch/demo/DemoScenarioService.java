@@ -59,5 +59,59 @@ public class DemoScenarioService {
                 List.of(evtId));
     }
 
+    public ScenarioRun runNullSpike() {
+        Instant now = Instant.now();
+        String trace = "demo-null-" + UUID.randomUUID();
+        DataEvent baseline = new DataEvent(trace + "-base", "demo-api", "demo_null_event", now,
+                Map.of("symbol", "BTC/USDT", "bid", 108000.1, "ask", 108002.4, "trace", trace, "seq", 0));
+        producer.publish(baseline);
+
+        List<String> eventIds = new java.util.ArrayList<>();
+        eventIds.add(baseline.eventId());
+        for (int i = 1; i <= 5; i++) {
+            DataEvent spike = new DataEvent(trace + "-null-" + i, "demo-api", "demo_null_event", now.plusSeconds(i),
+                    nullSpikePayload(trace, i));
+            producer.publish(spike);
+            eventIds.add(spike.eventId());
+        }
+        return new ScenarioRun("null-spike",
+                "Published a baseline followed by repeated null ask values in the same metric window — expect a NULL_SPIKE alert.",
+                eventIds);
+    }
+
+    public ScenarioRun runAnomalySpike() {
+        Instant now = Instant.now();
+        String trace = "demo-anomaly-" + UUID.randomUUID();
+        List<String> eventIds = new java.util.ArrayList<>();
+
+        publishAnomalyWindow(trace, now.minusSeconds(120), 2, eventIds);
+        publishAnomalyWindow(trace, now.minusSeconds(60), 2, eventIds);
+        publishAnomalyWindow(trace, now, 8, eventIds);
+
+        return new ScenarioRun("anomaly-spike",
+                "Published two calm windows followed by a burst in the current window — expect an ANOMALY_SPIKE alert.",
+                eventIds);
+    }
+
+    private void publishAnomalyWindow(String trace, Instant baseTime, int count, List<String> eventIds) {
+        for (int i = 0; i < count; i++) {
+            String eventId = trace + "-" + baseTime.getEpochSecond() + "-" + i;
+            DataEvent event = new DataEvent(eventId, "demo-api", "demo_anomaly_event", baseTime.plusSeconds(i),
+                    Map.of("symbol", "BTC/USDT", "bid", 108000.0 + i, "ask", 108001.0 + i, "trace", trace, "seq", eventId));
+            producer.publish(event);
+            eventIds.add(eventId);
+        }
+    }
+
+    private Map<String, Object> nullSpikePayload(String trace, int seq) {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("symbol", "BTC/USDT");
+        payload.put("bid", 108000.1 + seq);
+        payload.put("ask", null);
+        payload.put("trace", trace);
+        payload.put("seq", seq);
+        return payload;
+    }
+
     public record ScenarioRun(String scenario, String description, List<String> eventIds) {}
 }

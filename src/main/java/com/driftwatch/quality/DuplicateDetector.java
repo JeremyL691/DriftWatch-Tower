@@ -5,6 +5,7 @@ import com.driftwatch.persistence.RawEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -18,6 +19,7 @@ import java.util.Optional;
  *   - REPEATED_PAYLOAD: same payload_hash seen within configured window under a different event_id
  */
 @Component
+@Order(10)
 public class DuplicateDetector implements QualityDetector {
 
     private final RawEventRepository repository;
