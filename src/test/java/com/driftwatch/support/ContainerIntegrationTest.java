@@ -28,7 +28,7 @@ public abstract class ContainerIntegrationTest {
 
     @Container
     static final KafkaContainer KAFKA =
-            new KafkaContainer(DockerImageName.parse("apache/kafka-native:3.8.0"));
+            new KafkaContainer(DockerImageName.parse("apache/kafka:3.8.0"));
 
     @Autowired protected RawEventRepository rawEventRepository;
     @Autowired protected QualityAlertRepository qualityAlertRepository;
