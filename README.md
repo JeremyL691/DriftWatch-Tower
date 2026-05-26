@@ -1,41 +1,67 @@
 # DriftWatch Tower
 
-[CI workflow](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml) · MIT License
+> A Java/Spring Boot data-quality observability platform — Kafka ingestion, drift detection, and alert evidence for streaming events.
 
-DriftWatch Tower is a personal backend project I built to practice something a lot closer to a real internal data platform than a standard CRUD app.
+[![CI](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml/badge.svg)](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml)
+![Java](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3-6DB33F?logo=springboot&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)
+![Kafka](https://img.shields.io/badge/Kafka-Spring%20Kafka-231F20?logo=apachekafka&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-blue)
 
-I wanted to make a Java/Spring Boot system that could ingest streaming events, watch for quality problems in near real time, keep evidence in PostgreSQL, and surface everything in a simple dashboard that is easy to demo.
+<p align="center">
+  <img src="docs/assets/dashboard-preview.svg" alt="DriftWatch Tower dashboard preview" width="880">
+</p>
+
+DriftWatch Tower ingests `DataEvent` payloads through Kafka, runs them through a pipeline of data-quality detectors, stores evidence in PostgreSQL, and surfaces everything through REST APIs and a lightweight dashboard. It's a personal project built to look and behave more like internal data-platform tooling than a typical CRUD app.
+
+**Status:** actively developed · single-node demo build · not intended for production.
+
+---
+
+## Quick Demo
+
+Bring up the full stack and trigger a mixed-incident scenario in under a minute:
+
+```bash
+docker compose --profile app up -d --build
+curl -X POST http://localhost:8080/demo/run-scenario/mixed-incident
+open http://localhost:8080/dashboard
+```
+
+The dashboard shows recent events, fired alerts, schema versions, metric windows, and source health snapshots side-by-side.
+
+---
 
 ## Why I Built This
 
-Most portfolio projects stop at authentication, dashboards, and database forms. I wanted one project in my GitHub that felt more like infrastructure:
+I wanted one project in my portfolio that felt closer to internal data-platform infrastructure than another CRUD app — something with streaming ingestion, quality checks, and operational evidence that you'd actually demo to an on-call engineer.
 
-- Kafka-based event ingestion
-- schema drift detection
-- duplicate and late-event detection
-- window-based anomaly checks
-- source health scoring
-- database-backed alert evidence
-- integration tests and CI
-
-This project was also a way for me to show that I can move beyond Python-heavy AI/data work and build backend systems in Java with stronger engineering structure.
+The goal was to complement my Python data-engineering background with a stronger backend-engineering surface: Kafka, Spring Boot, JPA, Testcontainers, and CI.
 
 ## What It Does
 
-At a high level, the app accepts `DataEvent` payloads, publishes them to Kafka, processes them through a quality pipeline, stores the results in PostgreSQL, and exposes the output through REST APIs plus a lightweight dashboard.
+At a high level, the app accepts `DataEvent` payloads on a REST endpoint, publishes them to Kafka, processes them through a quality pipeline, persists results in PostgreSQL, and exposes the output through REST APIs plus a Thymeleaf-free static dashboard.
 
-Implemented detectors:
+### Detectors
 
-| Detector | Purpose |
-|---|---|
-| `DuplicateDetector` | flags repeated `event_id` values or repeated payloads |
-| `LateEventDetector` | catches events that arrive too far after their original timestamp |
-| `SchemaDriftDetector` | compares incoming payload shape against the active schema baseline |
-| `NullSpikeDetector` | watches for sudden jumps in null or missing field rates |
-| `AnomalySpikeDetector` | detects abnormal event-count bursts in metric windows |
-| `STALE_SOURCE` / source health | marks sources that have gone quiet or unhealthy |
+| Detector | What it catches | Try it with |
+|---|---|---|
+| `DuplicateDetector` | repeated `event_id` values or repeated payload hashes | `POST /demo/run-scenario/duplicate-events` |
+| `LateEventDetector` | events that arrive too far after their original timestamp | `POST /demo/run-scenario/late-events` · [`samples/events/late_event.json`](samples/events/late_event.json) |
+| `SchemaDriftDetector` | payload shape that diverges from the active schema baseline | `POST /demo/run-scenario/schema-drift` · [`samples/events/schema_drift_changed.json`](samples/events/schema_drift_changed.json) |
+| `NullSpikeDetector` | sudden jumps in null or missing field rates within a window | `POST /demo/run-scenario/null-spike` |
+| `AnomalySpikeDetector` | abnormal event-count bursts in metric windows | `POST /demo/run-scenario/anomaly-spike` |
+| Source health / `STALE_SOURCE` | sources that go quiet or become unhealthy | `POST /demo/run-scenario/stale-source` |
 
 ## Architecture
+
+<p align="center">
+  <img src="docs/assets/driftwatch-architecture.svg" alt="DriftWatch Tower architecture" width="900">
+</p>
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 flowchart LR
@@ -52,43 +78,44 @@ flowchart LR
     F --> L["REST API + dashboard"]
 ```
 
+</details>
+
 ## Project Highlights
 
-- End-to-end event flow from API -> Kafka -> detector pipeline -> PostgreSQL
-- Schema version tracking with drift evidence
+- End-to-end event flow from API → Kafka → detector pipeline → PostgreSQL
+- Schema version tracking with drift evidence stored alongside alerts
 - Windowed metrics for null spikes and anomaly spikes
-- Source health snapshots with stale-source alerts
+- Source health snapshots with stale-source detection
 - Browser dashboard for demos and quick inspection
-- Testcontainers-based integration testing
+- Testcontainers-based integration tests for Kafka + Postgres
 - GitHub Actions CI
 
 ## Dashboard
 
-The dashboard is meant to make the project easier to understand quickly, especially for recruiters or engineers skimming the repo.
+The dashboard is meant to make the project understandable in 30 seconds for someone skimming the repo. It pulls from `/dashboard/api/summary` and renders panels for:
 
-Routes:
+- recent events and their quality status
+- fired alerts with detector type and evidence
+- registered schema versions and the active baseline
+- metric windows powering the spike detectors
+- per-source health and freshness
 
-- `/dashboard`
-- `/dashboard/api/summary`
-- `/alerts`
-- `/sources/health`
-- `/schemas`
-- `/metrics/windows`
+Direct REST views are also available at `/alerts`, `/sources/health`, `/schemas`, and `/metrics/windows`.
 
 ## Demo Scenarios
 
-I added deterministic demo scenarios so the system is easier to show without manually crafting every event:
+Deterministic scenarios make the system easy to demo without crafting events by hand:
 
-- `normal-flow`
-- `schema-drift`
-- `duplicate-events`
-- `late-events`
-- `null-spike`
-- `anomaly-spike`
-- `stale-source`
-- `mixed-incident`
-
-Example:
+| Scenario | Triggers |
+|---|---|
+| `normal-flow` | clean baseline traffic |
+| `schema-drift` | `SchemaDriftDetector` |
+| `duplicate-events` | `DuplicateDetector` |
+| `late-events` | `LateEventDetector` |
+| `null-spike` | `NullSpikeDetector` |
+| `anomaly-spike` | `AnomalySpikeDetector` |
+| `stale-source` | source-health stale alert |
+| `mixed-incident` | several detectors at once (recommended demo) |
 
 ```bash
 curl -X POST http://localhost:8080/demo/run-scenario/schema-drift
@@ -96,45 +123,29 @@ curl -X POST http://localhost:8080/demo/run-scenario/schema-drift
 
 ## Running It Locally
 
-### Option 1: run services locally
+### Option 1 — Docker Compose (recommended)
 
-Requirements:
-
-- Java 21+
-- PostgreSQL 16
-- Kafka
-
-Start the app:
+Run the whole stack (Postgres + Kafka + app):
 
 ```bash
-./mvnw spring-boot:run
+docker compose --profile app up -d --build
 ```
 
-Check health:
-
-```bash
-curl http://localhost:8080/actuator/health
-```
-
-Open the dashboard:
-
-```bash
-open http://localhost:8080/dashboard
-```
-
-### Option 2: use Docker Compose
-
-Start infra only:
+Or start only the infra and run the app from your IDE / Maven:
 
 ```bash
 docker compose up -d
 ./mvnw spring-boot:run
 ```
 
-Or run the whole stack:
+### Option 2 — Run services locally
+
+Requirements: Java 21+, PostgreSQL 16, Kafka.
 
 ```bash
-docker compose --profile app up -d --build
+./mvnw spring-boot:run
+curl http://localhost:8080/actuator/health
+open http://localhost:8080/dashboard
 ```
 
 ## Sample Event
@@ -153,22 +164,17 @@ docker compose --profile app up -d --build
 }
 ```
 
-Sample files:
-
-- [`samples/events/market_tick.json`](samples/events/market_tick.json)
-- [`samples/events/schema_drift_baseline.json`](samples/events/schema_drift_baseline.json)
-- [`samples/events/schema_drift_changed.json`](samples/events/schema_drift_changed.json)
-- [`samples/events/late_event.json`](samples/events/late_event.json)
+More samples live under [`samples/events/`](samples/events/) — see [`samples/events/README.md`](samples/events/README.md) for what each one triggers.
 
 ## Useful Endpoints
 
 ```bash
+# Ingest one event
 curl -X POST http://localhost:8080/events \
   -H 'Content-Type: application/json' \
   -d @samples/events/market_tick.json
-```
 
-```bash
+# Inspect state
 curl 'http://localhost:8080/events/recent?size=10'
 curl 'http://localhost:8080/alerts?size=10'
 curl 'http://localhost:8080/schemas'
@@ -178,32 +184,23 @@ curl 'http://localhost:8080/sources/health'
 
 ## Testing
 
-Run the test suite:
-
 ```bash
 ./mvnw test
 ```
 
-The project includes:
+The suite includes:
 
-- unit tests for detector and utility logic
-- Testcontainers-backed integration tests
-- GitHub Actions CI
+- unit tests for detectors, hashing, and window math
+- Testcontainers-backed integration tests for the Kafka → Postgres path
+- GitHub Actions CI on every push and PR
 
 On machines without Docker, the container-backed integration tests are skipped while the rest of the suite still runs.
 
 ## Tech Stack
 
-- Java 21
-- Spring Boot 3.3
-- Spring Web
-- Spring Data JPA
-- Spring Kafka
-- PostgreSQL
-- Flyway
-- Testcontainers
-- JUnit 5
-- GitHub Actions
+**Runtime:** Java 21 · Spring Boot 3.3 · Spring Web · Spring Kafka · Spring Data JPA
+**Data:** PostgreSQL 16 · Flyway · Apache Kafka
+**Testing & Ops:** JUnit 5 · Testcontainers · GitHub Actions · Docker Compose
 
 ## Repository Layout
 
@@ -218,20 +215,21 @@ src/main/java/com/driftwatch/
   source/       source health scoring and freshness logic
 ```
 
-## What I Learned
+## Engineering Trade-offs
 
-This project taught me a lot about designing around event flow instead of request/response flow. The most interesting parts for me were:
+A few decisions worth flagging for anyone reading the code:
 
-- deciding how to persist quality evidence cleanly
-- keeping demo scenarios deterministic enough to be recruiter-friendly
-- testing Kafka/PostgreSQL behavior without depending on local setup
-- thinking about failure cases like stale sources, ordering, and repeatable detector runs
+- **Alerts in a dedicated table, not a flag on `raw_events`.** Keeps raw ingestion append-only and lets a single event carry multiple, independent pieces of quality evidence over its lifetime.
+- **Detectors run synchronously inside the Kafka consumer.** Simpler reasoning and ordering at the cost of throughput — fine for a demo, would be the first thing to revisit at scale.
+- **Schema baselines stored as versioned rows.** Drift detection compares against the active version rather than the latest, so a known-bad payload can be quarantined without rewriting history.
+- **Testcontainers shared across the test session** rather than per-test, so the full integration suite stays under a reasonable wall-clock without sacrificing isolation between detectors.
+- **Source health is recomputed on each consumed event for that source**, not on a periodic sweep — keeps the staleness signal honest without a separate scheduler.
 
-## Notes
+## Further Reading
 
-- Sample incident write-up: [`docs/sample-incident-report.md`](docs/sample-incident-report.md)
-- Full build plan / development guide: [`docs/DriftWatch_Tower_Project_Guide.md`](docs/DriftWatch_Tower_Project_Guide.md)
+- [`docs/sample-incident-report.md`](docs/sample-incident-report.md) — sample incident write-up showing how alerts and evidence connect
+- [`docs/DriftWatch_Tower_Project_Guide.md`](docs/DriftWatch_Tower_Project_Guide.md) — full build plan / development guide
 
 ## License
 
-This project is available under the [MIT License](LICENSE).
+[MIT](LICENSE)

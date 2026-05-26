@@ -121,8 +121,7 @@ public class SourceHealthService {
         sourceHealthRepository.save(row);
 
         boolean wasStale = previous != null
-                && previous.getLastSeenAt() != null
-                && previous.getLastSeenAt().isBefore(now.minus(staleAfter));
+                && SourceHealthEntity.STATUS_STALE.equals(previous.getStatus());
         if (stale && !wasStale) {
             return Optional.of(staleAlert(source, latest.getEventType(), latest.getEventTimestamp(), staleAfter, status, healthScore));
         }
