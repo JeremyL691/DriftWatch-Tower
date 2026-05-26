@@ -1,45 +1,118 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" fill="none">
-  <rect width="1200" height="700" fill="#F5EFE6"/>
-  <rect x="40" y="40" width="1120" height="620" rx="28" fill="#FFFDF8" stroke="#D8CDBE"/>
-  <text x="70" y="95" fill="#A2432A" font-family="Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="2">DRIFTWATCH TOWER ARCHITECTURE</text>
-  <text x="70" y="135" fill="#13212C" font-family="Georgia, serif" font-size="38" font-weight="700">Kafka-backed quality observability pipeline</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="780" viewBox="0 0 1280 780" fill="none" font-family="'IBM Plex Sans','Segoe UI',Arial,sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F7F1E8"/>
+      <stop offset="1" stop-color="#EFE6D8"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#13212C"/>
+    </marker>
+  </defs>
 
-  <rect x="80" y="190" width="220" height="92" rx="22" fill="#FFF4EC" stroke="#D88E69"/>
-  <text x="110" y="230" fill="#13212C" font-family="Arial, sans-serif" font-size="23" font-weight="700">Ingress</text>
-  <text x="110" y="260" fill="#5F6F7B" font-family="Arial, sans-serif" font-size="18">REST API and demo scenarios</text>
+  <rect width="1280" height="780" fill="url(#bg)"/>
+  <rect x="32" y="32" width="1216" height="716" rx="28" fill="#FFFCF7" stroke="#E2D6C3"/>
 
-  <rect x="360" y="190" width="220" height="92" rx="22" fill="#F1F9F7" stroke="#73ABA4"/>
-  <text x="390" y="230" fill="#13212C" font-family="Arial, sans-serif" font-size="23" font-weight="700">Kafka</text>
-  <text x="390" y="260" fill="#5F6F7B" font-family="Arial, sans-serif" font-size="18">raw-events topic</text>
+  <!-- Title -->
+  <text x="72" y="90" fill="#C04B2F" font-size="13" font-weight="700" letter-spacing="2.6">DRIFTWATCH TOWER ARCHITECTURE</text>
+  <text x="72" y="140" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="36" font-weight="700" letter-spacing="-1">Kafka-backed quality observability pipeline</text>
+  <text x="72" y="168" fill="#5F6F7B" font-size="15">REST ingress -&gt; Kafka -&gt; QualityProcessor (detectors + source health) -&gt; PostgreSQL -&gt; Dashboard</text>
 
-  <rect x="640" y="170" width="480" height="300" rx="26" fill="#F9F5EE" stroke="#D8CDBE"/>
-  <text x="675" y="215" fill="#13212C" font-family="Georgia, serif" font-size="28" font-weight="700">Quality Processor</text>
-  <text x="675" y="245" fill="#5F6F7B" font-family="Arial, sans-serif" font-size="17">Detectors run on every consumed event</text>
+  <!-- ============ ROW 1: Ingress -> Kafka -> Quality Processor ============ -->
 
-  <rect x="675" y="275" width="185" height="56" rx="16" fill="#FFFDF8" stroke="#E1D7CA"/>
-  <text x="695" y="309" fill="#13212C" font-family="Arial, sans-serif" font-size="18">Duplicate + Late</text>
+  <!-- Ingress / REST API -->
+  <g>
+    <rect x="72" y="216" width="220" height="120" rx="20" fill="#FFF4EC" stroke="#D88E69"/>
+    <text x="92" y="252" fill="#C04B2F" font-size="11" font-weight="700" letter-spacing="2">INGRESS</text>
+    <text x="92" y="282" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="22" font-weight="700">REST API</text>
+    <text x="92" y="306" fill="#5F6F7B" font-size="13">POST /events</text>
+    <text x="92" y="324" fill="#5F6F7B" font-size="13">POST /demo/run-scenario/*</text>
+  </g>
 
-  <rect x="885" y="275" width="185" height="56" rx="16" fill="#FFFDF8" stroke="#E1D7CA"/>
-  <text x="905" y="309" fill="#13212C" font-family="Arial, sans-serif" font-size="18">Schema Drift</text>
+  <!-- Kafka -->
+  <g>
+    <rect x="360" y="216" width="220" height="120" rx="20" fill="#F1F9F7" stroke="#73ABA4"/>
+    <text x="380" y="252" fill="#1F7A7A" font-size="11" font-weight="700" letter-spacing="2">KAFKA</text>
+    <text x="380" y="282" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="22" font-weight="700">raw-events</text>
+    <text x="380" y="306" fill="#5F6F7B" font-size="13">3 partitions</text>
+    <text x="380" y="324" fill="#5F6F7B" font-size="13">RawEventProducer / Consumer</text>
+  </g>
 
-  <rect x="675" y="352" width="185" height="56" rx="16" fill="#FFFDF8" stroke="#E1D7CA"/>
-  <text x="695" y="386" fill="#13212C" font-family="Arial, sans-serif" font-size="18">Null + Anomaly</text>
+  <!-- Quality Processor (large) -->
+  <g>
+    <rect x="648" y="196" width="560" height="320" rx="22" fill="#F9F5EE" stroke="#D8CDBE"/>
+    <text x="672" y="232" fill="#C04B2F" font-size="11" font-weight="700" letter-spacing="2">QUALITY PROCESSOR</text>
+    <text x="672" y="266" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="24" font-weight="700">Detectors run per consumed event</text>
+    <text x="672" y="290" fill="#5F6F7B" font-size="13">Each event is persisted, fanned to detectors, then scored by source health</text>
 
-  <rect x="885" y="352" width="185" height="56" rx="16" fill="#FFFDF8" stroke="#E1D7CA"/>
-  <text x="905" y="386" fill="#13212C" font-family="Arial, sans-serif" font-size="18">Source Health</text>
+    <!-- Detector tiles -->
+    <g font-size="14" fill="#13212C">
+      <rect x="672" y="312" width="252" height="56" rx="14" fill="#FFFCF7" stroke="#E2D6C3"/>
+      <text x="688" y="338" font-weight="700">DuplicateDetector</text>
+      <text x="688" y="358" fill="#5F6F7B" font-size="12">event_id dedupe window</text>
 
-  <rect x="80" y="500" width="460" height="120" rx="24" fill="#F3F7FC" stroke="#95B2D2"/>
-  <text x="115" y="545" fill="#13212C" font-family="Georgia, serif" font-size="28" font-weight="700">PostgreSQL evidence store</text>
-  <text x="115" y="580" fill="#5F6F7B" font-family="Arial, sans-serif" font-size="18">raw_events · quality_alerts · schema_versions</text>
-  <text x="115" y="605" fill="#5F6F7B" font-family="Arial, sans-serif" font-size="18">metric_windows · source_health</text>
+      <rect x="936" y="312" width="252" height="56" rx="14" fill="#FFFCF7" stroke="#E2D6C3"/>
+      <text x="952" y="338" font-weight="700">LateEventDetector</text>
+      <text x="952" y="358" fill="#5F6F7B" font-size="12">event_timestamp vs ingestion</text>
 
-  <rect x="620" y="500" width="500" height="120" rx="24" fill="#FFF7EA" stroke="#D8B36A"/>
-  <text x="655" y="545" fill="#13212C" font-family="Georgia, serif" font-size="28" font-weight="700">Outputs</text>
-  <text x="655" y="580" fill="#5F6F7B" font-family="Arial, sans-serif" font-size="18">REST APIs for alerts, schemas, metrics, and source health</text>
-  <text x="655" y="605" fill="#5F6F7B" font-family="Arial, sans-serif" font-size="18">Browser dashboard for demo-driven investigation</text>
+      <rect x="672" y="380" width="252" height="56" rx="14" fill="#FFFCF7" stroke="#E2D6C3"/>
+      <text x="688" y="406" font-weight="700">SchemaDriftDetector</text>
+      <text x="688" y="426" fill="#5F6F7B" font-size="12">payload hash vs baseline</text>
 
-  <path d="M300 236H360" stroke="#13212C" stroke-width="4" stroke-linecap="round"/>
-  <path d="M580 236H640" stroke="#13212C" stroke-width="4" stroke-linecap="round"/>
-  <path d="M770 470V500" stroke="#13212C" stroke-width="4" stroke-linecap="round"/>
-  <path d="M520 560H620" stroke="#13212C" stroke-width="4" stroke-linecap="round"/>
+      <rect x="936" y="380" width="252" height="56" rx="14" fill="#FFFCF7" stroke="#E2D6C3"/>
+      <text x="952" y="406" font-weight="700">NullSpikeDetector</text>
+      <text x="952" y="426" fill="#5F6F7B" font-size="12">null rate per metric window</text>
+
+      <rect x="672" y="448" width="252" height="56" rx="14" fill="#FFFCF7" stroke="#E2D6C3"/>
+      <text x="688" y="474" font-weight="700">AnomalySpikeDetector</text>
+      <text x="688" y="494" fill="#5F6F7B" font-size="12">z-score vs rolling baseline</text>
+
+      <rect x="936" y="448" width="252" height="56" rx="14" fill="#FFFCF7" stroke="#E2D6C3"/>
+      <text x="952" y="474" font-weight="700">SourceHealthService</text>
+      <text x="952" y="494" fill="#5F6F7B" font-size="12">freshness + reliability score</text>
+    </g>
+  </g>
+
+  <!-- Arrows row 1 -->
+  <line x1="292" y1="276" x2="356" y2="276" stroke="#13212C" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <line x1="580" y1="276" x2="644" y2="276" stroke="#13212C" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <!-- ============ ROW 2: Postgres + Dashboard ============ -->
+
+  <!-- PostgreSQL evidence store -->
+  <g>
+    <rect x="72" y="556" width="560" height="160" rx="22" fill="#F3F7FC" stroke="#95B2D2"/>
+    <text x="96" y="592" fill="#2E5C99" font-size="11" font-weight="700" letter-spacing="2">POSTGRESQL EVIDENCE STORE</text>
+    <text x="96" y="624" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="22" font-weight="700">Five Flyway-managed tables</text>
+    <g font-family="'IBM Plex Mono','SFMono-Regular',monospace" font-size="12" fill="#13212C">
+      <rect x="96"  y="640" width="118" height="24" rx="12" fill="#FFFFFF" stroke="#C7D6EA"/>
+      <text x="155" y="656" text-anchor="middle">raw_events</text>
+      <rect x="222" y="640" width="142" height="24" rx="12" fill="#FFFFFF" stroke="#C7D6EA"/>
+      <text x="293" y="656" text-anchor="middle">quality_alerts</text>
+      <rect x="372" y="640" width="148" height="24" rx="12" fill="#FFFFFF" stroke="#C7D6EA"/>
+      <text x="446" y="656" text-anchor="middle">schema_versions</text>
+      <rect x="96"  y="676" width="142" height="24" rx="12" fill="#FFFFFF" stroke="#C7D6EA"/>
+      <text x="167" y="692" text-anchor="middle">metric_windows</text>
+      <rect x="246" y="676" width="130" height="24" rx="12" fill="#FFFFFF" stroke="#C7D6EA"/>
+      <text x="311" y="692" text-anchor="middle">source_health</text>
+    </g>
+  </g>
+
+  <!-- Dashboard + REST outputs -->
+  <g>
+    <rect x="672" y="556" width="536" height="160" rx="22" fill="#FFF7EA" stroke="#D8B36A"/>
+    <text x="696" y="592" fill="#8F6000" font-size="11" font-weight="700" letter-spacing="2">OUTPUTS</text>
+    <text x="696" y="624" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="22" font-weight="700">Dashboard &amp; REST APIs</text>
+    <text x="696" y="650" fill="#5F6F7B" font-size="13">/alerts &#183; /schemas &#183; /sources/health &#183; /events/recent</text>
+    <text x="696" y="672" fill="#5F6F7B" font-size="13">/dashboard/api/summary &#183; /demo/run-scenario/{name}</text>
+    <text x="696" y="700" fill="#5F6F7B" font-size="13">Static SPA at /dashboard/ (overview, alerts, health, schemas, demos)</text>
+  </g>
+
+  <!-- Arrows row 2 -->
+  <!-- Quality Processor -> Postgres (down + left) -->
+  <path d="M770 516 V536 H352 V552" stroke="#13212C" stroke-width="3" stroke-linecap="round" fill="none" marker-end="url(#arrow)"/>
+  <!-- Quality Processor -> Outputs (down) -->
+  <path d="M1086 516 V552" stroke="#13212C" stroke-width="3" stroke-linecap="round" fill="none" marker-end="url(#arrow)"/>
+  <!-- Postgres -> Outputs (read path) -->
+  <path d="M632 636 H668" stroke="#13212C" stroke-width="3" stroke-linecap="round" fill="none" marker-end="url(#arrow)"/>
+  <text x="640" y="628" fill="#5F6F7B" font-size="11">read</text>
 </svg>
