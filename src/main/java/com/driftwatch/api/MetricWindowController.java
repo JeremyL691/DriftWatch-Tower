@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/metrics")
+@RequestMapping("/api/v1/metrics")
 public class MetricWindowController {
 
     private final MetricWindowRepository repository;

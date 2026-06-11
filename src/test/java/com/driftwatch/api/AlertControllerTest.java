@@ -42,7 +42,7 @@ class AlertControllerTest {
 
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new AlertController(repository)).build();
 
-        mockMvc.perform(get("/alerts")
+        mockMvc.perform(get("/api/v1/alerts")
                         .param("type", "SCHEMA_DRIFT")
                         .param("source", "demo-api"))
                 .andExpect(status().isOk())
