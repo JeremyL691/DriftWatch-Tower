@@ -8,6 +8,9 @@ import com.driftwatch.persistence.RawEventEntity;
 import com.driftwatch.persistence.RawEventRepository;
 import com.driftwatch.source.SourceHealthService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -22,6 +25,10 @@ import java.util.stream.Collectors;
  * Single ingress for events arriving off the Kafka topic.
  * Runs every registered detector against the event, persists the raw event with a
  * quality_status reflecting the detector outcome, and writes alert rows.
+ *
+ * NOTE: detectors run synchronously inside the Kafka consumer thread. This is fine for
+ *   the demo's throughput level but would be the first thing to revisit at scale —
+ *   probably move to async processing or offload to Kafka Streams.
  */
 @Service
 public class QualityProcessor {
@@ -34,35 +41,52 @@ public class QualityProcessor {
     private final SourceHealthService sourceHealthService;
     private final PayloadHasher hasher;
     private final ObjectMapper objectMapper;
+    private final Counter eventCounter;
+    private final Counter alertCounter;
+    private final Timer detectionTimer;
 
     public QualityProcessor(List<QualityDetector> detectors,
                             RawEventRepository rawEventRepository,
                             QualityAlertRepository alertRepository,
                             SourceHealthService sourceHealthService,
                             PayloadHasher hasher,
-                            ObjectMapper objectMapper) {
+                            ObjectMapper objectMapper,
+                            MeterRegistry meterRegistry) {
         this.detectors = detectors;
         this.rawEventRepository = rawEventRepository;
         this.alertRepository = alertRepository;
         this.sourceHealthService = sourceHealthService;
         this.hasher = hasher;
         this.objectMapper = objectMapper;
+        this.eventCounter = Counter.builder("driftwatch.events.ingested")
+                .description("Total events ingested")
+                .register(meterRegistry);
+        this.alertCounter = Counter.builder("driftwatch.alerts.fired")
+                .description("Total alerts fired")
+                .register(meterRegistry);
+        this.detectionTimer = Timer.builder("detection.duration")
+                .description("Detection pipeline latency")
+                .register(meterRegistry);
     }
 
     @Transactional
     public ProcessResult process(DataEvent event) {
-        Instant now = Instant.now();
-        String payloadHash = hasher.hash(event.payload());
-        DetectionContext ctx = new DetectionContext(event, payloadHash, now);
+        return detectionTimer.record(() -> {
+            Instant now = Instant.now();
+            String payloadHash = hasher.hash(event.payload());
+            DetectionContext ctx = new DetectionContext(event, payloadHash, now);
 
-        List<DraftAlert> drafts = new ArrayList<>();
-        for (QualityDetector detector : detectors) {
-            try {
-                drafts.addAll(detector.detect(ctx));
-            } catch (RuntimeException e) {
-                log.warn("Detector {} failed for event_id={}", detector.getClass().getSimpleName(), event.eventId(), e);
+            List<DraftAlert> drafts = new ArrayList<>();
+            for (QualityDetector detector : detectors) {
+                try {
+                    drafts.addAll(detector.detect(ctx));
+                } catch (RuntimeException e) {
+                    log.warn("Detector {} failed for event_id={}", detector.getClass().getSimpleName(), event.eventId(), e);
+                }
             }
-        }
+
+            eventCounter.increment();
+            alertCounter.increment(drafts.size());
 
         String qualityStatus = qualityStatusFor(drafts);
 
@@ -84,12 +108,13 @@ public class QualityProcessor {
             alertRepository.saveAll(alerts);
         }
 
-        List<QualityAlertEntity> sourceAlerts = sourceHealthService.refreshAllAndPersist(now);
-        if (!sourceAlerts.isEmpty()) {
-            alerts.addAll(sourceAlerts);
-        }
+            List<QualityAlertEntity> sourceAlerts = sourceHealthService.refreshAllAndPersist(now);
+            if (!sourceAlerts.isEmpty()) {
+                alerts.addAll(sourceAlerts);
+            }
 
-        return new ProcessResult(raw, alerts);
+            return new ProcessResult(raw, alerts);
+        });
     }
 
     private static String qualityStatusFor(List<DraftAlert> drafts) {

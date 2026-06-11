@@ -17,7 +17,11 @@ public interface QualityAlertRepository extends JpaRepository<QualityAlertEntity
                                                                           String source,
                                                                           Pageable pageable);
 
+    Page<QualityAlertEntity> findByStatusOrderByCreatedAtDesc(String status, Pageable pageable);
+
     long countBySourceAndCreatedAtAfter(String source, java.time.Instant cutoff);
 
     long countByCreatedAtAfter(java.time.Instant cutoff);
+
+    long countByStatus(String status);
 }

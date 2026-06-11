@@ -384,3 +384,40 @@ select {
         width: 100%;
     }
 }
+
+.ws-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    font-size: 0.85rem;
+}
+
+.ws-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #999;
+}
+
+.ws-status.connected .ws-dot {
+    background: #22c55e;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+}
+
+.ws-status.disconnected .ws-dot {
+    background: #ef4444;
+}
+
+.ws-label {
+    color: var(--muted);
+}
+
+.timeline-item.new {
+    animation: highlight 2s ease-out;
+}
+
+@keyframes highlight {
+    from { background: rgba(192, 75, 47, 0.15); }
+    to { background: transparent; }
+}

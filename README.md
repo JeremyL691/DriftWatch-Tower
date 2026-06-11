@@ -25,7 +25,7 @@ Bring up the full stack and trigger a mixed-incident scenario in under a minute:
 
 ```bash
 docker compose --profile app up -d --build
-curl -X POST http://localhost:8080/demo/run-scenario/mixed-incident
+curl -X POST http://localhost:8080/api/v1/demo/run-scenario/mixed-incident
 open http://localhost:8080/dashboard
 ```
 
@@ -86,6 +86,11 @@ flowchart LR
 - Schema version tracking with drift evidence stored alongside alerts
 - Windowed metrics for null spikes and anomaly spikes
 - Source health snapshots with stale-source detection
+- Alert lifecycle management (open → acknowledge → resolve)
+- Incident correlation for grouping related alerts
+- WebSocket live updates on the dashboard
+- Prometheus metrics at `/actuator/prometheus`
+- Structured JSON logging with correlation IDs
 - Browser dashboard for demos and quick inspection
 - Testcontainers-based integration tests for Kafka + Postgres
 - GitHub Actions CI
@@ -118,7 +123,7 @@ Deterministic scenarios make the system easy to demo without crafting events by 
 | `mixed-incident` | several detectors at once (recommended demo) |
 
 ```bash
-curl -X POST http://localhost:8080/demo/run-scenario/schema-drift
+curl -X POST http://localhost:8080/api/v1/demo/run-scenario/schema-drift
 ```
 
 ## Running It Locally
@@ -170,16 +175,29 @@ More samples live under [`samples/events/`](samples/events/) — see [`samples/e
 
 ```bash
 # Ingest one event
-curl -X POST http://localhost:8080/events \
+curl -X POST http://localhost:8080/api/v1/events \
   -H 'Content-Type: application/json' \
   -d @samples/events/market_tick.json
 
 # Inspect state
-curl 'http://localhost:8080/events/recent?size=10'
-curl 'http://localhost:8080/alerts?size=10'
-curl 'http://localhost:8080/schemas'
-curl 'http://localhost:8080/metrics/windows?eventType=demo_null_event'
-curl 'http://localhost:8080/sources/health'
+curl 'http://localhost:8080/api/v1/events/recent?size=10'
+curl 'http://localhost:8080/api/v1/alerts?size=10'
+curl 'http://localhost:8080/api/v1/schemas'
+curl 'http://localhost:8080/api/v1/metrics/windows?eventType=demo_null_event'
+curl 'http://localhost:8080/api/v1/sources/health'
+
+# Alert lifecycle
+curl -X POST http://localhost:8080/api/v1/alerts/1/acknowledge \
+  -H 'Content-Type: application/json' -d '{"acknowledgedBy": "jeremy"}'
+curl -X POST http://localhost:8080/api/v1/alerts/1/resolve \
+  -H 'Content-Type: application/json' -d '{"rootCause": "schema change upstream"}'
+
+# Incidents
+curl 'http://localhost:8080/api/v1/incidents'
+curl 'http://localhost:8080/api/v1/incidents/stats'
+
+# Monitoring
+curl 'http://localhost:8080/actuator/prometheus'
 ```
 
 ## Testing
@@ -198,21 +216,23 @@ On machines without Docker, the container-backed integration tests are skipped w
 
 ## Tech Stack
 
-**Runtime:** Java 21 · Spring Boot 3.3 · Spring Web · Spring Kafka · Spring Data JPA
+**Runtime:** Java 21 · Spring Boot 3.3 · Spring Web · Spring Kafka · Spring Data JPA · WebSocket
 **Data:** PostgreSQL 16 · Flyway · Apache Kafka
+**Observability:** Prometheus · Micrometer · Structured JSON Logging
 **Testing & Ops:** JUnit 5 · Testcontainers · GitHub Actions · Docker Compose
 
 ## Repository Layout
 
 ```text
 src/main/java/com/driftwatch/
-  api/          REST controllers
-  dashboard/    dashboard page + summary endpoints
+  api/          REST controllers (events, alerts, incidents, schemas, metrics)
+  config/       WebSocket, correlation ID, Kafka topics
+  dashboard/    dashboard page + summary endpoints + WebSocket handler
   demo/         repeatable demo scenarios
   event/        event contract, producer, consumer, hashing
   persistence/  JPA entities + repositories
   quality/      detectors and processing pipeline
-  source/       source health scoring and freshness logic
+  source/       source health scoring, freshness logic, incident correlation
 ```
 
 ## Engineering Trade-offs

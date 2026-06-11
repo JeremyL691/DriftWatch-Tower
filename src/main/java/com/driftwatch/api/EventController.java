@@ -4,7 +4,6 @@ import com.driftwatch.event.DataEvent;
 import com.driftwatch.event.RawEventProducer;
 import com.driftwatch.event.RawEventService;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,9 +14,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
-@RequestMapping("/events")
+@RequestMapping("/api/v1/events")
 public class EventController {
 
     private final RawEventProducer producer;
@@ -34,6 +34,19 @@ public class EventController {
         return ResponseEntity.accepted().body(Map.of(
                 "status", "accepted",
                 "event_id", event.eventId()
+        ));
+    }
+
+    @PostMapping("/batch")
+    public ResponseEntity<Map<String, Object>> ingestBatch(@Valid @RequestBody List<@Valid DataEvent> events) {
+        String batchId = UUID.randomUUID().toString();
+        for (DataEvent event : events) {
+            producer.publish(event);
+        }
+        return ResponseEntity.accepted().body(Map.of(
+                "status", "accepted",
+                "batch_id", batchId,
+                "count", events.size()
         ));
     }
 

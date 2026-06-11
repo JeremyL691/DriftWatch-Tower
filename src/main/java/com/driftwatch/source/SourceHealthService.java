@@ -65,6 +65,8 @@ public class SourceHealthService {
         return alerts;
     }
 
+    // TODO: the refresh-on-read pattern here is a quick hack for the demo; real implementation
+    //   should use a scheduled @Scheduled method or publish a domain event after ingestion
     @Transactional
     public List<SourceHealthEntity> list() {
         refreshAllAndPersist(Instant.now());

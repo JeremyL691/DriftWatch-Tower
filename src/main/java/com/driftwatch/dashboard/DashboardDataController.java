@@ -13,7 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 
 @RestController
-@RequestMapping("/dashboard/api")
+@RequestMapping("/api/v1/dashboard/api")
 public class DashboardDataController {
 
     private final RawEventRepository rawEventRepository;
@@ -31,6 +31,8 @@ public class DashboardDataController {
         this.sourceHealthService = sourceHealthService;
     }
 
+    // TODO: this refresh-on-read pattern works fine for a demo but would be a performance problem
+    //   in production — should be moved to a scheduled task or event-driven refresh
     @GetMapping("/summary")
     public DashboardSummary summary() {
         Instant now = Instant.now();

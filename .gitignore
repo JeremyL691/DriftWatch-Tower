@@ -17,3 +17,7 @@ Thumbs.db
 
 HELP.md
 !.mvn/wrapper/maven-wrapper.jar
+
+# AI tools
+.claude/
+.mimocode/

@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/schemas")
+@RequestMapping("/api/v1/schemas")
 public class SchemaController {
 
     private final SchemaVersionRepository repository;
