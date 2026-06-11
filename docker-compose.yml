@@ -1,4 +1,4 @@
-# DriftWatch Tower — local infrastructure (Round 2)
+# DriftWatch Tower — local infrastructure
 #
 # Run:
 #   docker compose up -d        # postgres + kafka in the background
@@ -11,6 +11,7 @@
 services:
   postgres:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: driftwatch
       POSTGRES_USER: driftwatch
@@ -21,12 +22,18 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U driftwatch -d driftwatch"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
 
   kafka:
     image: bitnami/kafka:3.7
+    restart: unless-stopped
     environment:
       KAFKA_CFG_NODE_ID: "1"
       KAFKA_CFG_PROCESS_ROLES: controller,broker
@@ -39,22 +46,47 @@ services:
       ALLOW_PLAINTEXT_LISTENER: "yes"
     ports:
       - "9092:9092"
+    volumes:
+      - kafkadata:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
 
   app:
     profiles: ["app"]
     build: .
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/driftwatch
       SPRING_DATASOURCE_USERNAME: driftwatch
       SPRING_DATASOURCE_PASSWORD: driftwatch
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_PROFILES_ACTIVE: prod
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
 
 volumes:
   pgdata:
+  kafkadata:

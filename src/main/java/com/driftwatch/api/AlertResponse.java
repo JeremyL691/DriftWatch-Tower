@@ -17,6 +17,10 @@ public record AlertResponse(
         @JsonProperty("field_path") String fieldPath,
         String message,
         JsonNode evidence,
+        String status,
+        @JsonProperty("acknowledged_by") String acknowledgedBy,
+        @JsonProperty("acknowledged_at") Instant acknowledgedAt,
+        @JsonProperty("root_cause") String rootCause,
         @JsonProperty("created_at") Instant createdAt,
         @JsonProperty("resolved_at") Instant resolvedAt
 ) {
@@ -25,7 +29,8 @@ public record AlertResponse(
                 e.getId(), e.getAlertType(), e.getSeverity(),
                 e.getSource(), e.getEventType(), e.getFieldPath(),
                 e.getMessage(), e.getEvidenceJson(),
-                e.getCreatedAt(), e.getResolvedAt()
+                e.getStatus(), e.getAcknowledgedBy(), e.getAcknowledgedAt(),
+                e.getRootCause(), e.getCreatedAt(), e.getResolvedAt()
         );
     }
 }

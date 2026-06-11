@@ -1,3 +1,6 @@
+# DriftWatch Tower — streaming data quality observability
+# Single-node demo config; all services run via docker-compose
+
 spring:
   application:
     name: driftwatch-tower
@@ -36,11 +39,43 @@ spring:
 server:
   port: 8080
 
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# Detector configuration — all thresholds are externalized here
+driftwatch:
+  detector:
+    duplicate:
+      payload-window: PT5M
+    late:
+      threshold: PT5M
+    null-spike:
+      threshold: 0.2
+      min-samples: 5
+    anomaly-spike:
+      baseline-windows: 2
+      min-history-windows: 2
+      ratio-threshold: 3.0
+      min-current-count: 5
+  source-health:
+    default-stale-after: PT5M
+    rss-stale-after: PT30M
+    pipeline-stale-after: PT24H
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: driftwatch-tower
   endpoint:
     health:
       show-details: always

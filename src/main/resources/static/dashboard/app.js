@@ -1,6 +1,8 @@
 const state = {
   scenarioStartedAt: null,
   lastScenarioName: null,
+  stompClient: null,
+  wsConnected: false,
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -10,7 +12,61 @@ document.addEventListener("DOMContentLoaded", () => {
     button.addEventListener("click", () => runScenario(button));
   });
   refreshDashboard();
+  connectWebSocket();
 });
+
+function connectWebSocket() {
+  const socket = new SockJS("/ws");
+  state.stompClient = Stomp.over(socket);
+  state.stompClient.debug = null;
+
+  state.stompClient.connect({}, () => {
+    updateWsStatus(true);
+    state.stompClient.subscribe("/topic/alerts", (message) => {
+      const alert = JSON.parse(message.body);
+      prependLiveAlert(alert);
+      refreshDashboard();
+    });
+    state.stompClient.subscribe("/topic/events", (message) => {
+      const event = JSON.parse(message.body);
+      prependLiveEvent(event);
+    });
+  }, () => {
+    updateWsStatus(false);
+    setTimeout(connectWebSocket, 3000);
+  });
+}
+
+function updateWsStatus(connected) {
+  state.wsConnected = connected;
+  const el = document.getElementById("wsStatus");
+  el.className = `ws-status ${connected ? "connected" : "disconnected"}`;
+  el.querySelector(".ws-label").textContent = connected ? "Live" : "Disconnected";
+}
+
+function prependLiveAlert(alert) {
+  const container = document.getElementById("latestAlerts");
+  const item = document.createElement("article");
+  item.className = "timeline-item new";
+  item.innerHTML = `
+    <strong>${escapeHtml(alert.alert_type)} · ${escapeHtml(alert.source)}</strong>
+    <p>${escapeHtml(alert.message)}</p>
+    <p><span class="code-chip">${escapeHtml(alert.event_type)}</span> ${formatDate(alert.created_at)}</p>
+  `;
+  container.prepend(item);
+}
+
+function prependLiveEvent(event) {
+  const container = document.getElementById("recentEvents");
+  const item = document.createElement("article");
+  item.className = "timeline-item new";
+  item.innerHTML = `
+    <strong>${escapeHtml(event.event_type)} · ${escapeHtml(event.source)}</strong>
+    <p>${escapeHtml(event.event_id)} <span class="code-chip">${escapeHtml(event.quality_status)}</span></p>
+    <p>${formatDate(event.event_timestamp)}</p>
+  `;
+  container.prepend(item);
+}
 
 async function refreshDashboard() {
   await Promise.all([
