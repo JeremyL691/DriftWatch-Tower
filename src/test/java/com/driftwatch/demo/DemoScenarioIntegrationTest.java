@@ -23,7 +23,7 @@ class DemoScenarioIntegrationTest extends ContainerIntegrationTest {
     void duplicateEventsScenarioCreatesDuplicateAlerts() throws Exception {
         long before = qualityAlertRepository.count();
 
-        mockMvc.perform(post("/demo/run-scenario/duplicate-events"))
+        mockMvc.perform(post("/api/v1/demo/run-scenario/duplicate-events"))
                 .andExpect(status().isAccepted());
 
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
@@ -38,7 +38,7 @@ class DemoScenarioIntegrationTest extends ContainerIntegrationTest {
     void lateEventsScenarioCreatesLateAlert() throws Exception {
         long before = qualityAlertRepository.count();
 
-        mockMvc.perform(post("/demo/run-scenario/late-events"))
+        mockMvc.perform(post("/api/v1/demo/run-scenario/late-events"))
                 .andExpect(status().isAccepted());
 
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
@@ -53,7 +53,7 @@ class DemoScenarioIntegrationTest extends ContainerIntegrationTest {
     void normalFlowScenarioStaysAlertFreeForItsFreshSchema() throws Exception {
         long alertsBefore = qualityAlertRepository.count();
 
-        mockMvc.perform(post("/demo/run-scenario/normal-flow"))
+        mockMvc.perform(post("/api/v1/demo/run-scenario/normal-flow"))
                 .andExpect(status().isAccepted());
 
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
@@ -66,7 +66,7 @@ class DemoScenarioIntegrationTest extends ContainerIntegrationTest {
     void staleSourceScenarioCreatesStaleAlertAndHealthRow() throws Exception {
         long before = qualityAlertRepository.count();
 
-        mockMvc.perform(post("/demo/run-scenario/stale-source"))
+        mockMvc.perform(post("/api/v1/demo/run-scenario/stale-source"))
                 .andExpect(status().isAccepted());
 
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
