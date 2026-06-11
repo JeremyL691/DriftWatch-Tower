@@ -34,7 +34,7 @@ class KafkaIngestionIntegrationTest extends ContainerIntegrationTest {
                 Map.of("symbol", "BTC/USDT", "bid", 108000.1, "trace", UUID.randomUUID().toString())
         );
 
-        mockMvc.perform(post("/events")
+        mockMvc.perform(post("/api/v1/events")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(event)))
                 .andExpect(status().isAccepted());
