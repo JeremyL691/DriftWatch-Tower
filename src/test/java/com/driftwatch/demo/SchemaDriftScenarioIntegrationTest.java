@@ -19,7 +19,7 @@ class SchemaDriftScenarioIntegrationTest extends ContainerIntegrationTest {
 
     @Test
     void schemaDriftScenarioRegistersBothSchemasAndAlerts() throws Exception {
-        mockMvc.perform(post("/demo/run-scenario/schema-drift"))
+        mockMvc.perform(post("/api/v1/demo/run-scenario/schema-drift"))
                 .andExpect(status().isAccepted());
 
         await().atMost(Duration.ofSeconds(25)).untilAsserted(() -> {
