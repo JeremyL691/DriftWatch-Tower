@@ -5,6 +5,10 @@ const state = {
   wsConnected: false,
 };
 
+// ponytail: respects user OS-level reduce-motion; single source of truth for the whole file.
+const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const GSAP_OK = typeof gsap !== "undefined";
+
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("refreshAll").addEventListener("click", () => refreshDashboard());
   document.getElementById("applyAlertFilters").addEventListener("click", () => loadAlerts());
@@ -13,6 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   refreshDashboard();
   connectWebSocket();
+  initMotion();
 });
 
 function connectWebSocket() {
@@ -25,11 +30,13 @@ function connectWebSocket() {
     state.stompClient.subscribe("/topic/alerts", (message) => {
       const alert = JSON.parse(message.body);
       prependLiveAlert(alert);
+      pulseWsDot();
       refreshDashboard();
     });
     state.stompClient.subscribe("/topic/events", (message) => {
       const event = JSON.parse(message.body);
       prependLiveEvent(event);
+      pulseWsDot();
     });
   }, () => {
     updateWsStatus(false);
@@ -54,6 +61,7 @@ function prependLiveAlert(alert) {
     <p><span class="code-chip">${escapeHtml(alert.event_type)}</span> ${formatDate(alert.created_at)}</p>
   `;
   container.prepend(item);
+  slideInTimeline(item);
 }
 
 function prependLiveEvent(event) {
@@ -66,6 +74,7 @@ function prependLiveEvent(event) {
     <p>${formatDate(event.event_timestamp)}</p>
   `;
   container.prepend(item);
+  slideInTimeline(item);
 }
 
 async function refreshDashboard() {
@@ -80,10 +89,10 @@ async function refreshDashboard() {
 
 async function loadSummary() {
   const summary = await fetchJson("/dashboard/api/summary");
-  setText("statTotalEvents", formatNumber(summary.totalEvents));
-  setText("statActiveSources", formatNumber(summary.activeSources));
-  setText("statAlerts24h", formatNumber(summary.alertsLast24h));
-  setText("statUnhealthySources", formatNumber(summary.unhealthySources));
+  animateCount(document.getElementById("statTotalEvents"), summary.totalEvents);
+  animateCount(document.getElementById("statActiveSources"), summary.activeSources);
+  animateCount(document.getElementById("statAlerts24h"), summary.alertsLast24h);
+  animateCount(document.getElementById("statUnhealthySources"), summary.unhealthySources);
 
   const alerts = await fetchJson("/alerts?size=8");
   renderLatestAlerts(alerts);
@@ -208,6 +217,7 @@ function renderAlertsTable(alerts) {
       </tbody>
     </table>
   `;
+  crossfadePills(shell);
 }
 
 function renderSourceHealthTable(rows) {
@@ -248,6 +258,7 @@ function renderSourceHealthTable(rows) {
       </tbody>
     </table>
   `;
+  crossfadePills(shell);
 }
 
 function renderSchemasTable(rows) {
@@ -323,10 +334,12 @@ function isNewAlert(alert) {
 }
 
 function setScenarioStatus(title, detail) {
-  document.getElementById("scenarioStatus").innerHTML = `
+  const card = document.getElementById("scenarioStatus");
+  card.innerHTML = `
     <strong>${escapeHtml(title)}</strong>
     <p>${escapeHtml(detail)}</p>
   `;
+  crossfadeIn(card);
 }
 
 function disableScenarioButtons(disabled) {
@@ -375,4 +388,147 @@ function escapeHtml(value) {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: Motion (GSAP) — all 12 animations honor REDUCED_MOTION.
+// No parallax, no 3D, no particles (design doc risk section).
+// ---------------------------------------------------------------------------
+
+function initMotion() {
+  if (GSAP_OK) gsap.registerPlugin(ScrollTrigger);
+
+  // #1 Entrance stagger — panels fade up as they scroll into view.
+  if (!REDUCED_MOTION && GSAP_OK) {
+    gsap.utils.toArray(".panel").forEach((panel) => {
+      gsap.from(panel, {
+        opacity: 0,
+        y: 24,
+        duration: 0.55,
+        ease: "power2.out",
+        scrollTrigger: { trigger: panel, start: "top 88%", toggleActions: "play none none none" },
+      });
+    });
+  }
+
+  // #3 Gold scan line on .stat-card hover.
+  // ponytail: per-card overlay element, swept via gsap x; uses existing --gold token (no color edit).
+  if (!REDUCED_MOTION && GSAP_OK) {
+    document.querySelectorAll(".stat-card").forEach((card) => {
+      const overlay = document.createElement("div");
+      overlay.style.cssText =
+        "position:absolute;top:0;left:0;height:100%;width:55%;" +
+        "background:linear-gradient(90deg,transparent,var(--gold),transparent);" +
+        "opacity:0.55;pointer-events:none;transform:translateX(-120%);will-change:transform;";
+      card.style.position = "relative";
+      card.style.overflow = "hidden";
+      card.appendChild(overlay);
+      card.addEventListener("mouseenter", () => {
+        gsap.killTweensOf(overlay);
+        gsap.fromTo(overlay, { xPercent: -120 }, { xPercent: 220, duration: 0.85, ease: "power2.inOut" });
+      });
+    });
+  }
+
+  // #8 Real-time clock.
+  function tickClock() {
+    const el = document.getElementById("clock");
+    if (el) el.textContent = new Date().toLocaleTimeString([], { hour12: false });
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  // #9 Scroll-spy nav highlight.
+  const railLinks = new Map();
+  document.querySelectorAll(".rail-link[data-target]").forEach((link) => {
+    railLinks.set(link.dataset.target, link);
+  });
+  const sectionEls = Array.from(document.querySelectorAll("main.content section[id]"));
+  let activeId = null;
+  function setActive(id) {
+    if (id === activeId) return;
+    if (activeId && railLinks.get(activeId)) railLinks.get(activeId).classList.remove("active");
+    if (id && railLinks.get(id)) railLinks.get(id).classList.add("active");
+    activeId = id;
+  }
+  if ("IntersectionObserver" in window && sectionEls.length) {
+    const ratios = new Map();
+    const spy = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          ratios.set(entry.target.id, entry.isIntersecting ? entry.intersectionRatio : 0);
+        });
+        let bestId = null;
+        let bestRatio = 0;
+        ratios.forEach((ratio, id) => {
+          if (ratio > bestRatio) { bestRatio = ratio; bestId = id; }
+        });
+        setActive(bestId);
+      },
+      { rootMargin: "-30% 0px -50% 0px", threshold: [0, 0.25, 0.5, 0.75, 1] }
+    );
+    sectionEls.forEach((s) => spy.observe(s));
+  }
+
+  // #10 Scroll progress bar — fixed top strip, gold, width = scroll%.
+  const bar = document.createElement("div");
+  bar.style.cssText =
+    "position:fixed;top:0;left:0;height:2px;width:0;background:var(--gold);z-index:1000;" +
+    "pointer-events:none;" + (REDUCED_MOTION ? "" : "transition:width 80ms linear;");
+  bar.setAttribute("aria-hidden", "true");
+  document.body.appendChild(bar);
+  const updateProgress = () => {
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    bar.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + "%";
+  };
+  updateProgress();
+  window.addEventListener("scroll", updateProgress, { passive: true });
+}
+
+// #2 Number count-up.
+function animateCount(el, target) {
+  if (!el) return;
+  const value = Number(target) || 0;
+  if (REDUCED_MOTION || !GSAP_OK) {
+    el.textContent = formatNumber(value);
+    return;
+  }
+  if (el._countTween) el._countTween.kill();
+  const start = parseInt(String(el.textContent || "0").replace(/[^\d-]/g, ""), 10) || 0;
+  const state = { v: start };
+  el._countTween = gsap.to(state, {
+    v: value,
+    duration: 0.9,
+    ease: "power2.out",
+    onUpdate: () => { el.textContent = formatNumber(Math.round(state.v)); },
+    onComplete: () => { el.textContent = formatNumber(value); },
+  });
+}
+
+// #4 Scenario status card crossfade.
+function crossfadeIn(el) {
+  if (!el || REDUCED_MOTION || !GSAP_OK) return;
+  gsap.from(el, { opacity: 0, y: -6, duration: 0.3, ease: "power2.out" });
+}
+
+// #5 Status badge (pill) color crossfade — pills in freshly-rendered tables fade in.
+function crossfadePills(container) {
+  if (!container || REDUCED_MOTION || !GSAP_OK) return;
+  const pills = container.querySelectorAll(".pill");
+  if (!pills.length) return;
+  gsap.from(pills, { opacity: 0, scale: 0.85, duration: 0.35, ease: "power2.out", stagger: 0.015 });
+}
+
+// #6 Alert/event slide-in from left + bounce.
+function slideInTimeline(item) {
+  if (!item || REDUCED_MOTION || !GSAP_OK) return;
+  gsap.from(item, { x: -40, opacity: 0, duration: 0.5, ease: "back.out(1.4)" });
+}
+
+// #7 WebSocket data update pulse — ws-dot scale yoyo on incoming message.
+function pulseWsDot() {
+  if (REDUCED_MOTION || !GSAP_OK) return;
+  const dot = document.querySelector("#wsStatus .ws-dot");
+  if (!dot) return;
+  gsap.fromTo(dot, { scale: 1 }, { scale: 1.6, duration: 0.18, ease: "power2.out", yoyo: true, repeat: 1 });
 }

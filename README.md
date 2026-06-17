@@ -3,17 +3,20 @@
 > A Java/Spring Boot data-quality observability platform — Kafka ingestion, drift detection, and alert evidence for streaming events.
 
 [![CI](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml/badge.svg)](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml)
-![Java](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3-6DB33F?logo=springboot&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)
-![Kafka](https://img.shields.io/badge/Kafka-Spring%20Kafka-231F20?logo=apachekafka&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-blue)
+[![Java 21](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
+[![Spring Boot 3.3](https://img.shields.io/badge/Spring%20Boot-3.3-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Kafka](https://img.shields.io/badge/Kafka-Spring%20Kafka-231F20?logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
+[![Testcontainers](https://img.shields.io/badge/Testcontainers-integration-2496ED?logo=testcontainers&logoColor=white)](https://testcontainers.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 <p align="center">
   <img src="docs/assets/dashboard-preview.svg" alt="DriftWatch Tower dashboard preview" width="880">
 </p>
 
 DriftWatch Tower ingests `DataEvent` payloads through Kafka, runs them through a pipeline of data-quality detectors, stores evidence in PostgreSQL, and surfaces everything through REST APIs and a lightweight dashboard. It's a personal project built to look and behave more like internal data-platform tooling than a typical CRUD app.
+
+**Latest refresh:** dashboard re-themed to a black + bronze-gold industrial palette with GSAP micro-interactions (entrance stagger, count-up, scroll-spy rail, reduced-motion aware).
 
 **Status:** actively developed · single-node demo build · not intended for production.
 
