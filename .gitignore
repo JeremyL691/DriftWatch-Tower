@@ -21,3 +21,12 @@ HELP.md
 # AI tools
 .claude/
 .mimocode/
+
+# DriftWatch-Tower: AI tools working artifacts
+.codegraph/
+.omo/backup/
+
+# DriftWatch-Tower: Phase task scaffolding (keep .omo/plans/ for design doc,
+# ignore transient task prompts + backups)
+.omo/tasks/
+.omo/*.bak
