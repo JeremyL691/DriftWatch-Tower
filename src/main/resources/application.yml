@@ -60,6 +60,10 @@ driftwatch:
       min-history-windows: 2
       ratio-threshold: 3.0
       min-current-count: 5
+    field-range:
+      fields: {}
+    field-format:
+      patterns: ''
   source-health:
     default-stale-after: PT5M
     rss-stale-after: PT30M
