@@ -35,6 +35,12 @@ spring:
         spring.json.value.default.type: com.driftwatch.event.DataEvent
     listener:
       missing-topics-fatal: false
+    streams:
+      application-id: driftwatch-streams
+      properties:
+        commit.interval.ms: 1000
+        spring.json.trusted.packages: com.driftwatch.event,com.driftwatch.quality,com.driftwatch.stream
+        spring.json.value.default.type: com.driftwatch.stream.ProcessedEvent
 
 server:
   port: 8080
@@ -47,23 +53,32 @@ springdoc:
 
 # Detector configuration — all thresholds are externalized here
 driftwatch:
+  # Kafka Streams quality topology. The legacy RawEventConsumer/QualityProcessor path has been
+  # retired — the streams topology + QualityEventSink are now the only processing path.
+  streams:
+    enabled: true
   detector:
     duplicate:
       payload-window: PT5M
     late:
       threshold: PT5M
     null-spike:
-      threshold: 0.2
-      min-samples: 5
+      # 0.6/3 rather than 0.2/5 so the null-spike demo fires: it needs prevRate <= threshold
+      # while the current window is still short of min-samples (see plan, Flaw #5).
+      threshold: 0.6
+      min-samples: 3
     anomaly-spike:
       baseline-windows: 2
       min-history-windows: 2
       ratio-threshold: 3.0
       min-current-count: 5
     field-range:
-      fields: {}
+      fields:
+        price:
+          min: 0
+          max: 1000
     field-format:
-      patterns: ''
+      patterns: 'code=^SKU-[0-9]{6}$'
   source-health:
     default-stale-after: PT5M
     rss-stale-after: PT30M

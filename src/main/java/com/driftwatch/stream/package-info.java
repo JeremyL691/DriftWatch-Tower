@@ -1,2 +1,2 @@
-/** Kafka Streams topology wiring detectors to raw-events / quality-alerts / source-health topics. */
+/** Kafka Streams quality topology: raw-events → detectors → quality-events, persisted by the sink. */
 package com.driftwatch.stream;

@@ -9,6 +9,9 @@ const state = {
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const GSAP_OK = typeof gsap !== "undefined";
 
+// All REST controllers live under /api/v1 (WebSocket /ws is registered separately, unversioned).
+const API = "/api/v1";
+
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("refreshAll").addEventListener("click", () => refreshDashboard());
   document.getElementById("applyAlertFilters").addEventListener("click", () => loadAlerts());
@@ -88,13 +91,13 @@ async function refreshDashboard() {
 }
 
 async function loadSummary() {
-  const summary = await fetchJson("/dashboard/api/summary");
+  const summary = await fetchJson(`${API}/dashboard/api/summary`);
   animateCount(document.getElementById("statTotalEvents"), summary.totalEvents);
   animateCount(document.getElementById("statActiveSources"), summary.activeSources);
   animateCount(document.getElementById("statAlerts24h"), summary.alertsLast24h);
   animateCount(document.getElementById("statUnhealthySources"), summary.unhealthySources);
 
-  const alerts = await fetchJson("/alerts?size=8");
+  const alerts = await fetchJson(`${API}/alerts?size=8`);
   renderLatestAlerts(alerts);
 }
 
@@ -104,22 +107,22 @@ async function loadAlerts() {
   const params = new URLSearchParams({ size: "30" });
   if (source) params.set("source", source);
   if (type) params.set("type", type);
-  const alerts = await fetchJson(`/alerts?${params.toString()}`);
+  const alerts = await fetchJson(`${API}/alerts?${params.toString()}`);
   renderAlertsTable(alerts);
 }
 
 async function loadSourceHealth() {
-  const rows = await fetchJson("/sources/health");
+  const rows = await fetchJson(`${API}/sources/health`);
   renderSourceHealthTable(rows);
 }
 
 async function loadSchemas() {
-  const rows = await fetchJson("/schemas");
+  const rows = await fetchJson(`${API}/schemas`);
   renderSchemasTable(rows);
 }
 
 async function loadRecentEvents() {
-  const rows = await fetchJson("/events/recent?size=8");
+  const rows = await fetchJson(`${API}/events/recent?size=8`);
   renderRecentEvents(rows);
 }
 
@@ -130,7 +133,7 @@ async function runScenario(button) {
   setScenarioStatus(`Running ${scenario}...`, "Publishing demo events and waiting for detectors to react.");
   disableScenarioButtons(true);
   try {
-    const response = await fetch(`/demo/run-scenario/${scenario}`, { method: "POST" });
+    const response = await fetch(`${API}/demo/run-scenario/${scenario}`, { method: "POST" });
     if (!response.ok) {
         throw new Error(`Scenario request failed with ${response.status}`);
     }
