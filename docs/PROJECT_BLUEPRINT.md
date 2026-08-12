@@ -547,22 +547,22 @@ K8s Manifests:
 
 ### Phase 2: Core Enhancements (Weeks 3-4)
 
-- [ ] Alert lifecycle management (acknowledge, resolve)
-- [ ] Alert correlation into incidents
-- [ ] Configurable detector thresholds via YAML
-- [ ] WebSocket/SSE for real-time dashboard updates
-- [ ] Prometheus metrics endpoint
-- [ ] Structured JSON logging
-- [ ] Docker Compose production hardening
-- [ ] API versioning (v1 → v2)
+- [x] Alert lifecycle management (acknowledge, resolve)
+- [x] Alert correlation into incidents
+- [x] Configurable detector thresholds via YAML
+- [x] WebSocket/SSE for real-time dashboard updates
+- [x] Prometheus metrics endpoint
+- [x] Structured JSON logging
+- [x] Docker Compose production hardening
+- [x] API versioning (v1 → v2)
 
 ### Phase 3: Advanced Features (Weeks 5-8)
 
-- [ ] Kafka Streams integration for stateful processing
+- [x] Kafka Streams integration for stateful processing
 - [ ] Schema comparison and evolution tracking
 - [ ] Health score trend charts
 - [ ] Notification integrations (Slack, email)
-- [ ] Field range and format detectors
+- [x] Field range and format detectors
 - [ ] Cardinality spike detector
 - [ ] Event replay and reprocessing
 - [ ] Dead-letter queue for poison pills

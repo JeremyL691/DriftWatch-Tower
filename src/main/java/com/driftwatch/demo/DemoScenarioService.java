@@ -140,6 +140,30 @@ public class DemoScenarioService {
                 List.of(eventId));
     }
 
+    public ScenarioRun runFieldRange() {
+        Instant now = Instant.now();
+        String trace = "demo-range-" + UUID.randomUUID();
+        String eventId = trace + "-oob";
+        DataEvent event = new DataEvent(eventId, "demo-api", "demo_quality_event", now,
+                Map.of("price", 1500.0, "code", "SKU-000123", "trace", trace));
+        producer.publish(event);
+        return new ScenarioRun("field-range",
+                "Published price=1500 above the configured max 1000 — expect a FIELD_OUT_OF_RANGE alert.",
+                List.of(eventId));
+    }
+
+    public ScenarioRun runFieldFormat() {
+        Instant now = Instant.now();
+        String trace = "demo-fmt-" + UUID.randomUUID();
+        String eventId = trace + "-bad";
+        DataEvent event = new DataEvent(eventId, "demo-api", "demo_quality_event", now,
+                Map.of("price", 100.0, "code", "SKU-12", "trace", trace));
+        producer.publish(event);
+        return new ScenarioRun("field-format",
+                "Published code=SKU-12 which does not match ^SKU-[0-9]{6}$ — expect a FIELD_FORMAT_MISMATCH alert.",
+                List.of(eventId));
+    }
+
     public ScenarioRun runMixedIncident() {
         List<String> eventIds = new java.util.ArrayList<>();
         eventIds.addAll(runDuplicateEvents().eventIds());

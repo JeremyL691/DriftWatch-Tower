@@ -9,9 +9,15 @@ import org.springframework.kafka.config.TopicBuilder;
 public class KafkaTopics {
 
     public static final String RAW_EVENTS = "raw-events";
+    public static final String QUALITY_EVENTS = "quality-events";
 
     @Bean
     NewTopic rawEvents() {
         return TopicBuilder.name(RAW_EVENTS).partitions(3).replicas(1).build();
+    }
+
+    @Bean
+    NewTopic qualityEvents() {
+        return TopicBuilder.name(QUALITY_EVENTS).partitions(3).replicas(1).build();
     }
 }
