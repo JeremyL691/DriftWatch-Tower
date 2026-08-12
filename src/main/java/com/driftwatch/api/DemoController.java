@@ -29,6 +29,8 @@ public class DemoController {
             case "stale-source"     -> ResponseEntity.accepted().body(scenarios.runStaleSource());
             case "mixed-incident"   -> ResponseEntity.accepted().body(scenarios.runMixedIncident());
             case "schema-drift"     -> ResponseEntity.accepted().body(scenarios.runSchemaDrift());
+            case "field-range"      -> ResponseEntity.accepted().body(scenarios.runFieldRange());
+            case "field-format"     -> ResponseEntity.accepted().body(scenarios.runFieldFormat());
             default -> ResponseEntity.badRequest().build();
         };
     }

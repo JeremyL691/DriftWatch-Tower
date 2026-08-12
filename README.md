@@ -2,7 +2,6 @@
 
 > A Java/Spring Boot data-quality observability platform — Kafka ingestion, drift detection, and alert evidence for streaming events.
 
-[![CI](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml/badge.svg)](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml)
 [![Java 21](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot 3.3](https://img.shields.io/badge/Spring%20Boot-3.3-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
@@ -44,18 +43,20 @@ The goal was to complement my Python data-engineering background with a stronger
 
 ## What It Does
 
-At a high level, the app accepts `DataEvent` payloads on a REST endpoint, publishes them to Kafka, processes them through a quality pipeline, persists results in PostgreSQL, and exposes the output through REST APIs plus a Thymeleaf-free static dashboard.
+At a high level, the app accepts `DataEvent` payloads on a REST endpoint, publishes them to Kafka, and runs them through a **Kafka Streams quality topology** (with windowed state stores) that detects issues in real time and persists events, alerts, and health snapshots in PostgreSQL — exposed through REST APIs plus a Thymeleaf-free static dashboard.
 
 ### Detectors
 
 | Detector | What it catches | Try it with |
 |---|---|---|
-| `DuplicateDetector` | repeated `event_id` values or repeated payload hashes | `POST /demo/run-scenario/duplicate-events` |
-| `LateEventDetector` | events that arrive too far after their original timestamp | `POST /demo/run-scenario/late-events` · [`samples/events/late_event.json`](samples/events/late_event.json) |
-| `SchemaDriftDetector` | payload shape that diverges from the active schema baseline | `POST /demo/run-scenario/schema-drift` · [`samples/events/schema_drift_changed.json`](samples/events/schema_drift_changed.json) |
-| `NullSpikeDetector` | sudden jumps in null or missing field rates within a window | `POST /demo/run-scenario/null-spike` |
-| `AnomalySpikeDetector` | abnormal event-count bursts in metric windows | `POST /demo/run-scenario/anomaly-spike` |
-| Source health / `STALE_SOURCE` | sources that go quiet or become unhealthy | `POST /demo/run-scenario/stale-source` |
+| `DuplicateProcessor` | repeated `event_id` values or repeated payload hashes (windowed state store) | `POST /api/v1/demo/run-scenario/duplicate-events` |
+| `LateEventDetector` | events that arrive too far after their original timestamp | `POST /api/v1/demo/run-scenario/late-events` · [`samples/events/late_event.json`](samples/events/late_event.json) |
+| `SchemaDriftDetector` | payload shape that diverges from the active schema baseline | `POST /api/v1/demo/run-scenario/schema-drift` · [`samples/events/schema_drift_changed.json`](samples/events/schema_drift_changed.json) |
+| `NullSpikeProcessor` | sudden jumps in null or missing field rates within a window | `POST /api/v1/demo/run-scenario/null-spike` |
+| `AnomalySpikeProcessor` | abnormal event-count bursts vs. recent completed windows | `POST /api/v1/demo/run-scenario/anomaly-spike` |
+| Source health / `STALE_SOURCE` | sources that go quiet or become unhealthy | `POST /api/v1/demo/run-scenario/stale-source` |
+| `FieldRangeDetector` | numeric fields outside a configured `[min, max]` interval | `POST /api/v1/demo/run-scenario/field-range` |
+| `FieldFormatDetector` | string fields that don't match a configured regex | `POST /api/v1/demo/run-scenario/field-format` |
 
 ## Architecture
 
@@ -69,23 +70,21 @@ At a high level, the app accepts `DataEvent` payloads on a REST endpoint, publis
 ```mermaid
 flowchart LR
     A["REST API / demo scenarios"] --> B["Kafka topic: raw-events"]
-    B --> C["QualityProcessor"]
-    C --> D["Detectors"]
-    C --> E["Source health refresh"]
-    C --> F["PostgreSQL"]
-    F --> G["raw_events"]
-    F --> H["quality_alerts"]
-    F --> I["schema_versions"]
-    F --> J["metric_windows"]
-    F --> K["source_health"]
-    F --> L["REST API + dashboard"]
+    B --> C["Kafka Streams quality topology<br/>(windowed state stores)"]
+    C --> D["Kafka topic: quality-events"]
+    D --> E["Sink: persist + source health + metric projection"]
+    E --> F["PostgreSQL"]
+    F --> G["raw_events / quality_alerts"]
+    F --> H["schema_versions / metric_windows"]
+    F --> I["source_health"]
+    F --> J["REST API + dashboard"]
 ```
 
 </details>
 
 ## Project Highlights
 
-- End-to-end event flow from API → Kafka → detector pipeline → PostgreSQL
+- End-to-end event flow from API → Kafka → Kafka Streams topology → PostgreSQL
 - Schema version tracking with drift evidence stored alongside alerts
 - Windowed metrics for null spikes and anomaly spikes
 - Source health snapshots with stale-source detection
@@ -96,11 +95,10 @@ flowchart LR
 - Structured JSON logging with correlation IDs
 - Browser dashboard for demos and quick inspection
 - Testcontainers-based integration tests for Kafka + Postgres
-- GitHub Actions CI
 
 ## Dashboard
 
-The dashboard is meant to make the project understandable in 30 seconds for someone skimming the repo. It pulls from `/dashboard/api/summary` and renders panels for:
+The dashboard is meant to make the project understandable in 30 seconds for someone skimming the repo. It pulls from `/api/v1/dashboard/api/summary` and renders panels for:
 
 - recent events and their quality status
 - fired alerts with detector type and evidence
@@ -108,7 +106,7 @@ The dashboard is meant to make the project understandable in 30 seconds for some
 - metric windows powering the spike detectors
 - per-source health and freshness
 
-Direct REST views are also available at `/alerts`, `/sources/health`, `/schemas`, and `/metrics/windows`.
+Direct REST views are also available at `/api/v1/alerts`, `/api/v1/sources/health`, `/api/v1/schemas`, and `/api/v1/metrics/windows`.
 
 ## Demo Scenarios
 
@@ -123,6 +121,8 @@ Deterministic scenarios make the system easy to demo without crafting events by 
 | `null-spike` | `NullSpikeDetector` |
 | `anomaly-spike` | `AnomalySpikeDetector` |
 | `stale-source` | source-health stale alert |
+| `field-range` | `FieldRangeDetector` |
+| `field-format` | `FieldFormatDetector` |
 | `mixed-incident` | several detectors at once (recommended demo) |
 
 ```bash
@@ -213,7 +213,6 @@ The suite includes:
 
 - unit tests for detectors, hashing, and window math
 - Testcontainers-backed integration tests for the Kafka → Postgres path
-- GitHub Actions CI on every push and PR
 
 On machines without Docker, the container-backed integration tests are skipped while the rest of the suite still runs.
 
@@ -222,7 +221,7 @@ On machines without Docker, the container-backed integration tests are skipped w
 **Runtime:** Java 21 · Spring Boot 3.3 · Spring Web · Spring Kafka · Spring Data JPA · WebSocket
 **Data:** PostgreSQL 16 · Flyway · Apache Kafka
 **Observability:** Prometheus · Micrometer · Structured JSON Logging
-**Testing & Ops:** JUnit 5 · Testcontainers · GitHub Actions · Docker Compose
+**Testing & Ops:** JUnit 5 · Testcontainers · Docker Compose
 
 ## Repository Layout
 
@@ -232,10 +231,11 @@ src/main/java/com/driftwatch/
   config/       WebSocket, correlation ID, Kafka topics
   dashboard/    dashboard page + summary endpoints + WebSocket handler
   demo/         repeatable demo scenarios
-  event/        event contract, producer, consumer, hashing
+  event/        event contract, producer, hashing
   persistence/  JPA entities + repositories
-  quality/      detectors and processing pipeline
+  quality/      detector beans reused by the topology (schema registry, field checks)
   source/       source health scoring, freshness logic, incident correlation
+  stream/       Kafka Streams topology, sink consumer, serdes, metric projection
 ```
 
 ## Engineering Trade-offs
@@ -243,7 +243,7 @@ src/main/java/com/driftwatch/
 A few decisions worth flagging for anyone reading the code:
 
 - **Alerts in a dedicated table, not a flag on `raw_events`.** Keeps raw ingestion append-only and lets a single event carry multiple, independent pieces of quality evidence over its lifetime.
-- **Detectors run synchronously inside the Kafka consumer.** Simpler reasoning and ordering at the cost of throughput — fine for a demo, would be the first thing to revisit at scale.
+- **Detection is a Kafka Streams topology with windowed state stores**, not a synchronous consumer loop. The duplicate, null-spike, and anomaly-spike windows live in Streams state stores; schema drift and source health stay DB-backed. State stores are single-node in-memory-persistent — a multi-node deployment would need repartitioning and is the natural scale-up path.
 - **Schema baselines stored as versioned rows.** Drift detection compares against the active version rather than the latest, so a known-bad payload can be quarantined without rewriting history.
 - **Testcontainers shared across the test session** rather than per-test, so the full integration suite stays under a reasonable wall-clock without sacrificing isolation between detectors.
 - **Source health is recomputed on each consumed event for that source**, not on a periodic sweep — keeps the staleness signal honest without a separate scheduler.
