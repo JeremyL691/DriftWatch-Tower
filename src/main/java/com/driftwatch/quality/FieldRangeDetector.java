@@ -3,7 +3,7 @@ package com.driftwatch.quality;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -31,8 +31,12 @@ public class FieldRangeDetector implements QualityDetector {
     private final ObjectMapper objectMapper;
     private final Map<String, Bounds> bounds;
 
-    public FieldRangeDetector(ObjectMapper objectMapper,
-                              @Value("${driftwatch.detector.field-range.fields:{}}") Map<String, Bounds> bounds) {
+    @Autowired
+    public FieldRangeDetector(ObjectMapper objectMapper, FieldRangeProperties properties) {
+        this(objectMapper, properties.getFields());
+    }
+
+    public FieldRangeDetector(ObjectMapper objectMapper, Map<String, Bounds> bounds) {
         this.objectMapper = objectMapper;
         this.bounds = bounds == null ? Map.of() : bounds;
     }
