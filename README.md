@@ -2,6 +2,7 @@
 
 > A Java/Spring Boot data-quality observability platform — Kafka ingestion, drift detection, and alert evidence for streaming events.
 
+[![CI](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml/badge.svg)](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml)
 [![Java 21](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot 3.3](https://img.shields.io/badge/Spring%20Boot-3.3-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
@@ -10,12 +11,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 <p align="center">
-  <img src="docs/assets/dashboard-preview.svg" alt="DriftWatch Tower dashboard preview" width="880">
+  <img src="docs/assets/dashboard-preview.svg" alt="DriftWatch Tower dashboard preview — mixed-incident view" width="880">
 </p>
 
-DriftWatch Tower ingests `DataEvent` payloads through Kafka, runs them through a pipeline of data-quality detectors, stores evidence in PostgreSQL, and surfaces everything through REST APIs and a lightweight dashboard. It's a personal project built to look and behave more like internal data-platform tooling than a typical CRUD app.
+*Dashboard preview: a mixed-incident scenario showing schema-drift, stale-source, and duplicate-event alerts together.*
 
-**Latest refresh:** dashboard re-themed to a black + bronze-gold industrial palette with GSAP micro-interactions (entrance stagger, count-up, scroll-spy rail, reduced-motion aware).
+DriftWatch Tower ingests `DataEvent` payloads through Kafka, runs them through a pipeline of data-quality detectors, stores evidence in PostgreSQL, and surfaces everything through REST APIs and a lightweight dashboard. It's a personal project built to look and behave more like internal data-platform tooling than a typical CRUD app.
 
 **Status:** actively developed · single-node demo build · not intended for production.
 
@@ -27,11 +28,20 @@ Bring up the full stack and trigger a mixed-incident scenario in under a minute:
 
 ```bash
 docker compose --profile app up -d --build
+curl --retry 30 --retry-connrefused --retry-delay 2 -fsS http://localhost:8080/actuator/health
 curl -X POST http://localhost:8080/api/v1/demo/run-scenario/mixed-incident
 open http://localhost:8080/dashboard
 ```
 
 The dashboard shows recent events, fired alerts, schema versions, metric windows, and source health snapshots side-by-side.
+
+## Verification
+
+```bash
+./mvnw test
+```
+
+The suite covers unit tests for detectors, hashing, and window math, plus Testcontainers-backed integration tests for the Kafka → PostgreSQL path (Docker required for the container-backed cases).
 
 ---
 
@@ -39,7 +49,7 @@ The dashboard shows recent events, fired alerts, schema versions, metric windows
 
 I wanted one project in my portfolio that felt closer to internal data-platform infrastructure than another CRUD app — something with streaming ingestion, quality checks, and operational evidence that you'd actually demo to an on-call engineer.
 
-The goal was to complement my Python data-engineering background with a stronger backend-engineering surface: Kafka, Spring Boot, JPA, Testcontainers, and CI.
+The goal was to complement my Python data-engineering background with a stronger backend-engineering surface: Kafka, Spring Boot, JPA, and Testcontainers.
 
 ## What It Does
 
@@ -238,7 +248,7 @@ src/main/java/com/driftwatch/
   stream/       Kafka Streams topology, sink consumer, serdes, metric projection
 ```
 
-## Engineering Trade-offs
+## Design Trade-offs and Next Steps
 
 A few decisions worth flagging for anyone reading the code:
 
@@ -247,6 +257,9 @@ A few decisions worth flagging for anyone reading the code:
 - **Schema baselines stored as versioned rows.** Drift detection compares against the active version rather than the latest, so a known-bad payload can be quarantined without rewriting history.
 - **Testcontainers shared across the test session** rather than per-test, so the full integration suite stays under a reasonable wall-clock without sacrificing isolation between detectors.
 - **Source health is recomputed on each consumed event for that source**, not on a periodic sweep — keeps the staleness signal honest without a separate scheduler.
+- **Production scale-up:** repartition the Kafka Streams key before running stateful processors across multiple nodes.
+- **Operational freshness:** move dashboard-triggered source-health refresh to a scheduled or event-driven job.
+- **Delivery confidence:** the CI workflow runs `./mvnw test` on every push — see the build badge at the top of this file.
 
 ## Further Reading
 
