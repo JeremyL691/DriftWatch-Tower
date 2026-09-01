@@ -18,3 +18,5 @@ jobs:
           cache: maven
       - name: Run test suite (unit + Testcontainers integration)
         run: ./mvnw test --batch-mode
+      - name: Build application image
+        run: docker build --tag driftwatch-tower:ci .

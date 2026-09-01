@@ -28,9 +28,10 @@
     <!-- hero-copy -->
     <rect x="32" y="32" width="820" height="180" rx="28" fill="#FFFCF7" stroke="#E2D6C3"/>
     <text x="64" y="76" fill="#C04B2F" font-size="13" font-weight="700" letter-spacing="2.6">DRIFTWATCH TOWER</text>
-    <text x="64" y="128" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="40" font-weight="700" letter-spacing="-1.5">Streaming quality observability</text>
-    <text x="64" y="170" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="40" font-weight="700" letter-spacing="-1.5">without leaving the browser.</text>
+    <text x="64" y="128" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="40" font-weight="700" letter-spacing="-1.5">Inspect streaming quality</text>
+    <text x="64" y="170" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="40" font-weight="700" letter-spacing="-1.5">evidence in one place.</text>
     <text x="64" y="198" fill="#5F6F7B" font-size="15">Inspect alert bursts, source health, schema drift, and demo scenarios from one place.</text>
+    <text x="820" y="76" fill="#5F6F7B" font-size="11" text-anchor="end" letter-spacing="1.4">ILLUSTRATIVE MOCKUP · SAMPLE DATA</text>
 
     <!-- hero-panel (quick links) -->
     <rect x="868" y="32" width="380" height="180" rx="28" fill="#FFFCF7" stroke="#E2D6C3"/>
@@ -61,19 +62,19 @@
     <g>
       <rect x="64" y="340" width="282" height="96" rx="20" fill="#FFFFFF" stroke="#E2D6C3"/>
       <text x="84" y="368" fill="#5F6F7B" font-size="13">Total Events</text>
-      <text x="84" y="412" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="38" font-weight="700">12,847</text>
+      <text x="84" y="412" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="38" font-weight="700">Demo</text>
 
       <rect x="358" y="340" width="282" height="96" rx="20" fill="#FFFFFF" stroke="#E2D6C3"/>
       <text x="378" y="368" fill="#5F6F7B" font-size="13">Active Sources</text>
-      <text x="378" y="412" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="38" font-weight="700">6</text>
+      <text x="378" y="412" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="38" font-weight="700">Sample</text>
 
       <rect x="652" y="340" width="282" height="96" rx="20" fill="#FFFFFF" stroke="#E2D6C3"/>
       <text x="672" y="368" fill="#5F6F7B" font-size="13">Alerts Last 24h</text>
-      <text x="672" y="412" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="38" font-weight="700">23</text>
+      <text x="672" y="412" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="38" font-weight="700">Sample</text>
 
       <rect x="946" y="340" width="270" height="96" rx="20" fill="#FFFFFF" stroke="#E2D6C3"/>
       <text x="966" y="368" fill="#5F6F7B" font-size="13">Unhealthy Sources</text>
-      <text x="966" y="412" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="38" font-weight="700">2</text>
+      <text x="966" y="412" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="38" font-weight="700">Sample</text>
     </g>
 
     <!-- Split: Latest Detector Activity + Recent Events -->
@@ -89,34 +90,34 @@
       <text x="100" y="536" fill="#5F6F7B" font-size="12">Added field: trade_venue. Hash diverged from baseline.</text>
       <rect x="100" y="544" width="84" height="16" rx="8" fill="#13212C" fill-opacity="0.08"/>
       <text x="142" y="556" fill="#13212C" font-size="11" text-anchor="middle" font-family="'IBM Plex Mono',monospace">market_tick</text>
-      <text x="200" y="556" fill="#5F6F7B" font-size="11">2026-05-27 14:02:11</text>
+      <text x="200" y="556" fill="#5F6F7B" font-size="11">demo run</text>
 
       <!-- alert item 2 -->
       <rect x="84" y="566" width="536" height="62" rx="14" fill="#F4ECDE"/>
       <text x="100" y="588" fill="#13212C" font-size="13" font-weight="700">STALE_SOURCE &#183; nyse-feed</text>
-      <text x="100" y="606" fill="#5F6F7B" font-size="12">No events received in 8m 42s (threshold 5m).</text>
+      <text x="100" y="606" fill="#5F6F7B" font-size="12">No recent events (configured stale threshold reached).</text>
       <rect x="100" y="614" width="84" height="16" rx="8" fill="#13212C" fill-opacity="0.08"/>
       <text x="142" y="626" fill="#13212C" font-size="11" text-anchor="middle" font-family="'IBM Plex Mono',monospace">market_tick</text>
-      <text x="200" y="626" fill="#5F6F7B" font-size="11">2026-05-27 13:58:03</text>
+      <text x="200" y="626" fill="#5F6F7B" font-size="11">demo run</text>
 
       <!-- Recent Events -->
       <rect x="656" y="456" width="560" height="178" rx="20" fill="#FFFFFF" stroke="#E2D6C3"/>
       <text x="676" y="484" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="18" font-weight="700">Recent Events</text>
-      <text x="1196" y="484" fill="#5F6F7B" font-size="12" text-anchor="end">Last 8 ingested</text>
+      <text x="1196" y="484" fill="#5F6F7B" font-size="12" text-anchor="end">Sample records</text>
 
       <rect x="676" y="496" width="520" height="62" rx="14" fill="#F4ECDE"/>
       <text x="692" y="518" fill="#13212C" font-size="13" font-weight="700">market_tick &#183; binance</text>
       <text x="692" y="536" fill="#5F6F7B" font-size="12">evt-3f4a82c1</text>
       <rect x="780" y="524" width="56" height="16" rx="8" fill="#1F7A7A" fill-opacity="0.16"/>
       <text x="808" y="536" fill="#115D5D" font-size="11" text-anchor="middle">CLEAN</text>
-      <text x="692" y="556" fill="#5F6F7B" font-size="11">2026-05-27 14:02:14</text>
+      <text x="692" y="556" fill="#5F6F7B" font-size="11">demo run</text>
 
       <rect x="676" y="566" width="520" height="62" rx="14" fill="#F4ECDE"/>
       <text x="692" y="588" fill="#13212C" font-size="13" font-weight="700">market_tick &#183; coinbase</text>
       <text x="692" y="606" fill="#5F6F7B" font-size="12">evt-9c1d2eaf</text>
       <rect x="790" y="594" width="64" height="16" rx="8" fill="#C39230" fill-opacity="0.18"/>
       <text x="822" y="606" fill="#8F6000" font-size="11" text-anchor="middle">FLAGGED</text>
-      <text x="692" y="626" fill="#5F6F7B" font-size="11">2026-05-27 14:02:09</text>
+      <text x="692" y="626" fill="#5F6F7B" font-size="11">demo run</text>
     </g>
   </g>
 
@@ -124,7 +125,7 @@
   <g>
     <rect x="32" y="676" width="1216" height="296" rx="28" fill="#FFFCF7" stroke="#E2D6C3"/>
     <text x="64" y="718" fill="#C04B2F" font-size="12" font-weight="700" letter-spacing="2.6">ALERTS</text>
-    <text x="64" y="752" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="26" font-weight="700">Evidence-rich incident feed</text>
+    <text x="64" y="752" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="26" font-weight="700">Sample alert evidence</text>
 
     <!-- filter row -->
     <g font-size="11" fill="#5F6F7B">
@@ -164,7 +165,7 @@
       <text x="468" y="840" font-family="'IBM Plex Mono',monospace" font-size="11">market_tick</text>
       <text x="600" y="840" font-family="'IBM Plex Mono',monospace" font-size="11">trade_venue</text>
       <text x="724" y="840" fill="#5F6F7B">New field detected vs baseline schema</text>
-      <text x="1024" y="840" fill="#5F6F7B" font-size="11">14:02:11</text>
+      <text x="1024" y="840" fill="#5F6F7B" font-size="11">sample</text>
       <text x="1156" y="840" fill="#1F7A7A">&#9656; View</text>
       <line x1="64" y1="858" x2="1216" y2="858" stroke="#E2D6C3"/>
     </g>
@@ -178,8 +179,8 @@
       <text x="356" y="882">nyse-feed</text>
       <text x="468" y="882" font-family="'IBM Plex Mono',monospace" font-size="11">market_tick</text>
       <text x="600" y="882" fill="#5F6F7B">-</text>
-      <text x="724" y="882" fill="#5F6F7B">No events in 8m 42s (threshold 5m)</text>
-      <text x="1024" y="882" fill="#5F6F7B" font-size="11">13:58:03</text>
+      <text x="724" y="882" fill="#5F6F7B">Configured stale threshold reached</text>
+      <text x="1024" y="882" fill="#5F6F7B" font-size="11">sample</text>
       <text x="1156" y="882" fill="#1F7A7A">&#9656; View</text>
       <line x1="64" y1="900" x2="1216" y2="900" stroke="#E2D6C3"/>
     </g>
@@ -193,8 +194,8 @@
       <text x="356" y="924">coinbase</text>
       <text x="468" y="924" font-family="'IBM Plex Mono',monospace" font-size="11">market_tick</text>
       <text x="600" y="924" font-family="'IBM Plex Mono',monospace" font-size="11">event_id</text>
-      <text x="724" y="924" fill="#5F6F7B">3 duplicate event_ids in 60s window</text>
-      <text x="1024" y="924" fill="#5F6F7B" font-size="11">13:54:48</text>
+      <text x="724" y="924" fill="#5F6F7B">Repeated event_id within PT5M window</text>
+      <text x="1024" y="924" fill="#5F6F7B" font-size="11">sample</text>
       <text x="1156" y="924" fill="#1F7A7A">&#9656; View</text>
     </g>
   </g>
@@ -224,25 +225,25 @@
       <text x="84" y="1156">nyse-feed</text>
       <rect x="216" y="1140" width="64" height="22" rx="11" fill="#C04B2F" fill-opacity="0.15"/>
       <text x="248" y="1156" text-anchor="middle" fill="#8A2E1A" font-weight="700">STALE</text>
-      <text x="332" y="1156" fill="#5F6F7B" font-size="11">13:53:21</text>
-      <text x="488" y="1156">0</text>
-      <text x="608" y="1156">412</text>
-      <text x="728" y="1156">0.0%</text>
-      <text x="852" y="1156">2.4%</text>
-      <text x="976" y="1156">0.7%</text>
-      <text x="1108" y="1156" font-weight="700">42.0</text>
+      <text x="332" y="1156" fill="#5F6F7B" font-size="11">sample</text>
+      <text x="488" y="1156">—</text>
+      <text x="608" y="1156">—</text>
+      <text x="728" y="1156">—</text>
+      <text x="852" y="1156">—</text>
+      <text x="976" y="1156">—</text>
+      <text x="1108" y="1156" font-weight="700">—</text>
       <line x1="64" y1="1170" x2="1216" y2="1170" stroke="#E2D6C3"/>
 
       <text x="84" y="1196">coinbase</text>
       <rect x="216" y="1180" width="64" height="22" rx="11" fill="#C39230" fill-opacity="0.18"/>
       <text x="248" y="1196" text-anchor="middle" fill="#8F6000" font-weight="700">DEGRADED</text>
-      <text x="332" y="1196" fill="#5F6F7B" font-size="11">14:02:09</text>
-      <text x="488" y="1196">241</text>
-      <text x="608" y="1196">2,884</text>
-      <text x="728" y="1196">1.8%</text>
-      <text x="852" y="1196">0.4%</text>
-      <text x="976" y="1196">0.2%</text>
-      <text x="1108" y="1196" font-weight="700">78.5</text>
+      <text x="332" y="1196" fill="#5F6F7B" font-size="11">sample</text>
+      <text x="488" y="1196">—</text>
+      <text x="608" y="1196">—</text>
+      <text x="728" y="1196">—</text>
+      <text x="852" y="1196">—</text>
+      <text x="976" y="1196">—</text>
+      <text x="1108" y="1196" font-weight="700">—</text>
     </g>
   </g>
 
@@ -266,12 +267,12 @@
     <g font-size="12" fill="#13212C">
       <text x="84" y="1408" font-family="'IBM Plex Mono',monospace">market_tick</text>
       <rect x="244" y="1392" width="178" height="22" rx="11" fill="#13212C" fill-opacity="0.08"/>
-      <text x="333" y="1408" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11">a1f48c92ec71...</text>
+      <text x="333" y="1408" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11">&lt;schema hash&gt;</text>
       <rect x="444" y="1392" width="80" height="22" rx="11" fill="#C39230" fill-opacity="0.18"/>
       <text x="484" y="1408" text-anchor="middle" fill="#8F6000" font-weight="700">DRIFTING</text>
-      <text x="588" y="1408" fill="#5F6F7B" font-size="11">2026-05-20 09:11</text>
-      <text x="772" y="1408" fill="#5F6F7B" font-size="11">2026-05-27 14:02</text>
-      <text x="976" y="1408" fill="#1F7A7A">&#9656; 3 version(s), 1 drifting</text>
+      <text x="588" y="1408" fill="#5F6F7B" font-size="11">sample</text>
+      <text x="772" y="1408" fill="#5F6F7B" font-size="11">sample</text>
+      <text x="976" y="1408" fill="#1F7A7A">&#9656; sample history</text>
     </g>
   </g>
 
@@ -279,7 +280,7 @@
   <g>
     <rect x="32" y="1462" width="1216" height="156" rx="28" fill="#FFFCF7" stroke="#E2D6C3"/>
     <text x="64" y="1502" fill="#C04B2F" font-size="12" font-weight="700" letter-spacing="2.6">DEMO SCENARIOS</text>
-    <text x="64" y="1536" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="22" font-weight="700">Trigger incidents on demand</text>
+    <text x="64" y="1536" fill="#13212C" font-family="Fraunces,Georgia,serif" font-size="22" font-weight="700">Trigger quality checks on demand</text>
     <text x="1216" y="1526" fill="#5F6F7B" font-size="12" text-anchor="end">Dashboard refreshes after each run</text>
 
     <!-- 8 scenario buttons in a row -->
