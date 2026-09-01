@@ -91,6 +91,69 @@ class SourceHealthServiceTest {
                 .satisfies(alert -> assertThat(alert.getSource()).isEqualTo("demo-stale-source"));
     }
 
+    @Test
+    void healthyToStaleTransitionPersistsOneAlert() {
+        Instant now = Instant.now();
+        RawEventEntity latest = new RawEventEntity();
+        latest.setSource("orders-api");
+        latest.setEventType("order_created");
+        latest.setEventTimestamp(now.minus(Duration.ofMinutes(10)));
+
+        SourceHealthEntity previous = new SourceHealthEntity();
+        previous.setSource("orders-api");
+        previous.setStatus(SourceHealthEntity.STATUS_HEALTHY);
+
+        AtomicReference<List<QualityAlertEntity>> savedAlerts = new AtomicReference<>();
+
+        RawEventRepository rawEventRepository = proxy(RawEventRepository.class, (method, args) -> switch (method.getName()) {
+            case "findDistinctSources" -> List.of("orders-api");
+            case "findFirstBySourceOrderByEventTimestampDescIdDesc" -> Optional.of(latest);
+            case "countBySourceAndEventTimestampAfter" -> 1L;
+            case "countBySourceAndEventTimestampAfterAndQualityStatus" -> 0L;
+            default -> unsupported(method.getName());
+        });
+
+        QualityAlertRepository alertRepository = proxy(QualityAlertRepository.class, (method, args) -> switch (method.getName()) {
+            case "countBySourceAndCreatedAtAfter" -> 0L;
+            case "saveAll" -> {
+                @SuppressWarnings("unchecked")
+                List<QualityAlertEntity> alerts = (List<QualityAlertEntity>) args[0];
+                savedAlerts.set(alerts);
+                yield alerts;
+            }
+            default -> unsupported(method.getName());
+        });
+
+        MetricWindowRepository metricWindowRepository = proxy(MetricWindowRepository.class, (method, args) -> switch (method.getName()) {
+            case "maxMetricValueBySourceAndMetricNamePrefixAndWindowEndAfter" -> null;
+            default -> unsupported(method.getName());
+        });
+
+        SourceHealthRepository sourceHealthRepository = proxy(SourceHealthRepository.class, (method, args) -> switch (method.getName()) {
+            case "findById" -> Optional.of(previous);
+            case "save" -> args[0];
+            default -> unsupported(method.getName());
+        });
+
+        SourceHealthService service = new SourceHealthService(
+                rawEventRepository,
+                alertRepository,
+                metricWindowRepository,
+                sourceHealthRepository,
+                new SourceFreshnessPolicy(Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofHours(24)),
+                new SourceHealthCalculator(),
+                new ObjectMapper()
+        );
+
+        List<QualityAlertEntity> alerts = service.refreshAllAndPersist(now);
+
+        assertThat(previous.getStatus()).isEqualTo(SourceHealthEntity.STATUS_STALE);
+        assertThat(alerts)
+                .singleElement()
+                .satisfies(alert -> assertThat(alert.getAlertType()).isEqualTo(com.driftwatch.quality.AlertType.STALE_SOURCE));
+        assertThat(savedAlerts.get()).containsExactlyElementsOf(alerts);
+    }
+
     private static Object unsupported(String methodName) {
         throw new UnsupportedOperationException("Unexpected repository method call: " + methodName);
     }

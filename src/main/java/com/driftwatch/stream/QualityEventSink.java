@@ -91,10 +91,7 @@ public class QualityEventSink {
         if (!alerts.isEmpty()) {
             alertRepository.saveAll(alerts);
         }
-        if (!staleAlerts.isEmpty()) {
-            alertRepository.saveAll(staleAlerts);
-            alerts.addAll(staleAlerts);
-        }
+        alerts.addAll(staleAlerts);
 
         metricWindowProjector.project(p);
         eventCounter.increment();

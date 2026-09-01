@@ -109,6 +109,8 @@ public class SourceHealthService {
         String status = calculator.status(healthScore, stale);
 
         SourceHealthEntity previous = sourceHealthRepository.findById(source).orElse(null);
+        boolean wasStale = previous != null
+                && SourceHealthEntity.STATUS_STALE.equals(previous.getStatus());
         SourceHealthEntity row = previous != null ? previous : new SourceHealthEntity();
         row.setSource(source);
         row.setStatus(status);
@@ -122,8 +124,6 @@ public class SourceHealthService {
         row.setUpdatedAt(now);
         sourceHealthRepository.save(row);
 
-        boolean wasStale = previous != null
-                && SourceHealthEntity.STATUS_STALE.equals(previous.getStatus());
         if (stale && !wasStale) {
             return Optional.of(staleAlert(source, latest.getEventType(), latest.getEventTimestamp(), staleAfter, status, healthScore));
         }

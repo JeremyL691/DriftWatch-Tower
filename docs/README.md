@@ -1,9 +1,7 @@
-# DriftWatch Tower — Docs
+# DriftWatch Tower docs
 
-Supporting material for the project. The top-level [`README`](../README.md) is the main entry point; this folder collects deeper write-ups and visual assets.
+The top-level [`README`](../README.md) is the current implementation guide.
 
-## Contents
-
-- [`DriftWatch_Tower_Project_Guide.md`](DriftWatch_Tower_Project_Guide.md) — build plan and developer guide covering the pipeline, schema, and module boundaries.
-- [`sample-incident-report.md`](sample-incident-report.md) — example write-up showing how a real incident would flow through the detectors and alert evidence.
-- [`assets/`](assets/) — architecture diagram and dashboard preview used in the main README.
+- [`sample-incident-report.md`](sample-incident-report.md) is an illustrative triage note built from the schema-drift and null-spike evidence shapes.
+- [`assets/driftwatch-architecture.svg`](assets/driftwatch-architecture.svg) shows the implemented event path.
+- [`assets/dashboard-preview.svg`](assets/dashboard-preview.svg) is an illustrative UI mockup, not a captured production dashboard.
