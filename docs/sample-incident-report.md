@@ -1,35 +1,38 @@
-# Sample Incident Report
+# Illustrative Alert Triage Note
 
-## Incident
+This example shows how the schema-drift and null-spike evidence can be read together. The timestamps and counts below are sample values, not benchmark or production data.
 
-`SCHEMA_DRIFT` and `NULL_SPIKE` triggered for `demo-api` on event type `demo_null_event`.
+## Triage case
+
+`SCHEMA_DRIFT` and `NULL_SPIKE` triggered for a generated `demo-null-source-<uuid>` source on event type `demo_null_event`.
 
 ## Summary
 
-At `2026-05-25T10:05:00Z`, DriftWatch Tower detected that the `ask` field for `demo_null_event` had become null across the active metric window. The same payload pattern also registered as schema drift because the active schema baseline expected `ask` to be a numeric field.
+The scenario first publishes a numeric `ask` value as the active schema baseline, then sends five events with a null `ask`. The first null event registers schema drift. The null-spike alert fires when the third event brings the window to two null values out of three, crossing the configured `0.6` threshold.
 
 ## Evidence Snapshot
 
-- Source: `demo-api`
+- Source: `demo-null-source-<uuid>`
 - Event type: `demo_null_event`
 - Triggered alerts:
   - `NULL_SPIKE`
   - `SCHEMA_DRIFT`
 - Null spike window:
-  - `window_start`: `2026-05-25T10:05:00Z`
-  - `window_end`: `2026-05-25T10:06:00Z`
-  - `null_count`: `5`
-  - `total_count`: `6`
-  - `null_rate`: `0.8333`
+  - `null_count`: `2`
+  - `total_count`: `3`
+  - `null_rate`: about `0.6667`
+  - `threshold`: `0.6`
 - Schema drift change:
   - field: `ask`
   - expected: `NUMBER`
   - observed: `NULL`
 
-## Operational Impact
+After all six scenario events are projected, the metric-window snapshot reaches five null values out of six total events. That `5/6` state is later than the alert evidence above.
 
-- Source health score dropped due to elevated null rate.
-- Dashboard alert feed showed the incident immediately after the demo scenario ran.
+## What to inspect
+
+- The source-health row reflects the projected null rate.
+- The dashboard displays the related alerts after the demo events are processed.
 - Metric windows preserved the window-level evidence for later analysis.
 
 ## Suggested Follow-up

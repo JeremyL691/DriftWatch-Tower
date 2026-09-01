@@ -5,6 +5,7 @@ import com.driftwatch.event.RawEventProducer;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -85,7 +86,7 @@ public class DemoScenarioService {
     }
 
     public ScenarioRun runNullSpike() {
-        Instant now = Instant.now();
+        Instant now = stableDemoWindow();
         String trace = "demo-null-" + UUID.randomUUID();
         String source = "demo-null-source-" + UUID.randomUUID();
         DataEvent baseline = new DataEvent(trace + "-base", source, "demo_null_event", now,
@@ -107,7 +108,7 @@ public class DemoScenarioService {
     }
 
     public ScenarioRun runAnomalySpike() {
-        Instant now = Instant.now();
+        Instant now = stableDemoWindow();
         String trace = "demo-anomaly-" + UUID.randomUUID();
         String source = "demo-anomaly-source-" + UUID.randomUUID();
         List<String> eventIds = new java.util.ArrayList<>();
@@ -197,6 +198,10 @@ public class DemoScenarioService {
         payload.put("trace", trace);
         payload.put("seq", seq);
         return payload;
+    }
+
+    private Instant stableDemoWindow() {
+        return Instant.now().truncatedTo(ChronoUnit.MINUTES).minusSeconds(50);
     }
 
     public record ScenarioRun(String scenario, String description, List<String> eventIds) {}

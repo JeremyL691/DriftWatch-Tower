@@ -1,270 +1,171 @@
 # DriftWatch Tower
 
-> A Java/Spring Boot data-quality observability platform — Kafka ingestion, drift detection, and alert evidence for streaming events.
+> A single-node streaming data-quality service built with Java 21, Spring Boot, Kafka Streams, and PostgreSQL.
 
 [![CI](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml/badge.svg)](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml)
 [![Java 21](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot 3.3](https://img.shields.io/badge/Spring%20Boot-3.3-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
-[![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Kafka](https://img.shields.io/badge/Kafka-Spring%20Kafka-231F20?logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
-[![Testcontainers](https://img.shields.io/badge/Testcontainers-integration-2496ED?logo=testcontainers&logoColor=white)](https://testcontainers.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 <p align="center">
-  <img src="docs/assets/dashboard-preview.svg" alt="DriftWatch Tower dashboard preview — mixed-incident view" width="880">
+  <img src="docs/assets/driftwatch-architecture.svg" alt="DriftWatch Tower event flow" width="900">
 </p>
 
-*Dashboard preview: a mixed-incident scenario showing schema-drift, stale-source, and duplicate-event alerts together.*
+A REST endpoint publishes `DataEvent` records to Kafka. A Kafka Streams topology checks each event for duplicate IDs and payloads, late arrival, schema changes, field-rule violations, null-rate spikes, and traffic spikes. The sink stores raw events and alert evidence in PostgreSQL, updates source-health snapshots, exposes Prometheus counters, and pushes new records to the dashboard over WebSocket.
 
-DriftWatch Tower ingests `DataEvent` payloads through Kafka, runs them through a pipeline of data-quality detectors, stores evidence in PostgreSQL, and surfaces everything through REST APIs and a lightweight dashboard. It's a personal project built to look and behave more like internal data-platform tooling than a typical CRUD app.
+Current scope: a local, single-node demo. It is not designed for multi-instance production use.
 
-**Status:** actively developed · single-node demo build · not intended for production.
+**Tech:** Java 21, Spring Boot 3.3, Kafka Streams, PostgreSQL 16, Flyway, Testcontainers, Micrometer/Prometheus, Docker Compose
 
----
+## Quick start
 
-## Quick Demo
-
-Bring up the full stack and trigger a mixed-incident scenario in under a minute:
+Requirements: Docker with Compose.
 
 ```bash
 docker compose --profile app up -d --build
-curl --retry 30 --retry-connrefused --retry-delay 2 -fsS http://localhost:8080/actuator/health
-curl -X POST http://localhost:8080/api/v1/demo/run-scenario/mixed-incident
-open http://localhost:8080/dashboard
+curl --retry 30 --retry-connrefused --retry-delay 2 -fsS \
+  http://localhost:8080/actuator/health
+curl -X POST \
+  http://localhost:8080/api/v1/demo/run-scenario/mixed-incident
 ```
 
-The dashboard shows recent events, fired alerts, schema versions, metric windows, and source health snapshots side-by-side.
+Open [http://localhost:8080/dashboard](http://localhost:8080/dashboard) to inspect the generated events, alerts, schema versions, and source-health rows.
 
-## Verification
-
-```bash
-./mvnw test
-```
-
-The suite covers unit tests for detectors, hashing, and window math, plus Testcontainers-backed integration tests for the Kafka → PostgreSQL path (Docker required for the container-backed cases).
-
----
-
-## Why I Built This
-
-I wanted one project in my portfolio that felt closer to internal data-platform infrastructure than another CRUD app — something with streaming ingestion, quality checks, and operational evidence that you'd actually demo to an on-call engineer.
-
-The goal was to complement my Python data-engineering background with a stronger backend-engineering surface: Kafka, Spring Boot, JPA, and Testcontainers.
-
-## What It Does
-
-At a high level, the app accepts `DataEvent` payloads on a REST endpoint, publishes them to Kafka, and runs them through a **Kafka Streams quality topology** (with windowed state stores) that detects issues in real time and persists events, alerts, and health snapshots in PostgreSQL — exposed through REST APIs plus a Thymeleaf-free static dashboard.
-
-### Detectors
-
-| Detector | What it catches | Try it with |
-|---|---|---|
-| `DuplicateProcessor` | repeated `event_id` values or repeated payload hashes (windowed state store) | `POST /api/v1/demo/run-scenario/duplicate-events` |
-| `LateEventDetector` | events that arrive too far after their original timestamp | `POST /api/v1/demo/run-scenario/late-events` · [`samples/events/late_event.json`](samples/events/late_event.json) |
-| `SchemaDriftDetector` | payload shape that diverges from the active schema baseline | `POST /api/v1/demo/run-scenario/schema-drift` · [`samples/events/schema_drift_changed.json`](samples/events/schema_drift_changed.json) |
-| `NullSpikeProcessor` | sudden jumps in null or missing field rates within a window | `POST /api/v1/demo/run-scenario/null-spike` |
-| `AnomalySpikeProcessor` | abnormal event-count bursts vs. recent completed windows | `POST /api/v1/demo/run-scenario/anomaly-spike` |
-| Source health / `STALE_SOURCE` | sources that go quiet or become unhealthy | `POST /api/v1/demo/run-scenario/stale-source` |
-| `FieldRangeDetector` | numeric fields outside a configured `[min, max]` interval | `POST /api/v1/demo/run-scenario/field-range` |
-| `FieldFormatDetector` | string fields that don't match a configured regex | `POST /api/v1/demo/run-scenario/field-format` |
-
-## Architecture
-
-<p align="center">
-  <img src="docs/assets/driftwatch-architecture.svg" alt="DriftWatch Tower architecture" width="900">
-</p>
-
-<details>
-<summary>Mermaid source</summary>
-
-```mermaid
-flowchart LR
-    A["REST API / demo scenarios"] --> B["Kafka topic: raw-events"]
-    B --> C["Kafka Streams quality topology<br/>(windowed state stores)"]
-    C --> D["Kafka topic: quality-events"]
-    D --> E["Sink: persist + source health + metric projection"]
-    E --> F["PostgreSQL"]
-    F --> G["raw_events / quality_alerts"]
-    F --> H["schema_versions / metric_windows"]
-    F --> I["source_health"]
-    F --> J["REST API + dashboard"]
-```
-
-</details>
-
-## Project Highlights
-
-- End-to-end event flow from API → Kafka → Kafka Streams topology → PostgreSQL
-- Schema version tracking with drift evidence stored alongside alerts
-- Windowed metrics for null spikes and anomaly spikes
-- Source health snapshots with stale-source detection
-- Alert lifecycle management (open → acknowledge → resolve)
-- Incident correlation for grouping related alerts
-- WebSocket live updates on the dashboard
-- Prometheus metrics at `/actuator/prometheus`
-- Structured JSON logging with correlation IDs
-- Browser dashboard for demos and quick inspection
-- Testcontainers-based integration tests for Kafka + Postgres
-
-## Dashboard
-
-The dashboard is meant to make the project understandable in 30 seconds for someone skimming the repo. It pulls from `/api/v1/dashboard/api/summary` and renders panels for:
-
-- recent events and their quality status
-- fired alerts with detector type and evidence
-- registered schema versions and the active baseline
-- metric windows powering the spike detectors
-- per-source health and freshness
-
-Direct REST views are also available at `/api/v1/alerts`, `/api/v1/sources/health`, `/api/v1/schemas`, and `/api/v1/metrics/windows`.
-
-## Demo Scenarios
-
-Deterministic scenarios make the system easy to demo without crafting events by hand:
-
-| Scenario | Triggers |
-|---|---|
-| `normal-flow` | clean baseline traffic |
-| `schema-drift` | `SchemaDriftDetector` |
-| `duplicate-events` | `DuplicateDetector` |
-| `late-events` | `LateEventDetector` |
-| `null-spike` | `NullSpikeDetector` |
-| `anomaly-spike` | `AnomalySpikeDetector` |
-| `stale-source` | source-health stale alert |
-| `field-range` | `FieldRangeDetector` |
-| `field-format` | `FieldFormatDetector` |
-| `mixed-incident` | several detectors at once (recommended demo) |
-
-```bash
-curl -X POST http://localhost:8080/api/v1/demo/run-scenario/schema-drift
-```
-
-## Running It Locally
-
-### Option 1 — Docker Compose (recommended)
-
-Run the whole stack (Postgres + Kafka + app):
-
-```bash
-docker compose --profile app up -d --build
-```
-
-Or start only the infra and run the app from your IDE / Maven:
+To run only PostgreSQL and Kafka, then start the app from Maven:
 
 ```bash
 docker compose up -d
 ./mvnw spring-boot:run
 ```
 
-### Option 2 — Run services locally
+## What happens to one event
 
-Requirements: Java 21+, PostgreSQL 16, Kafka.
+1. `POST /api/v1/events` validates the event contract and publishes it to `raw-events` with a `source|eventType` key.
+2. The topology adds a canonical SHA-256 payload hash. Duplicate windows use `receivedAt`; null-rate and event-count windows use the event timestamp.
+3. Stateless field checks and DB-backed schema comparison run alongside persistent Kafka Streams stores for duplicate, null-rate, and event-count checks.
+4. The topology emits a `ProcessedEvent` to `quality-events`.
+5. `QualityEventSink` writes the raw event and structured alert evidence to PostgreSQL, projects metric windows, refreshes source health, increments Micrometer counters, and broadcasts dashboard updates.
+
+The Flyway migrations create tables for raw events, alerts, schema versions, metric windows, and source health, then add lifecycle columns to `quality_alerts`. Raw payloads and detector evidence use PostgreSQL `JSONB` columns.
+
+## Implemented checks
+
+| Check | State and evidence | Demo scenario |
+|---|---|---|
+| Duplicate event | Persistent processing-time window stores track repeated `event_id` values and payload hashes using `receivedAt`. | `duplicate-events` |
+| Late event | Compares `receivedAt` with the event timestamp and records lateness plus the configured threshold. | `late-events` |
+| Schema drift | Compares the inferred payload shape with the active version and stores missing, added, and type-changed fields. | `schema-drift` |
+| Null spike | Tracks missing/null fields per source, event type, and field inside an event-time window. | `null-spike` |
+| Anomaly spike | Compares the current event-count window with completed baseline windows. | `anomaly-spike` |
+| Field range | Applies configured numeric minimum and maximum bounds. | `field-range` |
+| Field format | Applies configured regular expressions to string fields. | `field-format` |
+| Stale source | Recomputes source freshness and emits an alert when a known source changes into the stale state. | `stale-source` |
+
+Run any scenario with:
 
 ```bash
-./mvnw spring-boot:run
-curl http://localhost:8080/actuator/health
-open http://localhost:8080/dashboard
+curl -X POST \
+  http://localhost:8080/api/v1/demo/run-scenario/schema-drift
 ```
 
-## Sample Event
+Sample request payloads are under [`samples/events/`](samples/events/).
+
+## Alert evidence
+
+Detectors return structured evidence instead of only a message string. This representative duplicate-payload shape mirrors the fields written by `DuplicateProcessor`:
 
 ```json
 {
-  "event_id": "evt-001",
-  "source": "binance",
-  "event_type": "market_tick",
-  "event_timestamp": "2026-05-25T08:30:00Z",
-  "payload": {
-    "symbol": "BTC/USDT",
-    "bid": 108000.1,
-    "ask": 108002.4
+  "alert_type": "DUPLICATE_EVENT",
+  "severity": "INFO",
+  "evidence": {
+    "duplicate_kind": "REPEATED_PAYLOAD",
+    "payload_hash": "<sha256>",
+    "window": "PT5M",
+    "current_event_id": "evt-002",
+    "first_event_id": "evt-001"
   }
 }
 ```
 
-More samples live under [`samples/events/`](samples/events/) — see [`samples/events/README.md`](samples/events/README.md) for what each one triggers.
+Schema-drift evidence also includes the active and observed schema hashes, both schema documents, and explicit missing/added/type-changed fields. See the [`SchemaDriftDetector`](src/main/java/com/driftwatch/quality/SchemaDriftDetector.java) and the [illustrative triage note](docs/sample-incident-report.md).
 
-## Useful Endpoints
+## Dashboard and APIs
 
-```bash
-# Ingest one event
-curl -X POST http://localhost:8080/api/v1/events \
-  -H 'Content-Type: application/json' \
-  -d @samples/events/market_tick.json
+The application exposes these endpoints for direct inspection. The dashboard consumes the event, alert, schema, health, and summary views.
 
-# Inspect state
-curl 'http://localhost:8080/api/v1/events/recent?size=10'
-curl 'http://localhost:8080/api/v1/alerts?size=10'
-curl 'http://localhost:8080/api/v1/schemas'
-curl 'http://localhost:8080/api/v1/metrics/windows?eventType=demo_null_event'
-curl 'http://localhost:8080/api/v1/sources/health'
-
-# Alert lifecycle
-curl -X POST http://localhost:8080/api/v1/alerts/1/acknowledge \
-  -H 'Content-Type: application/json' -d '{"acknowledgedBy": "jeremy"}'
-curl -X POST http://localhost:8080/api/v1/alerts/1/resolve \
-  -H 'Content-Type: application/json' -d '{"rootCause": "schema change upstream"}'
-
-# Incidents
-curl 'http://localhost:8080/api/v1/incidents'
-curl 'http://localhost:8080/api/v1/incidents/stats'
-
-# Monitoring
-curl 'http://localhost:8080/actuator/prometheus'
+```text
+GET  /api/v1/events/recent
+GET  /api/v1/alerts
+GET  /api/v1/schemas
+GET  /api/v1/metrics/windows
+GET  /api/v1/sources/health
+GET  /actuator/prometheus
 ```
 
-## Testing
+Alerts can be acknowledged and resolved through:
+
+```text
+POST /api/v1/alerts/{id}/acknowledge
+POST /api/v1/alerts/{id}/resolve
+```
+
+<p align="center">
+  <img src="docs/assets/dashboard-preview.svg" alt="Illustrative DriftWatch Tower dashboard mockup" width="880">
+</p>
+
+*Illustrative UI mockup. Labels and values show sample demo records, not measured production traffic.*
+
+## Tests
 
 ```bash
 ./mvnw test
 ```
 
-The suite includes:
+The suite includes detector and topology tests plus Testcontainers-backed checks for the Kafka-to-PostgreSQL path. When Docker is not available, JUnit skips the container-backed cases; GitHub Actions runs the full suite on pushes to `main` and on pull requests.
 
-- unit tests for detectors, hashing, and window math
-- Testcontainers-backed integration tests for the Kafka → Postgres path
+Useful test entry points:
 
-On machines without Docker, the container-backed integration tests are skipped while the rest of the suite still runs.
+- [`QualityStreamsTopologyTest`](src/test/java/com/driftwatch/stream/QualityStreamsTopologyTest.java) exercises state stores without a broker.
+- [`KafkaIngestionIntegrationTest`](src/test/java/com/driftwatch/event/KafkaIngestionIntegrationTest.java) verifies REST -> Kafka -> PostgreSQL.
+- [`SchemaDriftScenarioIntegrationTest`](src/test/java/com/driftwatch/demo/SchemaDriftScenarioIntegrationTest.java) verifies stored drift evidence.
+- [`SourceHealthServiceTest`](src/test/java/com/driftwatch/source/SourceHealthServiceTest.java) covers freshness and the healthy-to-stale transition.
 
-## Tech Stack
+## Design notes and current limits
 
-**Runtime:** Java 21 · Spring Boot 3.3 · Spring Web · Spring Kafka · Spring Data JPA · WebSocket
-**Data:** PostgreSQL 16 · Flyway · Apache Kafka
-**Observability:** Prometheus · Micrometer · Structured JSON Logging
-**Testing & Ops:** JUnit 5 · Testcontainers · Docker Compose
+- Duplicate event-ID and payload-hash stores are queried without repartitioning. Detection is therefore partition-local, even in one process when `raw-events` has multiple partitions; repeated values that arrive under different `source|eventType` keys can be missed. Null-spike and anomaly-spike scopes remain aligned with the input key.
+- Kafka consumer offsets and PostgreSQL writes are not committed atomically. The topology uses Kafka Streams' default at-least-once guarantee, so a replay can duplicate raw rows, alerts, or metric increments; `event_id` is indexed but not unique.
+- The repository does not define authentication, an application-specific retry/backoff policy, or a dead-letter topic for failed sink writes.
+- Late and out-of-order events are flagged but still update null-rate and event-count state. There is no grace period, future-timestamp guard, or quarantine path, and the null-rate processor keeps only one active window per field.
+- Schema baselines are stored as versioned rows. The first observed shape becomes active; later shapes are recorded as drifting until the baseline is changed outside the current demo workflow.
+- Schema observation reads and writes PostgreSQL from the topology thread, outside the Kafka Streams transaction. The demo does not handle competing first observations across partitions.
+- Source health scans all known sources after each consumed event and again on health reads. If all traffic stops and nobody reads the health API, no scheduled task creates a stale alert.
+- The ingestion endpoint returns after starting the asynchronous Kafka send; it does not wait for broker acknowledgement. Observability is limited to success counters and does not include consumer lag or sink-failure metrics.
+- Incident tables and read APIs are scaffolded, but automatic alert grouping is not connected to the sink.
+- The dashboard is a local inspection tool, not a hosted monitoring service.
 
-## Repository Layout
+I built this to practice event-time state, evidence persistence, and Kafka/PostgreSQL integration testing in Java after mostly working on Python batch pipelines.
+
+## Repository map
 
 ```text
 src/main/java/com/driftwatch/
-  api/          REST controllers (events, alerts, incidents, schemas, metrics)
-  config/       WebSocket, correlation ID, Kafka topics
-  dashboard/    dashboard page + summary endpoints + WebSocket handler
-  demo/         repeatable demo scenarios
-  event/        event contract, producer, hashing
-  persistence/  JPA entities + repositories
-  quality/      detector beans reused by the topology (schema registry, field checks)
-  source/       source health scoring, freshness logic, incident correlation
-  stream/       Kafka Streams topology, sink consumer, serdes, metric projection
+  api/          ingestion and read APIs
+  dashboard/    dashboard page, summary endpoint, WebSocket publishing
+  event/        event contract, Kafka producer, payload hashing
+  persistence/  JPA entities and repositories
+  quality/      schema and configured field checks
+  source/       source-health scoring and freshness policy
+  stream/       Kafka Streams topology, stateful processors, sink
+
+src/main/resources/
+  db/migration/ Flyway migrations
+  static/       dashboard HTML, CSS, and JavaScript
+
+src/test/java/  unit, topology, and Testcontainers integration tests
+samples/events/ request payloads for manual checks
+docs/           architecture, UI mockup, and sample triage note
 ```
-
-## Design Trade-offs and Next Steps
-
-A few decisions worth flagging for anyone reading the code:
-
-- **Alerts in a dedicated table, not a flag on `raw_events`.** Keeps raw ingestion append-only and lets a single event carry multiple, independent pieces of quality evidence over its lifetime.
-- **Detection is a Kafka Streams topology with windowed state stores**, not a synchronous consumer loop. The duplicate, null-spike, and anomaly-spike windows live in Streams state stores; schema drift and source health stay DB-backed. State stores are single-node in-memory-persistent — a multi-node deployment would need repartitioning and is the natural scale-up path.
-- **Schema baselines stored as versioned rows.** Drift detection compares against the active version rather than the latest, so a known-bad payload can be quarantined without rewriting history.
-- **Testcontainers shared across the test session** rather than per-test, so the full integration suite stays under a reasonable wall-clock without sacrificing isolation between detectors.
-- **Source health is recomputed on each consumed event for that source**, not on a periodic sweep — keeps the staleness signal honest without a separate scheduler.
-- **Production scale-up:** repartition the Kafka Streams key before running stateful processors across multiple nodes.
-- **Operational freshness:** move dashboard-triggered source-health refresh to a scheduled or event-driven job.
-- **Delivery confidence:** the CI workflow runs `./mvnw test` on every push — see the build badge at the top of this file.
-
-## Further Reading
-
-- [`docs/sample-incident-report.md`](docs/sample-incident-report.md) — sample incident write-up showing how alerts and evidence connect
-- [`docs/DriftWatch_Tower_Project_Guide.md`](docs/DriftWatch_Tower_Project_Guide.md) — full build plan / development guide
 
 ## License
 

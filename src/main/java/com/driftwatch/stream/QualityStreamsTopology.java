@@ -42,9 +42,10 @@ import java.util.List;
  * Builds the Kafka Streams quality topology: {@code raw-events} → ENRICH → (detector processors)
  * → FINALIZE → {@code quality-events}. The {@link QualityEventSink} persists the output.
  *
- * <p>State-store keys (duplicate window, null/anomaly windows) are NOT partition-aligned with the
- * {@code source|eventType} partitioning of {@code raw-events}. Fine for the single-node demo; a
- * multi-node deployment would need {@code selectKey().repartition()} first.
+ * <p>The null/anomaly store scopes include the {@code source|eventType} input key and stay
+ * partition-aligned. Duplicate stores are queried by event ID and payload hash without
+ * repartitioning, so duplicate detection is partition-local even when all tasks run in one
+ * process. A global duplicate check would need a repartitioned branch for each lookup key.
  */
 @Component
 public class QualityStreamsTopology {
@@ -152,7 +153,7 @@ public class QualityStreamsTopology {
         public void process(Record<String, DataEvent> record) {
             DataEvent event = record.value();
             PendingEvent pending = new PendingEvent(event, hasher.hash(event.payload()), Instant.now());
-            // Windowed detectors are event-time based; rewrite stream time to event_timestamp.
+            // Null/anomaly windows are event-time based; rewrite stream time to event_timestamp.
             context.forward(record.withValue(pending).withTimestamp(event.eventTimestamp().toEpochMilli()));
         }
 
@@ -198,7 +199,7 @@ public class QualityStreamsTopology {
     /**
      * Flags repeated event_id and repeated payload hashes within the configured window, using
      * time-windowed state stores instead of the raw_events table. Retention is the dedupe window
-     * (was "forever" in the DB version) — see plan Flaw #4 note.
+     * rather than an unbounded database lookup.
      */
     static class DuplicateProcessor implements Processor<String, PendingEvent, String, PendingEvent> {
         private final ObjectMapper objectMapper;
