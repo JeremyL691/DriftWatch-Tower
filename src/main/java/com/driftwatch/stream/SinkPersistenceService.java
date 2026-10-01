@@ -12,7 +12,6 @@ import com.driftwatch.quality.RuleVersions;
 import com.driftwatch.quality.Severity;
 import com.driftwatch.quality.schema.SchemaObservationService;
 import com.driftwatch.source.AlertIncidentService;
-import com.driftwatch.source.SourceHealthService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -37,7 +36,6 @@ public class SinkPersistenceService {
     private final RawEventRepository rawEventRepository;
     private final ProcessedReceiptRepository processedReceiptRepository;
     private final QualityAlertRepository alertRepository;
-    private final SourceHealthService sourceHealthService;
     private final SchemaObservationService schemaObservationService;
     private final AlertIncidentService alertIncidentService;
     private final MetricWindowProjector metricWindowProjector;
@@ -46,7 +44,6 @@ public class SinkPersistenceService {
     public SinkPersistenceService(RawEventRepository rawEventRepository,
                                   ProcessedReceiptRepository processedReceiptRepository,
                                   QualityAlertRepository alertRepository,
-                                  SourceHealthService sourceHealthService,
                                   SchemaObservationService schemaObservationService,
                                   AlertIncidentService alertIncidentService,
                                   MetricWindowProjector metricWindowProjector,
@@ -54,7 +51,6 @@ public class SinkPersistenceService {
         this.rawEventRepository = rawEventRepository;
         this.processedReceiptRepository = processedReceiptRepository;
         this.alertRepository = alertRepository;
-        this.sourceHealthService = sourceHealthService;
         this.schemaObservationService = schemaObservationService;
         this.alertIncidentService = alertIncidentService;
         this.metricWindowProjector = metricWindowProjector;
@@ -115,10 +111,12 @@ public class SinkPersistenceService {
         if (!alerts.isEmpty()) {
             alertRepository.saveAll(alerts);
         }
-        // Scoped health refresh for the affected source only (never a full scan per event).
-        List<QualityAlertEntity> staleAlerts = sourceHealthService.refreshSourceAndPersist(event.source(), now);
+        // Source health is owned by the scheduled refresh (guide 7.2), not by this path: it is an
+        // aggregate over rolling windows, so recomputing it per event made the pipeline O(rows)
+        // per event and was the measured throughput ceiling under load. The scheduler keeps the
+        // dashboard's freshness within its 30s tick, and collector poll state carries the
+        // realtime signal.
         List<QualityAlertEntity> persisted = new ArrayList<>(alerts);
-        persisted.addAll(staleAlerts);
         // Non-INFO alerts join an incident for their scope; INFO alerts stay in the alert list so
         // repeated notices cannot flood the incident view (guide 7.2).
         for (QualityAlertEntity alert : persisted) {

@@ -29,6 +29,8 @@ done
 [ -n "$OUT_DIR" ] || die "package-check.sh requires --out DIR"
 [ -n "$ARTIFACTS" ] || die "package-check.sh requires --artifacts DIR (output of package-release.sh)"
 mkdir -p "$OUT_DIR"
+# Absolute, because checksum verification runs inside a subshell that changes directory.
+OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 require_docker
 require_python
 started="$(utc_now)"

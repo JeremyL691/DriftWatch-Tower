@@ -43,6 +43,9 @@ spring:
         commit.interval.ms: 1000
     listener:
       missing-topics-fatal: false
+      # One consumer thread per partition of the durable topics. Per-scope ordering is preserved
+      # (a scope key routes to exactly one partition); independent scopes persist in parallel.
+      concurrency: 3
 
 server:
   port: 8080

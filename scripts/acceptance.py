@@ -6,6 +6,7 @@ Commands
 soak-start   --run-id ID --duration SECONDS --project NAME --env-file FILE --out DIR
 soak-status  --run-id ID
 soak-resume  --run-id ID
+soak-report  --run-id ID [--out DIR]   evaluate the section 11.1 conditions (gate G16)
 runner       (internal) the detached process started by soak-start
 
 The runner samples the stack every 30 seconds, checkpoints every 5 minutes with an atomic
@@ -138,10 +139,11 @@ def load_env(env_file: str) -> dict:
     return values
 
 
-def compose(project: str, env_file: str, *args: str, timeout: int = 120) -> subprocess.CompletedProcess:
+def compose(project: str, env_file: str, *args: str, timeout: int = 120,
+            input_text: str | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["docker", "compose", "-p", project, "--env-file", env_file, *args],
-        capture_output=True, text=True, timeout=timeout)
+        capture_output=True, text=True, timeout=timeout, input=input_text)
 
 
 def sample_once(project: str, env_file: str, app_port: str, admin: tuple[str, str] | None) -> dict:
@@ -396,6 +398,205 @@ def cmd_soak_status(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_soak_report(args: argparse.Namespace) -> int:
+    """Evaluates the section 11.1 conditions of a finished run (gate G16)."""
+    if not args.run_id:
+        print("soak-report requires --run-id", file=sys.stderr)
+        return 2
+    directory = run_dir(args.run_id)
+    state = read_json(os.path.join(directory, "state.json"))
+    if state is None:
+        print(f"no soak run {args.run_id}", file=sys.stderr)
+        return 2
+    result = read_json(os.path.join(directory, "result.json"), {})
+    continuity = continuity_report(directory)
+    samples = read_samples(directory)
+    faults = [json.loads(line) for line in
+              (open(os.path.join(directory, "faults.jsonl")).read().splitlines()
+               if os.path.exists(os.path.join(directory, "faults.jsonl")) else []) if line.strip()]
+    project, env_file = state.get("project", ""), state.get("env_file", "")
+    problems: list[str] = []
+
+    # 1. duration and monitor continuity
+    measured = float(result.get("measured_seconds") or 0)
+    planned = float(state.get("duration_seconds") or 0)
+    if measured < planned or planned < 86400:
+        problems.append(f"measured {measured}s of a planned {planned}s window (need >= 86400s)")
+    if not continuity.get("continuity_valid"):
+        problems.append(f"monitor gap {continuity.get('max_gap_seconds')}s exceeds "
+                        f"{MAX_MONITOR_GAP_SECONDS}s")
+    if continuity.get("samples", 0) * SAMPLE_INTERVAL_SECONDS < planned * 0.95:
+        problems.append(f"only {continuity.get('samples')} samples for a {planned}s window")
+
+    # 2. real source: enough distinct persisted events, at least one discovered after bootstrap
+    source = psql_json(project, env_file, """
+        select json_build_object(
+          'github_distinct_events', (select count(distinct event_id) from raw_events
+                                     where origin = 'GITHUB'),
+          'github_live_events', (select count(distinct event_id) from raw_events
+                                 where origin = 'GITHUB' and mode = 'LIVE'),
+          'github_bootstrap_events', (select count(distinct event_id) from raw_events
+                                      where origin = 'GITHUB' and mode = 'BOOTSTRAP'),
+          'github_gaps', (select count(*) from source_gaps),
+          'github_polls', (select count(*) from source_poll_runs)
+        )""") or {}
+    if source.get("github_distinct_events", 0) < 20:
+        problems.append(f"only {source.get('github_distinct_events')} distinct real events persisted")
+    if source.get("github_live_events", 0) < 1:
+        problems.append("no event was discovered after the bootstrap round")
+
+    # 3. controlled faults
+    planned_faults = state.get("planned_faults") or []
+    if len(faults) < len(planned_faults):
+        problems.append(f"{len(faults)} of {len(planned_faults)} planned faults executed")
+    for fault in faults:
+        if fault.get("status") != "completed":
+            problems.append(f"fault {fault.get('action')} ended {fault.get('status')}")
+        if (fault.get("outage_seconds") or 0) > 60:
+            problems.append(f"fault {fault.get('action')} outage {fault.get('outage_seconds')}s > 60s")
+        if fault.get("readiness_recovery_seconds") is None \
+                or fault["readiness_recovery_seconds"] > 300:
+            problems.append(f"fault {fault.get('action')} readiness recovery "
+                            f"{fault.get('readiness_recovery_seconds')}s > 300s")
+
+    # 4. ledger: nothing accepted may be missing, and no business dead letter may stay open
+    ledger = psql_json(project, env_file, """
+        select json_build_object(
+          'accepted', (select count(*) from ingestion_receipts where publish_state='CONFIRMED'),
+          'unconfirmed', (select count(*) from ingestion_receipts where publish_state<>'CONFIRMED'),
+          'processed', (select count(*) from processed_receipts),
+          'raw', (select count(*) from raw_events),
+          'dlt_open', (select count(*) from dead_letter_records where recovery_state='OPEN'),
+          'dlt_total', (select count(*) from dead_letter_records),
+          'pending_outbox', (select count(*) from source_outbox where status='PENDING'),
+          'accepted_without_processed', (
+             select count(*) from ingestion_receipts r where r.publish_state='CONFIRMED'
+               and not exists (select 1 from processed_receipts p where p.ingestion_id = r.ingestion_id)),
+          'processed_without_raw', (
+             select count(*) from processed_receipts p
+               where not exists (select 1 from raw_events e where e.ingestion_id = p.ingestion_id)),
+          'alerts', (select count(*) from quality_alerts),
+          'open_alerts', (select count(*) from quality_alerts where resolved_at is null)
+        )""") or {}
+    if ledger.get("accepted_without_processed"):
+        problems.append(f"{ledger['accepted_without_processed']} accepted ingestions never processed")
+    if ledger.get("processed_without_raw"):
+        problems.append(f"{ledger['processed_without_raw']} processed ingestions without a raw row")
+    if ledger.get("unconfirmed"):
+        problems.append(f"{ledger['unconfirmed']} ingestion receipts never confirmed")
+    if ledger.get("dlt_open"):
+        problems.append(f"{ledger['dlt_open']} dead letters still open")
+    if ledger.get("pending_outbox"):
+        problems.append(f"{ledger['pending_outbox']} source outbox rows still pending")
+
+    # 5. drain: every consumer group must be at zero lag
+    lag, lag_detail = consumer_lag_total(project, env_file)
+    if lag != 0:
+        problems.append(f"consumer lag {lag} is not zero")
+
+    # 6. last hour healthy, ignoring the planned fault windows
+    fault_windows = [(parse_epoch(fault["utc"]),
+                      parse_epoch(fault["utc"]) + (fault.get("outage_seconds") or 0) + 300)
+                     for fault in faults]
+    last_hour = [sample for sample in samples
+                 if sample["monotonic"] >= samples[-1]["monotonic"] - 3600] if samples else []
+    unhealthy = []
+    for sample in last_hour:
+        epoch = parse_epoch(sample["utc"])
+        if any(start <= epoch <= end for start, end in fault_windows):
+            continue
+        if sample.get("readiness") != 200:
+            unhealthy.append(sample["utc"])
+    if unhealthy:
+        problems.append(f"readiness was not 200 in {len(unhealthy)} sample(s) of the last hour "
+                        f"(first: {unhealthy[0]})")
+
+    # 7. resource curve: first two hours versus the last hour
+    def memory_mib(sample: dict) -> float | None:
+        for line in sample.get("container_stats") or []:
+            if "-app-1" not in line:
+                continue
+            parts = line.split()
+            for index, token in enumerate(parts):
+                if token.endswith("MiB") and index + 1 < len(parts) and parts[index + 1] == "/":
+                    return float(token[:-3])
+                if token.endswith("GiB") and index + 1 < len(parts) and parts[index + 1] == "/":
+                    return float(token[:-3]) * 1024
+        return None
+
+    memory = [(sample["monotonic"], memory_mib(sample)) for sample in samples]
+    memory = [(when, value) for when, value in memory if value is not None]
+    resource = {"samples": len(memory)}
+    if memory:
+        base_monotonic = memory[0][0]
+        early = [value for when, value in memory if when - base_monotonic <= 7200]
+        late = [value for when, value in memory if when >= memory[-1][0] - 3600]
+        early_mean = sum(early) / len(early) if early else None
+        late_mean = sum(late) / len(late) if late else None
+        resource.update({"first_two_hours_mean_mib": early_mean, "last_hour_mean_mib": late_mean})
+        if early_mean and late_mean:
+            growth = late_mean - early_mean
+            allowed = max(early_mean * 0.20, 128.0)
+            resource.update({"growth_mib": round(growth, 1), "allowed_mib": round(allowed, 1)})
+            if growth > allowed:
+                problems.append(f"app memory grew {growth:.1f}MiB (allowed {allowed:.1f}MiB)")
+
+    report = {
+        "run_id": args.run_id,
+        "status": state.get("status"),
+        "planned_duration_seconds": planned,
+        "measured_seconds": measured,
+        "continuity": continuity,
+        "source": source,
+        "faults": faults,
+        "ledger": ledger,
+        "lag": {"total": lag, "detail": lag_detail},
+        "resource": resource,
+        "problems": problems,
+    }
+    out_dir = args.out or directory
+    os.makedirs(out_dir, exist_ok=True)
+    atomic_write_json(os.path.join(out_dir, "soak-report.json"), report)
+    print(json.dumps(report, indent=2))
+    return 1 if problems else 0
+
+
+def consumer_lag_total(project: str, env_file: str) -> tuple[int, list[str]]:
+    """Lag across every consumer group the stack owns; -1 when it cannot be read."""
+    total = 0
+    detail: list[str] = []
+    for group in ("driftwatch-streams-v1", "driftwatch-sink", "driftwatch-dlt-projection"):
+        completed = compose(project, env_file, "exec", "-T", "kafka",
+                            "/opt/kafka/bin/kafka-consumer-groups.sh",
+                            "--bootstrap-server", "localhost:29092", "--describe", "--group", group)
+        if completed.returncode != 0:
+            detail.append(f"{group}: {completed.stderr.strip()[:200]}")
+            return -1, detail
+        for line in completed.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 6 and parts[0] != "GROUP":
+                try:
+                    total += int(parts[5])
+                except ValueError:
+                    continue
+                detail.append(line.strip())
+    return total, detail
+
+
+def psql_json(project: str, env_file: str, sql: str) -> dict | None:
+    if not project or not env_file:
+        return None
+    completed = compose(project, env_file, "exec", "-T", "postgres", "sh", "-c",
+                        'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA', input_text=sql)
+    if completed.returncode != 0:
+        print(f"psql failed: {completed.stderr.strip()[:300]}", file=sys.stderr)
+        return None
+    try:
+        return json.loads(completed.stdout.strip())
+    except Exception:
+        return None
+
+
 def cmd_soak_resume(args: argparse.Namespace) -> int:
     if not args.run_id:
         print("soak-resume requires --run-id", file=sys.stderr)
@@ -444,7 +645,8 @@ def main() -> int:
         target.add_argument("--out", default="")
 
     for name, handler in (("soak-start", cmd_soak_start), ("soak-status", cmd_soak_status),
-                          ("soak-resume", cmd_soak_resume), ("runner", runner)):
+                          ("soak-resume", cmd_soak_resume), ("soak-report", cmd_soak_report),
+                          ("runner", runner)):
         target = sub.add_parser(name)
         add_common(target)
         target.add_argument("--duration", type=int, default=None)

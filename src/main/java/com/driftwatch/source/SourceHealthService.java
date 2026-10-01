@@ -66,18 +66,6 @@ public class SourceHealthService {
         return alerts;
     }
 
-    /**
-     * Scoped refresh for one affected source, used by the sink so ingesting an event never scans
-     * every registered source (guide 7.2).
-     */
-    @Transactional
-    public List<QualityAlertEntity> refreshSourceAndPersist(String source, Instant now) {
-        return refreshSource(source, now)
-                .map(draft -> alertRepository.save(toEntity(draft, now)))
-                .map(List::of)
-                .orElseGet(List::of);
-    }
-
     /** Pure read: a GET must never change state or add alerts (guide 7.2). */
     @Transactional(readOnly = true)
     public List<SourceHealthEntity> list() {
