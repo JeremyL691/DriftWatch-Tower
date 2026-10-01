@@ -1,0 +1,7 @@
+# Load-test profile: the live GitHub collector stays disabled so synthetic load is never
+# mixed into real-source acceptance evidence.
+
+driftwatch:
+  source:
+    github:
+      enabled: false

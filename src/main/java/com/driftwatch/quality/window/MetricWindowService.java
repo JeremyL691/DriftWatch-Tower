@@ -1,8 +1,9 @@
 package com.driftwatch.quality.window;
 
+import com.driftwatch.config.DriftwatchProperties;
 import com.driftwatch.persistence.MetricWindowEntity;
 import com.driftwatch.persistence.MetricWindowRepository;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,8 +18,12 @@ public class MetricWindowService implements MetricWindowRecorder {
     private final MetricWindowRepository repository;
     private final Duration windowSize;
 
-    public MetricWindowService(MetricWindowRepository repository,
-                               @Value("${driftwatch.metrics.window-size:PT1M}") Duration windowSize) {
+    @Autowired
+    public MetricWindowService(MetricWindowRepository repository, DriftwatchProperties properties) {
+        this(repository, properties.metrics().windowSize());
+    }
+
+    public MetricWindowService(MetricWindowRepository repository, Duration windowSize) {
         this.repository = repository;
         this.windowSize = windowSize;
     }

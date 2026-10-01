@@ -12,18 +12,18 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class DemoScenarioIntegrationTest extends ContainerIntegrationTest {
 
-    @Autowired MockMvc mockMvc;
 
     @Test
     void duplicateEventsScenarioCreatesDuplicateAlerts() throws Exception {
         long before = qualityAlertRepository.count();
 
-        mockMvc.perform(post("/api/v1/demo/run-scenario/duplicate-events"))
+        mockMvc.perform(post("/api/v1/demo/run-scenario/duplicate-events").with(asAdmin()).with(csrf()))
                 .andExpect(status().isAccepted());
 
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
@@ -38,7 +38,7 @@ class DemoScenarioIntegrationTest extends ContainerIntegrationTest {
     void lateEventsScenarioCreatesLateAlert() throws Exception {
         long before = qualityAlertRepository.count();
 
-        mockMvc.perform(post("/api/v1/demo/run-scenario/late-events"))
+        mockMvc.perform(post("/api/v1/demo/run-scenario/late-events").with(asAdmin()).with(csrf()))
                 .andExpect(status().isAccepted());
 
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
@@ -53,7 +53,7 @@ class DemoScenarioIntegrationTest extends ContainerIntegrationTest {
     void normalFlowScenarioStaysAlertFreeForItsFreshSchema() throws Exception {
         long alertsBefore = qualityAlertRepository.count();
 
-        mockMvc.perform(post("/api/v1/demo/run-scenario/normal-flow"))
+        mockMvc.perform(post("/api/v1/demo/run-scenario/normal-flow").with(asAdmin()).with(csrf()))
                 .andExpect(status().isAccepted());
 
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
@@ -66,7 +66,7 @@ class DemoScenarioIntegrationTest extends ContainerIntegrationTest {
     void staleSourceScenarioCreatesStaleAlertAndHealthRow() throws Exception {
         long before = qualityAlertRepository.count();
 
-        mockMvc.perform(post("/api/v1/demo/run-scenario/stale-source"))
+        mockMvc.perform(post("/api/v1/demo/run-scenario/stale-source").with(asAdmin()).with(csrf()))
                 .andExpect(status().isAccepted());
 
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {

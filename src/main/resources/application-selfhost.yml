@@ -1,0 +1,19 @@
+# Self-host profile.
+#
+# Credentials are required (no defaults): supply them through the env file created by
+# `scripts/selfhost.sh init`, or through the DWT_* variables consumed by docker-compose.yml.
+# Startup fails fast when the admin password is missing or weak.
+#
+# The application binds loopback by default for direct (non-container) installs. Inside
+# docker-compose the container needs 0.0.0.0; the host-side publish is still restricted to
+# 127.0.0.1, so the port is not exposed beyond the machine.
+
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+
+driftwatch:
+  security:
+    require-strong-credentials: true
+  source:
+    github:
+      enabled: true

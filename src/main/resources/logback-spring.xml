@@ -1,9 +1,12 @@
 <configuration>
-    <springProfile name="prod">
+    <!-- Deployment profiles emit structured JSON with correlation identifiers. -->
+    <springProfile name="prod,selfhost">
         <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <includeMdcKeyName>correlationId</includeMdcKeyName>
                 <includeMdcKeyName>eventId</includeMdcKeyName>
+                <includeMdcKeyName>ingestionId</includeMdcKeyName>
+                <includeMdcKeyName>scope</includeMdcKeyName>
             </encoder>
         </appender>
         <root level="INFO">
@@ -11,7 +14,8 @@
         </root>
     </springProfile>
 
-    <springProfile name="dev,default">
+    <!-- Local development, tests, and load runs get readable console lines. -->
+    <springProfile name="dev,test,load,default">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
                 <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>

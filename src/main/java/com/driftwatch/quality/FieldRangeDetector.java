@@ -1,5 +1,6 @@
 package com.driftwatch.quality;
 
+import com.driftwatch.config.DriftwatchProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -32,8 +33,8 @@ public class FieldRangeDetector implements QualityDetector {
     private final Map<String, Bounds> bounds;
 
     @Autowired
-    public FieldRangeDetector(ObjectMapper objectMapper, FieldRangeProperties properties) {
-        this(objectMapper, properties.getFields());
+    public FieldRangeDetector(ObjectMapper objectMapper, DriftwatchProperties properties) {
+        this(objectMapper, properties.detector().fieldRange().fields());
     }
 
     public FieldRangeDetector(ObjectMapper objectMapper, Map<String, Bounds> bounds) {

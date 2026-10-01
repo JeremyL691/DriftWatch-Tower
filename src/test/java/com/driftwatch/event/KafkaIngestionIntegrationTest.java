@@ -19,7 +19,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class KafkaIngestionIntegrationTest extends ContainerIntegrationTest {
 
-    @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
 
     @Test
@@ -34,7 +33,7 @@ class KafkaIngestionIntegrationTest extends ContainerIntegrationTest {
                 Map.of("symbol", "BTC/USDT", "bid", 108000.1, "trace", UUID.randomUUID().toString())
         );
 
-        mockMvc.perform(post("/api/v1/events")
+        mockMvc.perform(post("/api/v1/events").with(asIngest())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(event)))
                 .andExpect(status().isAccepted());

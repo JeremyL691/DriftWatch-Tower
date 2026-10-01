@@ -133,7 +133,7 @@ async function runScenario(button) {
   setScenarioStatus(`Running ${scenario}...`, "Publishing demo events and waiting for detectors to react.");
   disableScenarioButtons(true);
   try {
-    const response = await fetch(`${API}/demo/run-scenario/${scenario}`, { method: "POST" });
+    const response = await mutate(`${API}/demo/run-scenario/${scenario}`);
     if (!response.ok) {
         throw new Error(`Scenario request failed with ${response.status}`);
     }
@@ -361,6 +361,22 @@ async function fetchJson(url) {
     throw new Error(`Request failed for ${url}: ${response.status}`);
   }
   return response.json();
+}
+
+// Browser mutations must carry the CSRF token from the readable XSRF-TOKEN cookie.
+// Tokens are never stored in localStorage.
+function csrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function mutate(url, options = {}) {
+  const headers = Object.assign({}, options.headers || {});
+  const token = csrfToken();
+  if (token) {
+    headers["X-XSRF-TOKEN"] = token;
+  }
+  return fetch(url, Object.assign({}, options, { method: options.method || "POST", headers }));
 }
 
 function formatDate(value) {

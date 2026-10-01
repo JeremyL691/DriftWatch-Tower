@@ -30,3 +30,10 @@ HELP.md
 # ignore transient task prompts + backups)
 .omo/tasks/
 .omo/*.bak
+
+# Local execution evidence and secrets (never commit)
+.execution/
+
+# Python bytecode from local script checks
+__pycache__/
+*.pyc
