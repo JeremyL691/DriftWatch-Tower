@@ -37,7 +37,7 @@
 2. 通过后更新本文件：G16 PASSED、P6.2 PASSED，写入实测数字与证据路径；提交并推送 `codex/release-v1`。
 3. 合并 PR：先 `gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 75e6a10（或其后代）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`；合并后确认 main 含该候选树。
 4. 发布：`release.yml` 只有在默认分支上才会注册，所以合并后再 `gh workflow run release.yml --ref main -f version=v1.0.0 -f candidate_sha=75e6a10 -f content_identity=7340276fb267104260cc516283b634fe211cc36ef44088b01667af8d6e944d0e`，然后 `gh run watch`。该 job 会用同一锁定输入重建并比对 content identity（不一致就拒绝推送）、推送 v1.0.0 与 sha-75e6a10、尝试把 package 设为 public、在干净 Docker config 里匿名拉取 digest、创建 Release。匿名拉取失败即 package 非 public：记录确切错误与恢复动作（GitHub UI 或具 write:packages 的 token），不得当作成功。
-5. 附件：`./scripts/evidence-pack.sh --out .execution/evidence --run-id p7-release` 重新生成证据包，然后 `./scripts/upload-release-assets.sh --version v1.0.0 --artifacts .execution/verify/p61-package4/artifacts --evidence .execution/evidence --digest sha256:...`（digest 取自 Release 正文）。
+5. 附件：先用最终打包脚本重跑一次 `./scripts/verify.sh package --out .execution/verify/p61-package-final --image driftwatch-tower:local --version v1.0.0 --manifest .execution/runs/p61-freeze/manifest.json`（打包脚本此后已修：bundle 现在同时包含 `docs/RUNBOOK.md` 与 `docs/RELEASE_NOTES.md`，即指南第 12 节要求的安装/升级/备份恢复说明与版本说明；G15 证据与制品一起更新）。再 `./scripts/evidence-pack.sh --out .execution/evidence --run-id p7-release` 生成证据包，然后 `./scripts/upload-release-assets.sh --version v1.0.0 --artifacts .execution/verify/p61-package-final/artifacts --evidence .execution/evidence --digest sha256:...`（digest 取自 Release 正文）。注意：重跑 package 会起自己的 compose 项目，必须等 soak 栈结束、不再有验收栈运行时再做。
 6. 匿名核验：`./scripts/verify.sh release --out .execution/verify/p7-release --version v1.0.0 --pr 1`。
 7. 最终报告写回本文件：Release URL、image@digest、源码 SHA、证据路径、性能条件与已知限制；同步 `docs/RELEASE_NOTES.md` 的 digest 行。
 
@@ -355,6 +355,10 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 - 真实源：3 次轮询，300 条不同事件（299 bootstrap + 1 条 bootstrap 之后新发现），0 缺口；告警 2 条均来自 LIVE 事件，incident 0、DLT 0、lag 0。轮询证据逐轮可查：poll1 BOOTSTRAP 299/299 APPLIED、poll2 LIVE 200/1 APPLIED（ETag 前进）、poll3 LIVE QUIET（304，游标不动），每轮都记录 `x_poll_interval=60`；间隔约 5.4 分钟，即 12 次/小时，低于未认证 60 次/小时预算。
 - 宿主电源：`pmset -g` 显示系统 `sleep 1`（空闲 1 分钟即休眠），当时仅靠第三方应用（ChatGPT、Amphetamine、UURemote）持有断言才没睡——它们一旦退出，24 小时 run 会因监控空洞而失效。已用 `caffeinate -i -w 85137` 绑定 runner 进程持有 `PreventUserIdleSystemSleep`（PID 11469，runner 退出即自动释放，不改任何持久设置）。残余风险：显式休眠（合盖或菜单休眠）不受该断言保护，需要人在 24 小时内不要主动休眠。
 - 容器与磁盘：G16 要求「无计划容器重启、磁盘未耗尽」，`soak-report` 现在读取三个容器的 `RestartCount` 与剩余磁盘（当前均为 0 次重启、50GiB 空闲）。已实测 `docker stop/start`（计划故障使用的路径）不会增加 `RestartCount`，因此该检查只会抓到真正的崩溃重启。
+
+### 2026-10-01 P6.2 等待期：发布包内容缺口
+
+对照指南第 12 节逐条核对 Release 附件时发现：`package-release.sh` 只把 `docker-compose.yml`、`.env.example`、`selfhost.sh`、`common.sh`、`PROJECT_EXECUTION_GUIDE.md` 与 `README.md` 放进 bundle，**没有放 `docs/RUNBOOK.md` 和 `docs/RELEASE_NOTES.md`**——而第 12 节第 5 条要求的「安装/升级/备份恢复说明和已知限制」正写在这两份文档里，只下载 Release 的安装者会拿不到。已修：bundle 现在包含这两份文档。收尾程序第 5 步相应改为先用最终脚本重跑 `verify.sh package` 再上传，且明确该步必须等 soak 栈结束后执行（打包会起自己的 compose 项目，指南禁止与验收栈并行以免资源竞争）。
 
 后续每条保留：
 
