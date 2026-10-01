@@ -454,6 +454,8 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 
 8. **发布包不是被验收的那份字节**：`upload-release-assets.sh` 上传前会**重新 tar** bundle，于是发布出去的 tar 与 `package-check.sh`(G15) 验证过的 tar 不是同一串字节（内容相同、mtime 不同），与「上传已验收制品」不符。现在改为断言打包产出的 bundle 存在并原样上传（checksums 仍会重建，因为写入 digest 会改写 `release-manifest.json`）。彩排：上传前后 bundle 的 sha256 完全相同、13 个文件被 checksum 覆盖、证据包在内，只在预期的 `release not found` 停下。
 
+9. **匿名安装会落在空 project 名下**：`verify.sh release` 无条件把 `--project "$PROJECT"` 传给 `release-check.sh`，而 `PROJECT` 默认为空——这会**覆盖**脚本自己的 `dwt-release-check` 默认值，使 P7.3 的匿名安装（以及随后的 `down -v` 清理）跑在一个由目录名隐式推导的 project 上。现在 `verify.sh` 只在真正给了 `--project` 时才转发，且被调脚本忽略空值（两层防护）。实测：空值时转发参数为空、显式值时正常转发、被调脚本在收到空值时保留自己的默认。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
