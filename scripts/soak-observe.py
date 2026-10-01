@@ -40,7 +40,7 @@ def main():
     project=state['project'];env=state['env_file']
     cid=run('docker','compose','-p',project,'--env-file',env,'ps','-q','app')
     image=json.loads(run('docker','inspect',cid))[0]
-    if image['Image']!=context['image_id'] or image['Config']['Labels'].get('com.docker.compose.project')!=project:
+    if cid != state['image']['container'] or image['Image']!=context['image_id'] or image['Config']['Labels'].get('com.docker.compose.project')!=project:
         raise ValueError('compose project/running image mismatch')
     poller=json.loads(run(str(ROOT/'scripts/poller-state.sh'),'--project',project,'--env-file',env))
     faults=[json.loads(line) for line in (directory/'faults.jsonl').read_text().splitlines() if line.strip()] if (directory/'faults.jsonl').exists() else []

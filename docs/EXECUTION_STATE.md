@@ -4,7 +4,7 @@
 
 ## 本聊天接管记录 (2026-10-01 12:50 PDT)
 
-工具进展：26 项防误发布回归通过；G16 报告增加账本读取、OOM、磁盘、内存采样、未知 lag 及结束十分钟清零的失败关闭检查。只读结束观察进程 PID39749（13:15:07 PDT）负责及时正式报告；登记在 `.execution/finalize/finish-watch.pid.json`。这不构成 G16/G17 通过证据。
+工具进展：27 项防误发布回归通过；G16 报告增加账本读取、OOM、磁盘、内存采样、未知 lag 及结束十分钟清零的失败关闭检查。只读结束观察进程 PID39749（13:15:07 PDT）负责及时正式报告；登记在 `.execution/finalize/finish-watch.pid.json`。这不构成 G16/G17 通过证据。
 
 - 旧 ZCode 自动化 `automation-82c729b4` 已通过界面暂停，显示“已暂停”。ZCode 无效 JSON 被误判为目标完成保留为历史，不作为完成证据。
 - 当前 Codex heartbeat: `driftwatch-v1`，每小时静默继续，仅恢复、失败、完成或需外部操作时通知。
@@ -48,6 +48,10 @@
 > **陷阱警告（防止误记）**：旧 run `20261001T145553Z-soak24` 的 `faults.jsonl` 里**已有一条 completed 的 2h 故障**（它死于字段路径缺陷前的自身计划）。它是**旧窗口**的证据，**不能**用来给当前窗口做「重启恢复对比」。当前窗口的三次故障时间：2h → **2026-10-01T20:24:03Z**、8h → **2026-10-02T02:24:03Z**、16h → **2026-10-02T10:24:03Z**；只有在 `.execution/soak/20261001T182403Z-soak24/faults.jsonl` 里看到对应故障 `completed` 之后，才可用 `scripts/poller-state.sh --project dwt-soak --env-file .execution/soak.env` 与 `.execution/verify/p61-soak-prefault-baseline.json`（已更新为本窗口的故障前基线：BOOTSTRAP 1 / 96 事件 / inbox 96 / failures 0）做对比，并把**前后两组数字**写进状态文件。在 20:24:03Z 之前，当前窗口**没有任何**故障证据，不得记录任何「故障后」数字。
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
+
+## 当前窗口第一次故障证据 (13:26 PDT)
+
+`app-restart` 于 `2026-10-01T20:24:11Z` 完成，outage32.6s、readiness恢复10.2s。前后 BOOTSTRAP 轮数1→1，LIVE事件23→26，inbox119→122，pending0、failures0、READY，容器与冻结镜像保持一致。证据：`.execution/soak/20261001T182403Z-soak24/faults.jsonl` 与 `observation-20261001T202601Z.json`；G16 仍 RUNNING，不能从一次故障推断整窗通过。
 
 ## 收尾程序
 

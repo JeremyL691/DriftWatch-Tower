@@ -35,6 +35,6 @@ Keep the accepted candidate. Disclose NO_OVERLAP gap overclassification, nullabl
 
 ## Tool verification at takeover
 
-26 focused release-tool regressions passed locally; shell/Python/Node syntax and frozen source/config/dependency hashes verified. G17 live runtime and browser-action checks are implemented but not yet executed against public artifacts. Packaging/Compose/runtime tests must still run after soak; no completion claim follows from these local tool regressions.
+27 focused release-tool regressions passed locally; shell/Python/Node syntax and frozen source/config/dependency hashes verified. G17 live runtime and browser-action checks are implemented but not yet executed against public artifacts. Packaging/Compose/runtime tests must still run after soak; no completion claim follows from these local tool regressions.
 
 Before upload, record exact main SHA, public digest and architecture/content mapping in context. Use `scripts/image-content.py --context ... --image image@digest --out <mapping.json>` and public digest G13 scan; bind resulting reports explicitly. `upload-release-assets.sh` now requires `--context FILE --artifacts DIR --evidence <exact-tar-file>`, not an evidence directory. It checks the G15 bundle hash and sanitized archive sidecar, refuses conflicting existing assets, and records explicit attachment hashes. Final metadata changes require `--update-metadata`, which only replaces known previous manifest/checksum hashes; unknown conflicts remain failures.
