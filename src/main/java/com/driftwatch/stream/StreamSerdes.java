@@ -21,7 +21,7 @@ public class StreamSerdes {
 
     private static final String[] TRUSTED_PACKAGES = {
             "com.driftwatch.event", "com.driftwatch.quality", "com.driftwatch.stream",
-            "com.driftwatch.quality.schema"
+            "com.driftwatch.quality.schema", "com.driftwatch.dlt"
     };
 
     private final ObjectMapper objectMapper;
@@ -40,6 +40,10 @@ public class StreamSerdes {
 
     public Serde<RawEnvelope> rawEnvelopeSerde() {
         return serde(RawEnvelope.class);
+    }
+
+    public Serde<com.driftwatch.dlt.DltMessage> dltMessageSerde() {
+        return serde(com.driftwatch.dlt.DltMessage.class);
     }
 
     public Serde<BaselineMessage> baselineMessageSerde() {

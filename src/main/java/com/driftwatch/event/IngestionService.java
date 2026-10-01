@@ -3,6 +3,8 @@ package com.driftwatch.event;
 import com.driftwatch.persistence.IngestionReceiptEntity;
 import com.driftwatch.persistence.IngestionReceiptRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -48,6 +50,9 @@ public class IngestionService {
     private final RequestDigests digests;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     public IngestionService(RawEventProducer producer,
                             IngestionReceiptRepository receiptRepository,
@@ -181,11 +186,29 @@ public class IngestionService {
                 receipt.setPublishState(IngestionReceiptEntity.STATE_PENDING);
                 receipt.setCreatedAt(Instant.now());
                 receipt.setExpiresAt(Instant.now().plus(IDEMPOTENCY_WINDOW));
-                receiptRepository.saveAndFlush(receipt);
+                // persist, not save/merge: with an assigned id a merge would silently UPDATE a
+                // concurrent winner's row and hand out two identities for one key.
+                entityManager.persist(receipt);
+                entityManager.flush();
                 return new Reservation(newIngestionId, IngestionReceiptEntity.STATE_PENDING, false);
             });
-        } catch (DataIntegrityViolationException concurrentInsert) {
-            return replayOf(receiptRepository.findById(key).orElseThrow(), digest);
+        } catch (Exception concurrentInsert) {
+            // Any failure while reserving means another request may have won the race. Wait
+            // briefly for its row to become visible and continue as that identity; rethrow only
+            // when the key genuinely cannot be read back.
+            for (int attempt = 0; attempt < 15; attempt++) {
+                var winner = receiptRepository.findById(key);
+                if (winner.isPresent()) {
+                    return replayOf(winner.get(), digest);
+                }
+                try {
+                    Thread.sleep(200L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            throw concurrentInsert;
         }
     }
 

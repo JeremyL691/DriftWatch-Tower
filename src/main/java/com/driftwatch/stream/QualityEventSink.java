@@ -2,75 +2,79 @@ package com.driftwatch.stream;
 
 import com.driftwatch.config.KafkaTopics;
 import com.driftwatch.dashboard.DashboardWebSocketHandler;
-import com.driftwatch.event.DataEvent;
+import com.driftwatch.dlt.DltMessage;
+import com.driftwatch.dlt.DltPublisher;
+import com.driftwatch.dlt.DltStage;
 import com.driftwatch.persistence.QualityAlertEntity;
-import com.driftwatch.persistence.QualityAlertRepository;
-import com.driftwatch.persistence.RawEventEntity;
-import com.driftwatch.persistence.ProcessedReceiptEntity;
-import com.driftwatch.persistence.ProcessedReceiptRepository;
-import com.driftwatch.persistence.RawEventRepository;
-import com.driftwatch.quality.AlertType;
-import com.driftwatch.quality.RuleVersions;
-import com.driftwatch.quality.Severity;
-import com.driftwatch.quality.schema.SchemaObservationService;
-import com.driftwatch.source.SourceHealthService;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
- * Terminal persistence consumer for {@code quality-events}: writes the raw event + alerts,
- * refreshes source health (idempotent transition-only STALE alert), broadcasts to the dashboard
- * over WebSocket, and updates Micrometer counters. Replaces the persistence half of the legacy
- * {@code QualityProcessor} once the streams path is enabled.
+ * Terminal consumer for {@code quality-events-v1} (execution guide, sections 4.3 and 7.1).
+ *
+ * <p>Each record is persisted through {@link SinkPersistenceService} with a bounded retry
+ * (immediately, then 2s, 10s, 30s — four attempts in total). A record that still fails is
+ * published to {@code dead-letter-events-v1} keeping its ingestion identity; the listener only
+ * returns once the broker acknowledged that dead letter, so a failed DLT publish leaves the
+ * original offset uncommitted and the record is not lost. Success counters and WebSocket
+ * broadcasts happen after the transaction committed, never before.
  */
 @Component
 @ConditionalOnProperty(name = "driftwatch.streams.enabled", havingValue = "true")
 public class QualityEventSink {
 
-    private final RawEventRepository rawEventRepository;
-    private final ProcessedReceiptRepository processedReceiptRepository;
-    private final QualityAlertRepository alertRepository;
-    private final SourceHealthService sourceHealthService;
-    private final SchemaObservationService schemaObservationService;
-    private final MetricWindowProjector metricWindowProjector;
+    private static final Logger log = LoggerFactory.getLogger(QualityEventSink.class);
+
+    /** Attempt 1 is immediate; retries follow at 2s, 10s and 30s (four attempts in total). */
+    static final long[] RETRY_DELAYS_MS = {0L, 2_000L, 10_000L, 30_000L};
+
+    private final long[] retryDelaysMs;
+    private final SinkPersistenceService persistence;
     private final DashboardWebSocketHandler ws;
+    private final DltPublisher dltPublisher;
     private final ObjectMapper objectMapper;
     private final Counter eventCounter;
     private final Counter alertCounter;
+    private final Counter deadLetterCounter;
 
-    public QualityEventSink(RawEventRepository rawEventRepository,
-                            ProcessedReceiptRepository processedReceiptRepository,
-                            QualityAlertRepository alertRepository,
-                            SourceHealthService sourceHealthService,
-                            SchemaObservationService schemaObservationService,
-                            MetricWindowProjector metricWindowProjector,
+    @Autowired
+    public QualityEventSink(SinkPersistenceService persistence,
                             DashboardWebSocketHandler ws,
+                            DltPublisher dltPublisher,
                             ObjectMapper objectMapper,
                             MeterRegistry meterRegistry) {
-        this.rawEventRepository = rawEventRepository;
-        this.processedReceiptRepository = processedReceiptRepository;
-        this.alertRepository = alertRepository;
-        this.sourceHealthService = sourceHealthService;
-        this.schemaObservationService = schemaObservationService;
-        this.metricWindowProjector = metricWindowProjector;
+        this(persistence, ws, dltPublisher, objectMapper, meterRegistry, RETRY_DELAYS_MS);
+    }
+
+    /** Test-friendly constructor: the retry schedule is the only thing that changes. */
+    QualityEventSink(SinkPersistenceService persistence,
+                     DashboardWebSocketHandler ws,
+                     DltPublisher dltPublisher,
+                     ObjectMapper objectMapper,
+                     MeterRegistry meterRegistry,
+                     long[] retryDelaysMs) {
+        this.retryDelaysMs = retryDelaysMs;
+        this.persistence = persistence;
         this.ws = ws;
+        this.dltPublisher = dltPublisher;
         this.objectMapper = objectMapper;
         this.eventCounter = Counter.builder("driftwatch.events.ingested")
                 .description("Total events ingested")
                 .register(meterRegistry);
         this.alertCounter = Counter.builder("driftwatch.alerts.fired")
                 .description("Total alerts fired")
+                .register(meterRegistry);
+        this.deadLetterCounter = Counter.builder("driftwatch_sink_dead_letters_total")
+                .description("Records that failed persistence and were written to the dead-letter topic")
                 .register(meterRegistry);
     }
 
@@ -81,149 +85,73 @@ public class QualityEventSink {
                     "spring.json.value.default.type=com.driftwatch.stream.ProcessedEvent",
                     "spring.json.trusted.packages=com.driftwatch.event,com.driftwatch.quality,com.driftwatch.stream"
             })
-    @Transactional
     public void onProcessed(ProcessedEvent p) {
-        Instant now = p.receivedAt();
-        String ingestionId = p.ingestionId() == null
-                ? "legacy:" + p.payloadHash()
-                : p.ingestionId().toString();
-        String contentDigest = contentDigest(p);
-        // Idempotency guard (guide 4.3): a redelivered ingestion is recognised by its receipt and
-        // returns without touching any projection. A receipt with different content is a failure.
-        var existingReceipt = processedReceiptRepository.findById(ingestionId);
-        if (existingReceipt.isPresent()) {
-            if (existingReceipt.get().getContentDigest().equals(contentDigest)) {
-                return;
+        Exception lastFailure = null;
+        for (int attempt = 0; attempt < retryDelaysMs.length; attempt++) {
+            if (attempt > 0) {
+                sleepQuietly(retryDelaysMs[attempt]);
             }
-            throw new IllegalStateException("ingestion " + ingestionId
-                    + " was already processed with different content");
+            try {
+                SinkPersistenceService.PersistResult result = persistence.persist(p);
+                if (result.duplicate()) {
+                    return;
+                }
+                eventCounter.increment();
+                alertCounter.increment(result.alerts().size());
+                ws.broadcastEvent(result.raw());
+                result.alerts().forEach(ws::broadcastAlert);
+                return;
+            } catch (Exception e) {
+                lastFailure = e;
+                log.warn("sink attempt {}/{} failed for ingestion {}: {}",
+                        attempt + 1, retryDelaysMs.length, SinkPersistenceService.ingestionIdOf(p),
+                        e.getClass().getSimpleName());
+            }
         }
-        ProcessedReceiptEntity receipt = new ProcessedReceiptEntity();
-        receipt.setIngestionId(ingestionId);
-        receipt.setProcessedAt(now);
-        receipt.setRuleVersion(p.ruleVersion() == null ? "unknown" : p.ruleVersion());
-        receipt.setContentDigest(contentDigest);
-        processedReceiptRepository.save(receipt);
-        DataEvent event = p.event();
-
-        RawEventEntity raw = new RawEventEntity();
-        raw.setEventId(event.eventId());
-        raw.setIngestionId(ingestionId);
-        raw.setOrigin(p.origin());
-        raw.setMode(p.mode());
-        raw.setBaselineStatus(p.baselineStatus());
-        raw.setWindowEvaluation(p.windowEvaluation() == null
-                ? null : objectMapper.valueToTree(p.windowEvaluation()));
-        raw.setSource(event.source());
-        raw.setEventType(event.eventType());
-        raw.setEventTimestamp(event.eventTimestamp());
-        raw.setReceivedAt(now);
-        raw.setPayloadJson(objectMapper.valueToTree(event.payload()));
-        raw.setPayloadHash(p.payloadHash());
-        raw.setQualityStatus(p.qualityStatus());
-        rawEventRepository.save(raw);
-
-        List<QualityAlertEntity> alerts = new ArrayList<>();
-        for (ProcessedEvent.ProcessedAlert a : p.alerts()) {
-            alerts.add(toEntity(a, ingestionId, p, now));
-        }
-        // Schema observation happens in this transaction under an advisory lock (guide 4.4);
-        // drift alerting therefore never runs on a topology thread.
-        SchemaObservationService.Observation observation =
-                schemaObservationService.observe(event.eventType(), raw.getPayloadJson(), now);
-        if (observation.drift() && !observation.changedFields().isEmpty()) {
-            alerts.add(schemaDriftAlert(event, observation, now));
-        }
-        List<QualityAlertEntity> staleAlerts = sourceHealthService.refreshAllAndPersist(now);
-        if (!alerts.isEmpty()) {
-            alertRepository.saveAll(alerts);
-        }
-        alerts.addAll(staleAlerts);
-
-        metricWindowProjector.project(p);
-        eventCounter.increment();
-        alertCounter.increment(alerts.size());
-
-        ws.broadcastEvent(raw);
-        alerts.forEach(ws::broadcastAlert);
+        handlePersistentFailure(p, lastFailure);
     }
 
-    private QualityAlertEntity schemaDriftAlert(DataEvent event,
-                                                SchemaObservationService.Observation observation,
-                                                Instant now) {
-        ObjectNode evidence = objectMapper.createObjectNode();
-        evidence.put("baseline_version_id",
-                observation.baseline() == null ? null : observation.baseline().getId());
-        evidence.put("observed_version_id", observation.observedRow().getId());
-        evidence.put("observed_hash", observation.observedHash());
-        evidence.put("rule_version", RuleVersions.RULES_VERSION);
-        if (observation.baseline() != null) {
-            evidence.set("expected_schema", observation.baseline().getSchemaJson());
+    private void handlePersistentFailure(ProcessedEvent p, Exception failure) {
+        DltMessage deadLetter = new DltMessage(
+                DltMessage.diagnosticIdFor(SinkPersistenceService.ingestionIdOf(p),
+                        KafkaTopics.QUALITY_EVENTS_V1, null, null),
+                DltStage.SINK,
+                SinkPersistenceService.ingestionIdOf(p),
+                p.event() == null ? null : p.event().source(),
+                p.event() == null ? null : p.event().eventType(),
+                DltMessage.truncate(failure == null ? "unknown failure"
+                        : failure.getClass().getSimpleName() + ": " + failure.getMessage(),
+                        DltMessage.MAX_REASON_LENGTH),
+                retryDelaysMs.length,
+                KafkaTopics.QUALITY_EVENTS_V1,
+                null, null,
+                DltMessage.truncate(serialize(p), DltMessage.MAX_PAYLOAD_LENGTH),
+                Instant.now());
+        if (!dltPublisher.publish(deadLetter)) {
+            // The dead letter is not durable either: keep the offset uncommitted and let the
+            // consumer retry later rather than dropping the record.
+            throw new IllegalStateException("sink failed and the dead-letter publish was not acknowledged;"
+                    + " the record must be retried", failure);
         }
-        evidence.set("observed_schema", objectMapper.valueToTree(observation.observedSchema()));
-        evidence.set("missing_fields", arrayOf(observation.diff().missing()));
-        evidence.set("added_fields", arrayOf(observation.diff().added()));
-        ObjectNode typeChanged = objectMapper.createObjectNode();
-        observation.diff().typeChanged().forEach((field, change) -> {
-            ObjectNode node = objectMapper.createObjectNode();
-            node.put("expected", change[0]);
-            node.put("observed", change[1]);
-            typeChanged.set(field, node);
-        });
-        evidence.set("type_changed", typeChanged);
-
-        String firstField = observation.diff().typeChanged().keySet().stream().findFirst()
-                .or(() -> observation.diff().missing().stream().findFirst())
-                .or(() -> observation.diff().added().stream().findFirst())
-                .orElse(null);
-
-        QualityAlertEntity alert = new QualityAlertEntity();
-        alert.setAlertType(AlertType.SCHEMA_DRIFT);
-        alert.setSeverity(Severity.WARN);
-        alert.setSource(event.source());
-        alert.setEventType(event.eventType());
-        alert.setFieldPath(firstField);
-        alert.setMessage("Schema drift in " + event.eventType()
-                + " (missing=" + observation.diff().missing().size()
-                + ", added=" + observation.diff().added().size()
-                + ", type_changed=" + observation.diff().typeChanged().size() + ")");
-        alert.setEvidenceJson(evidence);
-        alert.setCreatedAt(now);
-        return alert;
+        deadLetterCounter.increment();
+        log.error("ingestion {} moved to the dead-letter topic after {} attempts: {}",
+                deadLetter.ingestionId(), retryDelaysMs.length, deadLetter.reason());
     }
 
-    private JsonNode arrayOf(java.util.Collection<String> values) {
-        var array = objectMapper.createArrayNode();
-        values.forEach(array::add);
-        return array;
-    }
-
-    private String contentDigest(ProcessedEvent p) {
-        String material = p.payloadHash() + "|" + (p.event() == null ? "" : p.event().eventId());
+    private String serialize(ProcessedEvent p) {
         try {
-            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(material.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return java.util.HexFormat.of().formatHex(digest);
+            return objectMapper.writeValueAsString(p);
         } catch (Exception e) {
-            throw new IllegalStateException("SHA-256 unavailable", e);
+            return null;
         }
     }
 
-    private QualityAlertEntity toEntity(ProcessedEvent.ProcessedAlert a, String ingestionId,
-                                        ProcessedEvent p, Instant now) {
-        QualityAlertEntity e = new QualityAlertEntity();
-        e.setIngestionId(ingestionId);
-        e.setDetectorKey(a.type().name() + ":" + (a.fieldPath() == null ? "-" : a.fieldPath()));
-        e.setWindowKey(p.windowEvaluation() == null || p.windowEvaluation().windowStart() == null
-                ? null : p.windowEvaluation().windowStart().toString());
-        e.setAlertType(a.type());
-        e.setSeverity(a.severity());
-        e.setSource(a.source());
-        e.setEventType(a.eventType());
-        e.setFieldPath(a.fieldPath());
-        e.setMessage(a.message());
-        e.setEvidenceJson(a.evidence());
-        e.setCreatedAt(now);
-        return e;
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while retrying the sink", e);
+        }
     }
 }
