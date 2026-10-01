@@ -669,6 +669,14 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 - 修复需改 `src/main/resources/static/dashboard/styles.css`（冻结面内），会作废窗口与门禁，本轮不改。跟进项：让窄布局对字体度量稳健（长标识/数字允许断行，如对表格单元格加 `overflow-wrap: anywhere`，或收窄 320 断点的内边距），并把零余量本身当成一个可改进点。
 - **不得**为了让这个检查变绿而放宽 `check-dashboard.py` 的溢出判据（属指南禁止的「改阈值绕过用例」）。合并前的应对：若失败项**仅**是这条 320-light 溢出测量，重跑该 job 一次并如实记录测量值与「已知临界布局问题」；若重跑仍失败，则记录为已知缺陷并在状态与回复中报告，不以任何方式绕过必需检查。
 
+### 2026-10-01 P6.2 等待期：2h 重启前的状态恢复路径核查
+
+2h 受控故障会真的重启应用，而检测器依赖 Kafka Streams 的窗口状态与全局基线存储。在故障前先核实恢复路径存在（而不是等重启后才发现基线丢了）：
+
+- **变更日志主题齐全**（`kafka-topics.sh --list`）：`driftwatch-streams-v1-{anomaly-scope,anomaly-window,duplicate-event-id,duplicate-payload,envelope-digest,null-window,scope-watermark}-store-changelog` 七个窗口/去重存储的 changelog 均在；全局基线存储的源主题 `schema-baselines-v1` 也在（另有 `raw-events-v1`、`quality-events-v1`、`dead-letter-events-v1`）。
+- **本地状态存在**（`dwt-soak_streams-state` 卷）：`/state/driftwatch-streams-v1/0_{0,1,2}` 三个分区目录，内含各 store 的 RocksDB 目录，合计 **80.5MB**。
+- 结论：重启时 Streams 走「本地状态优先、必要时回放 changelog」，全局基线存储从 `schema-baselines-v1` 重建；不存在「缺 changelog 导致基线静默丢失」的隐患。这条正是重启后要验证的东西（比对基线文件），现在先确认它有恢复的物质基础；状态体积 80MB/1.25h，对 44GiB 余量无压力。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
