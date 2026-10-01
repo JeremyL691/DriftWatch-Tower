@@ -41,14 +41,18 @@ if [ "$exit_code" -ne 0 ] && grep -qE 'ContainerLaunchException|Wait strategy fa
 fi
 
 python3 - "$OUT_DIR" <<'PY'
-import glob, json, sys, xml.etree.ElementTree as ET
+import glob, json, os, sys, xml.etree.ElementTree as ET
 out_dir = sys.argv[1]
+seen = set()
 totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
 required = {"com.driftwatch.stream.DetectionContractTest": None,
             "com.driftwatch.stream.QualityStreamsTopologyTest": None}
-for path in sorted(glob.glob('target/surefire-reports/TEST-*.xml')):
+for path in sorted(glob.glob('target/surefire-reports/TEST-*.xml'), key=os.path.getmtime):
     root = ET.parse(path).getroot()
     name = root.get('name')
+    if name in seen:
+        continue
+    seen.add(name)
     counts = {k: int(root.get(k)) for k in ('tests', 'failures', 'errors', 'skipped')}
     for key, value in counts.items():
         totals[key] += value

@@ -164,16 +164,21 @@ cmd_unit() {
   echo "$attempts" > "$OUT_DIR/attempts.txt"
 
   python3 - "$OUT_DIR" <<'PY'
-import glob, json, sys, xml.etree.ElementTree as ET
+import glob, json, os, sys, xml.etree.ElementTree as ET
 out_dir = sys.argv[1]
+seen = set()
 tot = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
 classes = []
-for path in sorted(glob.glob('target/surefire-reports/TEST-*.xml')):
+for path in sorted(glob.glob('target/surefire-reports/TEST-*.xml'), key=os.path.getmtime):
     root = ET.parse(path).getroot()
+    name = root.get('name')
+    if name in seen:
+        continue
+    seen.add(name)
     counts = {k: int(root.get(k)) for k in ('tests', 'failures', 'errors', 'skipped')}
     for key, value in counts.items():
         tot[key] += value
-    classes.append({"class": root.get('name'), **counts})
+    classes.append({"class": name, **counts})
 with open(f"{out_dir}/unit-summary.json", "w") as handle:
     json.dump({"totals": tot, "classes": classes}, handle, indent=2)
 print(json.dumps(tot))
