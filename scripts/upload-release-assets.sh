@@ -52,6 +52,16 @@ print("release manifest now names", manifest["image"]["published_reference"])
 PY
 [ $? -eq 0 ] || fail "could not record the digest in release-manifest.json"
 
+# The evidence pack is an attached asset too, so it has to sit inside the checksummed set
+# instead of beside it: stage it here, before the checksums are rebuilt.
+if [ -n "$EVIDENCE_DIR" ] && [ -d "$EVIDENCE_DIR" ]; then
+  evidence_source="$(ls -1t "$EVIDENCE_DIR"/driftwatch-tower-*-evidence.tar.gz 2>/dev/null | head -1)"
+  if [ -n "$evidence_source" ]; then
+    cp "$evidence_source" "$ARTIFACTS/"
+    log "staged $(basename "$evidence_source") for checksumming and upload"
+  fi
+fi
+
 rm -f "$ARTIFACTS/checksums.txt"
 tar -czf "$ARTIFACTS/driftwatch-tower-${VERSION}-bundle.tar.gz" -C "$ARTIFACTS/bundle" .
 ( cd "$ARTIFACTS" && find . -type f ! -name checksums.txt ! -name '*.log' ! -name '*.err' -print0 \
@@ -69,13 +79,17 @@ assets=(
   "$ARTIFACTS/driftwatch-tower-${VERSION}-bundle.tar.gz"
   "$ARTIFACTS/$sbom"
 )
-[ -n "$EVIDENCE_DIR" ] && [ -d "$EVIDENCE_DIR" ] && {
-  evidence="$(ls -1t "$EVIDENCE_DIR"/driftwatch-tower-*-evidence.tar.gz 2>/dev/null | head -1)"
-  [ -n "$evidence" ] && assets+=("$evidence")
-}
+# Every attached asset must be inside checksums.txt, so they all come from the artifacts
+# directory (the evidence pack was staged there above).
+evidence="$(ls -1t "$ARTIFACTS"/driftwatch-tower-*-evidence.tar.gz 2>/dev/null | head -1)"
+[ -n "$evidence" ] && assets+=("$evidence")
 
 for asset in "${assets[@]}"; do
   [ -f "$asset" ] || die "missing asset: $asset"
+  # checksums.txt cannot list itself; every other asset must be covered.
+  [ "$(basename "$asset")" = "checksums.txt" ] && continue
+  grep -q "$(basename "$asset")" "$ARTIFACTS/checksums.txt" \
+    || die "asset $(basename "$asset") is not covered by checksums.txt"
 done
 
 gh release upload "$VERSION" "${assets[@]}" ${REPO:+--repo "$REPO"} --clobber \
