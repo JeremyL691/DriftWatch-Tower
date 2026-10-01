@@ -1,6 +1,7 @@
 package com.driftwatch.stream;
 
 import com.driftwatch.event.DataEvent;
+import com.driftwatch.event.RawEnvelope;
 import com.driftwatch.quality.schema.BaselineMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.common.serialization.Serde;
@@ -35,6 +36,10 @@ public class StreamSerdes {
 
     public Serde<ProcessedEvent> processedEventSerde() {
         return serde(ProcessedEvent.class);
+    }
+
+    public Serde<RawEnvelope> rawEnvelopeSerde() {
+        return serde(RawEnvelope.class);
     }
 
     public Serde<BaselineMessage> baselineMessageSerde() {

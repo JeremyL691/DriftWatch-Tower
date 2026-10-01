@@ -73,14 +73,20 @@ class QualityEventSinkTest {
                         new com.driftwatch.quality.schema.SchemaInferrer.SchemaDiff(java.util.Set.of(), java.util.Set.of(), java.util.Map.of()),
                         false));
 
+        com.driftwatch.persistence.ProcessedReceiptRepository processedReceiptRepository =
+                mock(com.driftwatch.persistence.ProcessedReceiptRepository.class);
+        when(processedReceiptRepository.findById(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(java.util.Optional.empty());
+
         QualityEventSink sink = new QualityEventSink(
                 rawEventRepository,
+                processedReceiptRepository,
                 alertRepository,
                 sourceHealthService,
                 schemaObservationService,
                 metricWindowProjector,
                 webSocket,
-                new ObjectMapper(),
+                new ObjectMapper().findAndRegisterModules(),
                 meterRegistry
         );
 

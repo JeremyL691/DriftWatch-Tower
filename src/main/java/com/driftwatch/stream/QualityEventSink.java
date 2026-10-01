@@ -6,6 +6,8 @@ import com.driftwatch.event.DataEvent;
 import com.driftwatch.persistence.QualityAlertEntity;
 import com.driftwatch.persistence.QualityAlertRepository;
 import com.driftwatch.persistence.RawEventEntity;
+import com.driftwatch.persistence.ProcessedReceiptEntity;
+import com.driftwatch.persistence.ProcessedReceiptRepository;
 import com.driftwatch.persistence.RawEventRepository;
 import com.driftwatch.quality.AlertType;
 import com.driftwatch.quality.RuleVersions;
@@ -37,6 +39,7 @@ import java.util.List;
 public class QualityEventSink {
 
     private final RawEventRepository rawEventRepository;
+    private final ProcessedReceiptRepository processedReceiptRepository;
     private final QualityAlertRepository alertRepository;
     private final SourceHealthService sourceHealthService;
     private final SchemaObservationService schemaObservationService;
@@ -47,6 +50,7 @@ public class QualityEventSink {
     private final Counter alertCounter;
 
     public QualityEventSink(RawEventRepository rawEventRepository,
+                            ProcessedReceiptRepository processedReceiptRepository,
                             QualityAlertRepository alertRepository,
                             SourceHealthService sourceHealthService,
                             SchemaObservationService schemaObservationService,
@@ -55,6 +59,7 @@ public class QualityEventSink {
                             ObjectMapper objectMapper,
                             MeterRegistry meterRegistry) {
         this.rawEventRepository = rawEventRepository;
+        this.processedReceiptRepository = processedReceiptRepository;
         this.alertRepository = alertRepository;
         this.sourceHealthService = sourceHealthService;
         this.schemaObservationService = schemaObservationService;
@@ -70,7 +75,7 @@ public class QualityEventSink {
     }
 
     @KafkaListener(
-            topics = KafkaTopics.QUALITY_EVENTS,
+            topics = KafkaTopics.QUALITY_EVENTS_V1,
             groupId = "driftwatch-sink",
             properties = {
                     "spring.json.value.default.type=com.driftwatch.stream.ProcessedEvent",
@@ -79,10 +84,36 @@ public class QualityEventSink {
     @Transactional
     public void onProcessed(ProcessedEvent p) {
         Instant now = p.receivedAt();
+        String ingestionId = p.ingestionId() == null
+                ? "legacy:" + p.payloadHash()
+                : p.ingestionId().toString();
+        String contentDigest = contentDigest(p);
+        // Idempotency guard (guide 4.3): a redelivered ingestion is recognised by its receipt and
+        // returns without touching any projection. A receipt with different content is a failure.
+        var existingReceipt = processedReceiptRepository.findById(ingestionId);
+        if (existingReceipt.isPresent()) {
+            if (existingReceipt.get().getContentDigest().equals(contentDigest)) {
+                return;
+            }
+            throw new IllegalStateException("ingestion " + ingestionId
+                    + " was already processed with different content");
+        }
+        ProcessedReceiptEntity receipt = new ProcessedReceiptEntity();
+        receipt.setIngestionId(ingestionId);
+        receipt.setProcessedAt(now);
+        receipt.setRuleVersion(p.ruleVersion() == null ? "unknown" : p.ruleVersion());
+        receipt.setContentDigest(contentDigest);
+        processedReceiptRepository.save(receipt);
         DataEvent event = p.event();
 
         RawEventEntity raw = new RawEventEntity();
         raw.setEventId(event.eventId());
+        raw.setIngestionId(ingestionId);
+        raw.setOrigin(p.origin());
+        raw.setMode(p.mode());
+        raw.setBaselineStatus(p.baselineStatus());
+        raw.setWindowEvaluation(p.windowEvaluation() == null
+                ? null : objectMapper.valueToTree(p.windowEvaluation()));
         raw.setSource(event.source());
         raw.setEventType(event.eventType());
         raw.setEventTimestamp(event.eventTimestamp());
@@ -94,7 +125,7 @@ public class QualityEventSink {
 
         List<QualityAlertEntity> alerts = new ArrayList<>();
         for (ProcessedEvent.ProcessedAlert a : p.alerts()) {
-            alerts.add(toEntity(a, now));
+            alerts.add(toEntity(a, ingestionId, p, now));
         }
         // Schema observation happens in this transaction under an advisory lock (guide 4.4);
         // drift alerting therefore never runs on a topology thread.
@@ -167,8 +198,24 @@ public class QualityEventSink {
         return array;
     }
 
-    private QualityAlertEntity toEntity(ProcessedEvent.ProcessedAlert a, Instant now) {
+    private String contentDigest(ProcessedEvent p) {
+        String material = p.payloadHash() + "|" + (p.event() == null ? "" : p.event().eventId());
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(material.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (Exception e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
+    }
+
+    private QualityAlertEntity toEntity(ProcessedEvent.ProcessedAlert a, String ingestionId,
+                                        ProcessedEvent p, Instant now) {
         QualityAlertEntity e = new QualityAlertEntity();
+        e.setIngestionId(ingestionId);
+        e.setDetectorKey(a.type().name() + ":" + (a.fieldPath() == null ? "-" : a.fieldPath()));
+        e.setWindowKey(p.windowEvaluation() == null || p.windowEvaluation().windowStart() == null
+                ? null : p.windowEvaluation().windowStart().toString());
         e.setAlertType(a.type());
         e.setSeverity(a.severity());
         e.setSource(a.source());

@@ -39,6 +39,15 @@ public class QualityAlertEntity {
     @Column(name = "event_type", nullable = false)
     private String eventType;
 
+    @Column(name = "ingestion_id", length = 64)
+    private String ingestionId;
+
+    @Column(name = "detector_key", length = 128)
+    private String detectorKey;
+
+    @Column(name = "window_key", length = 128)
+    private String windowKey;
+
     @Column(name = "field_path")
     private String fieldPath;
 
@@ -79,6 +88,12 @@ public class QualityAlertEntity {
     public void setSource(String source) { this.source = source; }
     public String getEventType() { return eventType; }
     public void setEventType(String eventType) { this.eventType = eventType; }
+    public String getIngestionId() { return ingestionId; }
+    public void setIngestionId(String ingestionId) { this.ingestionId = ingestionId; }
+    public String getDetectorKey() { return detectorKey; }
+    public void setDetectorKey(String detectorKey) { this.detectorKey = detectorKey; }
+    public String getWindowKey() { return windowKey; }
+    public void setWindowKey(String windowKey) { this.windowKey = windowKey; }
     public String getFieldPath() { return fieldPath; }
     public void setFieldPath(String fieldPath) { this.fieldPath = fieldPath; }
     public String getMessage() { return message; }
