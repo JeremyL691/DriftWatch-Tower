@@ -21,8 +21,8 @@ const get = (name, fallback = null) => {
 const outDir = get('out');
 const label = get('label', 'before');
 const base = get('base', 'http://127.0.0.1:18080');
-const user = get('user');
-const password = get('password');
+const user = get('user') || process.env.DWT_CAPTURE_USER;
+const password = get('password') || process.env.DWT_CAPTURE_PASSWORD;
 const themes = (get('themes', 'dark')).split(',');
 const viewports = [
   { name: '320', width: 320, height: 720 },
@@ -172,6 +172,47 @@ for (const theme of themes) {
       };
     });
 
+    if (get('exercise-actions') === 'true' && viewport.name === '1440' && theme === 'dark') {
+      // Actual demo production and incident operation, scoped to demo data only.
+      await page.locator('[data-target="demos"]').click();
+      const scenarioResponse = page.waitForResponse(r => r.url().includes('/demo/run-scenario/mixed-incident') && r.request().method() === 'POST');
+      await page.locator('[data-scenario="mixed-incident"]').click();
+      const produced = await scenarioResponse;
+      if (produced.status() !== 202) throw new Error('dashboard demo did not accept');
+      const scenario = await produced.json();
+      await page.waitForFunction(async () => {
+        const rows = await fetch('/api/v1/alerts').then(r => r.json());
+        return rows.some(a => a.source.startsWith('demo:') || a.source.includes('demo'));
+      }, null, { timeout: 60000 });
+      const action = await page.evaluate(async () => {
+        const rows = await fetch('/api/v1/alerts').then(r => r.json());
+        const alert = rows.find(a => a.status === 'OPEN' && a.source.includes('demo'));
+        if (!alert) throw new Error('no demo alert available for action');
+        const token = document.cookie.split('; ').find(c => c.startsWith('XSRF-TOKEN='));
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['X-XSRF-TOKEN'] = decodeURIComponent(token.slice('XSRF-TOKEN='.length));
+        const response = await fetch(`/api/v1/alerts/${alert.id}/acknowledge`, {method:'POST', headers, body:JSON.stringify({acknowledgedBy:'release acceptance'})});
+        if (response.status !== 200) throw new Error(`acknowledge returned ${response.status}`);
+        const acknowledged = await response.json();
+        if (acknowledged.status !== 'ACKNOWLEDGED') throw new Error('acknowledgement did not persist');
+        return {alert, acknowledged};
+      });
+      await page.reload({waitUntil:'domcontentloaded'});
+      await page.locator('[data-target="incidents"]').click();
+      const rows = page.locator('#incidentRows tr').filter({hasText:action.alert.source});
+      const resolve = rows.locator('[data-resolve-incident]').first();
+      await resolve.waitFor({state:'visible',timeout:20000});
+      const incidentId = await resolve.getAttribute('data-resolve-incident');
+      const resolveResponse = page.waitForResponse(r => r.url().includes(`/incidents/${incidentId}/resolve`) && r.request().method() === 'POST');
+      await resolve.click();
+      if ((await resolveResponse).status() !== 200) throw new Error('dashboard resolve failed');
+      await page.waitForFunction(async id => {
+        const rows = await fetch('/api/v1/incidents').then(r => r.json());
+        return rows.some(row => String(row.id) === id && row.status === 'RESOLVED');
+      }, incidentId, {timeout:20000});
+      report.actions = {scenario, ...action, incidentId, resolved:true};
+    }
+
     report.pages.push({
       viewport: viewport.name, theme, file, status, wsStatus,
       horizontalOverflow: overflow.scrollWidth > overflow.clientWidth,
@@ -187,4 +228,4 @@ const failures = report.pages.filter(p => p.status !== 200 || p.consoleErrors.le
 console.log(JSON.stringify({ label, pages: report.pages.length, problems: failures.map(f => ({
   page: `${f.viewport}-${f.theme}`, status: f.status, consoleErrors: f.consoleErrors.length,
   overflow: f.horizontalOverflow })) }, null, 2));
-process.exit(0);
+process.exit(failures.length || (get('exercise-actions') === 'true' && !report.actions?.resolved) ? 1 : 0);

@@ -42,6 +42,12 @@ select json_build_object(
                         where origin = '\''GITHUB'\'' and mode = '\''LIVE'\''),
   '\''inbox_rows'\'', (select count(*) from source_inbox),
   '\''outbox_pending'\'', (select count(*) from source_outbox where status = '\''PENDING'\''),
+  '\''event_identities'\'', (select coalesce(json_agg(row_to_json(t)), '\''[]'\''::json) from (
+      select i.github_event_id, i.ingestion_id, i.mode, i.received_at,
+             (select count(*) from raw_events r where r.ingestion_id=i.ingestion_id) raw_projections,
+             (select count(*) from processed_receipts p where p.ingestion_id=i.ingestion_id) processed_receipts,
+             (select count(*) from source_outbox o where o.ingestion_id=i.ingestion_id and o.status='\''SENT'\'') published
+        from source_inbox i order by i.id) t),
   '\''gaps'\'', (select count(*) from source_gaps),
   '\''collector_state'\'', (select row_to_json(c) from (
       select source, status, etag_applied, etag_candidate, last_poll_at, last_poll_success,

@@ -42,6 +42,7 @@ PHASE_NAME=""
 BASE=""
 VERSION=""
 MANIFEST=""
+CONTEXT=""
 PR_NUMBER=""
 FAULT_PLAN=""
 
@@ -52,6 +53,7 @@ usage() {
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --context)   CONTEXT="$2"; shift 2 ;;
     --out)       OUT_DIR="$2"; shift 2 ;;
     --project)   PROJECT="$2"; shift 2 ;;
     --env-file)  ENV_FILE="$2"; shift 2 ;;
@@ -451,7 +453,7 @@ cmd_release() {
   # forwarding an empty value would override it with nothing.
   "$check_script" --env-file "$ENV_FILE" --out "$OUT_DIR" \
     ${PROJECT:+--project "$PROJECT"} \
-    --version "${VERSION:-v1.0.0}" ${PR_NUMBER:+--pr "$PR_NUMBER"}
+    --context "$CONTEXT" --version "${VERSION:-v1.0.0}" ${PR_NUMBER:+--pr "$PR_NUMBER"}
   local exit_code=$?
   [ "$exit_code" -eq 0 ] && finish_gate RELEASE PASSED "$started" 0 >/dev/null \
                           || finish_gate RELEASE FAILED "$started" "$exit_code" >/dev/null

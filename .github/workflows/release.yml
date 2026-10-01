@@ -53,6 +53,18 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "candidate=${{ github.event.inputs.candidate_sha || github.sha }}" >> "$GITHUB_OUTPUT"
 
+      - name: Reject an existing public version before pushing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Asset upload is resumable separately; this workflow must never overwrite an existing tag.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" > /tmp/existing-tag.json 2>/tmp/tag-error.txt; then
+            echo "::error::tag already exists; compare the release context and resume asset verification instead of republishing"
+            exit 1
+          fi
+          grep -q 'HTTP 404' /tmp/tag-error.txt || { cat /tmp/tag-error.txt; exit 1; }
+
       - name: Build the candidate image from the locked inputs
         # Maven Central occasionally answers 5xx while the build resolves dependencies (observed
         # 2026-10-01: 502 Bad Gateway on net.bytebuddy:byte-buddy-parent). The build is
@@ -113,21 +125,6 @@ jobs:
           digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY/$IMAGE_NAME:$version" | cut -d@ -f2)
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
-      - name: Make the package public
-        # A new GHCR package can default to private. Try to set it public here; the pull below is
-        # the real test, and a failure is reported rather than hidden.
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          package="${IMAGE_NAME##*/}"
-          if gh api --method PATCH "/user/packages/container/$package" \
-               -f visibility=public > /tmp/visibility.json 2>&1; then
-            echo "package visibility set to public"
-          else
-            echo "::warning::could not change package visibility with the workflow token:"
-            cat /tmp/visibility.json
-          fi
-
       - name: Verify an anonymous pull by digest
         run: |
           digest="${{ steps.push.outputs.digest }}"
@@ -141,9 +138,7 @@ jobs:
           Recovery (the image itself is already pushed; only visibility is missing):
             1. GitHub UI: https://github.com/users/JeremyL691/packages/container/driftwatch-tower/settings
                -> Danger Zone -> Change visibility -> Public.
-            2. Or with a token that has the write:packages scope:
-               gh api --method PATCH /user/packages/container/driftwatch-tower -f visibility=public
-            3. Then re-run the verification: ./scripts/verify.sh release --out .execution/verify/p7-release --version v1.0.0 --pr 1
+            2. Re-run this workflow with the same accepted candidate and identity.
           The workflow token (packages: write) can push but may not be allowed to change visibility.
           EOF
             exit 1
@@ -160,7 +155,7 @@ jobs:
             echo "release $version already exists; leaving it untouched"
             exit 0
           fi
-          gh release create "$version" \
+          gh release create "$version" --prerelease \
             --title "DriftWatch Tower $version" \
             --notes "Candidate commit: $sha
           Image: $REGISTRY/$IMAGE_NAME@${{ steps.push.outputs.digest }}

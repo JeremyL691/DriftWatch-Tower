@@ -32,6 +32,20 @@ TRIVY_IMAGE="aquasec/trivy:0.58.1"
 
 docker image inspect "$IMAGE" >/dev/null 2>&1 || die "image $IMAGE not found; build it before packaging"
 
+[ -n "$MANIFEST" ] && [ -f "$MANIFEST" ] || die "packaging requires a frozen --manifest"
+python3 - "$MANIFEST" "$IMAGE" <<'PYFREEZE'
+import importlib.util, json, pathlib, subprocess, sys
+spec = importlib.util.spec_from_file_location('context', pathlib.Path('scripts/release-context.py'))
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+frozen = json.load(open(sys.argv[1]))
+assert module.tree_hash(module.ROOTS) == frozen['source_tree_hash'], 'application tree changed'
+assert module.tree_hash(frozen['config_files']) == frozen['config_hash'], 'configuration changed'
+assert module.tree_hash(['pom.xml', '.mvn/wrapper/maven-wrapper.properties']) == frozen['dependency_lock_hash'], 'dependencies changed'
+image = subprocess.check_output(['docker', 'image', 'inspect', '--format', '{{.Id}}', sys.argv[2]], text=True).strip()
+assert image == frozen['image_id'], 'packaging image differs from frozen image'
+PYFREEZE
+[ $? -eq 0 ] || die "frozen candidate validation failed"
+
 # Identity of the artifact that will actually be shipped.
 image_id="$(docker image inspect --format '{{.Id}}' "$IMAGE")"
 image_created="$(docker image inspect --format '{{.Created}}' "$IMAGE")"
@@ -61,7 +75,16 @@ print('SBOM components:', len(data.get('components') or []))" "$OUT_DIR/driftwat
 
 # Deployment surface: the same files a self-hoster needs, copied from the frozen tree.
 mkdir -p "$OUT_DIR/bundle/scripts/lib" "$OUT_DIR/bundle/docs"
-cp "$DWT_REPO_ROOT/docker-compose.yml" "$OUT_DIR/bundle/"
+[ -n "$MANIFEST" ] && [ -f "$MANIFEST" ] || die "packaging requires a frozen --manifest"
+python3 - "$DWT_REPO_ROOT/docker-compose.yml" "$OUT_DIR/bundle/docker-compose.yml" "$VERSION" <<'PYCOMPOSE'
+from pathlib import Path
+import sys
+source, target, version = sys.argv[1:]
+text = Path(source).read_text()
+assert text.count('    build: .\n') == 1
+text = text.replace('    build: .\n', '').replace('${DWT_APP_IMAGE:-driftwatch-tower:local}', '${DWT_APP_IMAGE:-ghcr.io/jeremyl691/driftwatch-tower:' + version + '}')
+Path(target).write_text(text)
+PYCOMPOSE
 cp "$DWT_REPO_ROOT/.env.example" "$OUT_DIR/bundle/"
 cp "$DWT_REPO_ROOT/scripts/selfhost.sh" "$OUT_DIR/bundle/scripts/"
 cp "$DWT_REPO_ROOT/scripts/lib/common.sh" "$OUT_DIR/bundle/scripts/lib/"
@@ -96,6 +119,8 @@ payload = {
         "registry": "ghcr.io/jeremyl691/driftwatch-tower",
         "published_digest": None,  # filled in after the registry push verifies anonymously
     },
+    "content_identity": source.get("content_identity"),
+    "freeze_manifest": manifest_path,
     "source_tree_hash": source.get("source_tree_hash"),
     "config_hash": source.get("config_hash"),
     "dependency_lock_hash": source.get("dependency_lock_hash"),

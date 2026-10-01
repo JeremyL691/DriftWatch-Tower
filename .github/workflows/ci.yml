@@ -19,6 +19,8 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Release tool false-positive regressions
+        run: python3 -m unittest discover -s scripts/tests -v
       - name: Run unit and topology tests
         run: ./mvnw test -Dtest='!*IntegrationTest' -Dsurefire.failIfNoSpecifiedTests=false --batch-mode
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
