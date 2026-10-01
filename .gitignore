@@ -38,6 +38,6 @@ HELP.md
 __pycache__/
 *.pyc
 
-# Node dev-test dependencies (Playwright for browser acceptance)
+# Node dev-test dependencies (Playwright for browser acceptance). The lockfile is committed:
+# the browser gate must run on a pinned Playwright version, not on whatever resolves today.
 node_modules/
-package-lock.json

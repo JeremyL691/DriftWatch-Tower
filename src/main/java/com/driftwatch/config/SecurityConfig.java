@@ -73,6 +73,9 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness")
                         .permitAll()
+                        // Browsers probe the site icon on every page load; denying it shows up as
+                        // a console error on platforms that fetch it. The icon is a public asset.
+                        .requestMatchers("/favicon.ico", "/apple-touch-icon.png").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/events", "/api/v1/events/batch")
                         .hasAnyAuthority("ROLE_ADMIN", "INGEST")
                         // The socket path is guarded by the ticket handshake interceptor instead:

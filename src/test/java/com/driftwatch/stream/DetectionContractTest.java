@@ -427,6 +427,48 @@ class DetectionContractTest {
     }
 
     @Test
+    void bootstrapBackfillTriggersNoRealtimeDetector() {
+        // Guide 4.1: BOOTSTRAP only persists and observes schema. A backfilled historical event is
+        // not a late arrival, a repeated payload is not a live duplicate, and an out-of-range value
+        // in the past is not a live quality signal; a fresh install must not open incidents for
+        // backfill. The events themselves are still kept and still report SKIPPED_MODE.
+        try (Driver driver = driver(Map.of(NULL_TYPE, ASK_NUMBER))) {
+            Instant now = Instant.now();
+            Instant old = now.minus(Duration.ofHours(30));
+            String payload = "{\"bid\":1.0}";
+
+            // 1. an old event that a LIVE pipeline would flag as LATE
+            driver.pipeEnvelope(envelope("boot-late", NULL_TYPE, old, payload));
+            // 2. the same event_id and payload again, which a LIVE pipeline would flag as DUPLICATE
+            driver.pipeEnvelope(envelope("boot-late", NULL_TYPE, old, payload));
+            // 3. a value that violates the configured range/format rules
+            driver.pipeEnvelope(envelope("boot-range", NULL_TYPE, old, "{\"bid\":-5.0}"));
+
+            List<KeyValue<String, ProcessedEvent>> results = driver.output();
+            assertThat(results).as("backfill is still persisted").hasSize(3);
+            assertThat(results).allSatisfy(r -> {
+                assertThat(r.value.windowEvaluation().outcome())
+                        .isEqualTo(WindowEvaluation.Outcome.SKIPPED_MODE);
+                assertThat(r.value.alerts()).isEmpty();
+                assertThat(r.value.qualityStatus()).isEqualTo("OK");
+            });
+        }
+    }
+
+    private RawEnvelope envelope(String eventId, String eventType, Instant timestamp, String payloadJson) {
+        Map<String, Object> payload;
+        try {
+            payload = objectMapper.readValue(payloadJson, new com.fasterxml.jackson.core.type.TypeReference<>() {});
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        return new RawEnvelope(RawEnvelope.CONTRACT_VERSION, UUID.randomUUID(),
+                new DataEvent(eventId, SOURCE, eventType, timestamp, payload),
+                Instant.now(), RawEnvelope.Origin.GITHUB, RawEnvelope.Mode.BOOTSTRAP,
+                "gh-" + eventId, null);
+    }
+
+    @Test
     void qualityStatusFollowsTheDocumentedPrecedence() {
         try (Driver driver = driver(Map.of())) {
             Instant ts = Instant.now().truncatedTo(ChronoUnit.MINUTES);
