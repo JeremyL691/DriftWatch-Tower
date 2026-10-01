@@ -5,8 +5,10 @@
 #   scripts/verify.sh unit      --out DIR
 #   scripts/verify.sh sca       --out DIR [--image IMAGE]
 #   scripts/verify.sh compose   --project NAME --env-file FILE --out DIR [--keep] [--no-build]
-#   scripts/verify.sh phase P2|P3|P4|P5 --project NAME --env-file FILE --out DIR
-#   scripts/verify.sh load --rate N --duration SECONDS --project NAME --env-file FILE --out DIR
+#   scripts/verify.sh phase P2|P3|P4|P5|P5b|P5c|P6 --project NAME --env-file FILE --out DIR [--base URL]
+#   scripts/verify.sh freeze    --out DIR [--image IMAGE]
+#   scripts/verify.sh load      --rate N --duration SECONDS --project NAME --env-file FILE --out DIR
+#   scripts/verify.sh package   --out DIR [--image IMAGE] [--version TAG] [--manifest FILE]
 #   scripts/verify.sh soak-start --duration SECONDS --run-id ID --project NAME --env-file FILE --out DIR
 #   scripts/verify.sh soak-status --run-id ID
 #   scripts/verify.sh soak-resume --run-id ID
@@ -37,6 +39,8 @@ DURATION=""
 RUN_ID=""
 PHASE_NAME=""
 BASE=""
+VERSION=""
+MANIFEST=""
 
 usage() {
   sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
@@ -53,6 +57,8 @@ while [ $# -gt 0 ]; do
     --duration)  DURATION="$2"; shift 2 ;;
     --run-id)    RUN_ID="$2"; shift 2 ;;
     --base)      BASE="$2"; shift 2 ;;
+    --version)   VERSION="$2"; shift 2 ;;
+    --manifest)  MANIFEST="$2"; shift 2 ;;
     --keep)      KEEP=1; shift ;;
     --no-build)  NO_BUILD=1; shift ;;
     --help|-h)   usage ;;
@@ -375,10 +381,44 @@ cmd_load() {
     die "the load harness lands with P6.1 ($check_script)"
   fi
   "$check_script" --rate "$RATE" --duration "$DURATION" --project "$PROJECT" \
-    --env-file "$ENV_FILE" --out "$OUT_DIR"
+    --env-file "$ENV_FILE" --out "$OUT_DIR" ${BASE:+--base "$BASE"}
   local exit_code=$?
   [ "$exit_code" -eq 0 ] && finish_gate LOAD PASSED "$started" 0 >/dev/null \
                           || finish_gate LOAD FAILED "$started" "$exit_code" >/dev/null
+  exit "$exit_code"
+}
+
+# -------------------------------------------------------------------- freeze
+cmd_freeze() {
+  local started; started="$(utc_now)"
+  local script="$DWT_REPO_ROOT/scripts/phases/freeze-candidate.sh"
+  [ -x "$script" ] || die "freeze tooling missing: $script"
+  "$script" --out "$OUT_DIR" --image "${IMAGE:-$APP_IMAGE_DEFAULT}"
+  exit $?
+}
+
+# ------------------------------------------------------------------ package
+# Builds the release artifacts for the frozen candidate and installs them from the artifacts
+# alone in a fresh project (gate G15).
+cmd_package() {
+  local started; started="$(utc_now)"
+  require_docker
+  require_python
+  local artifacts="$OUT_DIR/artifacts"
+  local build_script="$DWT_REPO_ROOT/scripts/phases/package-release.sh"
+  local check_script="$DWT_REPO_ROOT/scripts/phases/package-check.sh"
+  if [ ! -x "$build_script" ] || [ ! -x "$check_script" ]; then
+    finish_gate PACKAGE NOT_IMPLEMENTED "$started" 2 >/dev/null
+    die "packaging lands with P6.1 ($build_script, $check_script)"
+  fi
+  "$build_script" --out "$artifacts" --image "${IMAGE:-$APP_IMAGE_DEFAULT}" --version "${VERSION:-v1.0.0}" \
+    ${MANIFEST:+--manifest "$MANIFEST"} > "$OUT_DIR/package-release.log" 2>&1 \
+    || { finish_gate PACKAGE FAILED "$started" 1 >/dev/null; fail "release packaging failed; see $OUT_DIR/package-release.log"; }
+  "$check_script" --out "$OUT_DIR" --artifacts "$artifacts" --version "${VERSION:-v1.0.0}" \
+    > "$OUT_DIR/package-check.log" 2>&1
+  local exit_code=$?
+  [ "$exit_code" -eq 0 ] && finish_gate PACKAGE PASSED "$started" 0 >/dev/null \
+                          || finish_gate PACKAGE FAILED "$started" "$exit_code" >/dev/null
   exit "$exit_code"
 }
 
@@ -414,7 +454,9 @@ case "$COMMAND" in
   sca)       cmd_sca ;;
   compose)   cmd_compose ;;
   phase)     cmd_phase ;;
+  freeze)    cmd_freeze ;;
   load)      cmd_load ;;
+  package)   cmd_package ;;
   soak-start|soak-status|soak-resume) cmd_soak "$COMMAND" ;;
   release)   cmd_release ;;
   *)         usage ;;
