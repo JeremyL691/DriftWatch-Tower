@@ -25,6 +25,7 @@ mkdir -p "$OUT_DIR"
 started="$(utc_now)"
 
 require_python
+require_java_21
 IMAGE="${IMAGE:-driftwatch-tower:local}"
 
 python3 - "$DWT_REPO_ROOT" "$OUT_DIR" "$IMAGE" "$started" <<'PY'
