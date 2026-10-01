@@ -736,6 +736,23 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 
 第三次冻结（当前候选）：`.execution/runs/p7-freeze/manifest.json` —— `git_sha=573154b9`、`source_tree_hash=bb6d14e7c7c02ed0…`（204 文件）、`image_id=sha256:2901be88df52de693b892825700ab8101fd72efb7bb944ad639b6018ad77d0d3`、**`content_identity=e2029fc2…`→`1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`**。本地验收环境镜像 pin 同步更新。门禁链（P2→P3→P4→P5→P5b→P5c→P6→UNIT→load→package）已在新候选上重跑，随后自动启动新的 24 小时窗口。
 
+### 2026-10-01 P6.2 门禁复跑：P5c 通过、P3/P4 一次瞬时失败（已定位为构建产物重复，非代码缺陷）
+
+在候选 `573154b9` 上复跑门禁的结果：
+
+| 门禁 | 结果 | 证据 |
+|---|---|---|
+| UNIT | PASSED（174/0/0/0） | `.execution/verify/p7-unit/` |
+| PHASE-P2（G03/G04） | PASSED（174/0/0/0，DetectionContractTest 23） | `.execution/verify/p7-P2/` |
+| PHASE-P3（G05-G07） | **FAILED 一次**：15 errors，全部是 `ApplicationContext` 加载失败，根因 `FlywayException: Found more than one migration with version 10`，offenders 为 `target/classes/db/migration/V10__dead_letter_replays 2.sql` 与 `V10__dead_letter_replays.sql` | `.execution/verify/p7-P3/mvn-phase-p2.log` |
+| PHASE-P4（G08/G09） | 同一次失败（同因，context 复用） | `.execution/verify/p7-P4/` |
+| PHASE-P5（G10） | PASSED（174/0/0/0） | `.execution/verify/p7-P5/` |
+| PHASE-P5b（G11） | PASSED | `.execution/verify/p7-P5b/` |
+| PHASE-P5c（G12） | **PASSED：8 抓取、`problems: []`、a11y 违规 0** | `.execution/verify/p7-P5c/` |
+| PHASE-P6（G13） | PASSED（Trivy 无 HIGH/CRITICAL、无密钥/凭据文件） | `.execution/verify/p7-P6/` |
+
+对 P3/P4 的判定：**重复文件只出现在 `target/classes`，不在 `src`**（`src/main/resources/db/migration/` 只有 12 个正确版本、`git ls-files` 一致；若 `src` 里有未跟踪文件，`assert_clean_git` 会先失败而不会跑测试），且**同一套件在其前后的 P2/P5/UNIT 三次运行都 174/0/0/0 通过**，之后 `target` 重建（17:39Z）再未复现。仓库内没有任何脚本或测试会写迁移文件，compose 也没有把仓库挂进容器。因此判定为**构建产物层面的瞬时重复**（同一 `target` 目录在两轮 `mvnw clean test` 交接时的拷贝竞态），非代码缺陷；仍按「失败不掩盖」原则记录在此，并在门禁链结束后**单独重跑 P3 与 P4** 以取得干净记录。防御性改进（若再复现）：在门禁里加一条 preflight，断言迁移目录每个版本只有一个文件，让这类产物问题以明确信息快速失败，而不是 15 条 context 错误。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
