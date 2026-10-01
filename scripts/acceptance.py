@@ -289,6 +289,12 @@ def cmd_soak_start(args: argparse.Namespace) -> int:
         print(f"run {args.run_id} already exists with status {existing.get('status')}; "
               f"use soak-status or soak-resume")
         return 0
+    if not args.project:
+        print("soak-start requires --project NAME", file=sys.stderr)
+        return 2
+    if not os.path.exists(args.env_file):
+        print(f"soak-start: env file not found: {args.env_file}", file=sys.stderr)
+        return 2
     os.makedirs(directory, exist_ok=True)
     env = load_env(args.env_file)
     state = {
@@ -628,6 +634,12 @@ def cmd_soak_resume(args: argparse.Namespace) -> int:
     print(f"starting a fresh full run {new_run_id} instead of stitching the old one")
     forwarded = argparse.Namespace(**vars(args))
     forwarded.run_id = new_run_id
+    # Carry the original run's placement forward. Taking the CLI defaults here would silently
+    # point the replacement run at a different project, env file or port than the stack it is
+    # supposed to watch, and the monitor would sample nothing.
+    forwarded.project = state.get("project") or args.project
+    forwarded.env_file = state.get("env_file") or args.env_file
+    forwarded.fault_plan = state.get("fault_plan_file") or args.fault_plan
     # A resume restarts the full planned window; keep the original duration unless overridden.
     forwarded.duration = args.duration or int(state.get("duration_seconds", 86400))
     cmd_soak_start(forwarded)
