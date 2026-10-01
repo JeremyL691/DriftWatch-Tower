@@ -10,15 +10,15 @@
 | handoff_date | 2026-09-30，America/Los_Angeles |
 | product_goal_status | RUNNING，P0-P2 完成，P3 进行中 |
 | current_phase | P5 |
-| current_task | P5.1 |
-| next_action | P5.1：incident 关联接入 sink、定时健康 scheduler（无副作用 GET）、采集器状态与 G10 |
+| current_task | P5.2 |
+| next_action | P5.2：第7.3/7.4节指标与日志、retention 批处理、备份/新卷恢复与 G11 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（本地；尚未推送） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | fbba4d05（P4 完成；P5-P7 未完成，仍不能作为发布候选） |
+| candidate_sha | 4b111417（P5.1 完成；P5.2-P7 未完成，仍不能作为发布候选） |
 | source_tree_hash | 8c8797ad9fe505c8e12d0f797264e4cb15de7fc5c00ffddce25c61cdd023570c（src+pom+Dockerfile+compose） |
 | candidate_image_id / public_digest | 本地镜像 sha256:1a419f6a…（仅本地验证，未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
@@ -62,8 +62,8 @@
 | P3.3 | 历史升级与回滚演练 | PASSED | G07 PASSED；真实旧版本镜像 + 升级/桥接/回滚演练；`.execution/runs/p33-upgrade/` |
 | P4.1 | GitHub 持久 poller | PASSED | G08 PASSED（152/0/0/0，GithubPollerIntegrationTest 11 项）；`.execution/verify/p4-gate1/` |
 | P4.2 | 官方真实数据全链路 | PASSED | G09 PASSED；官方源无 token，bootstrap 199 事件 + 启动后新增 LIVE 事件 + 重启检查点保持；`.execution/runs/p42-smoke/` |
-| P5.1 | incident / scheduler | RUNNING | - |
-| P5.2 | 指标、保留、备份恢复 | NOT_STARTED | - |
+| P5.1 | incident / scheduler | PASSED | G10 PASSED（163/0/0/0；IncidentLifecycle 6、Scheduler 2、CollectorStatus 3）；`.execution/verify/p5-gate3/` |
+| P5.2 | 指标、保留、备份恢复 | RUNNING | - |
 | P5.3 | Dashboard 操作与响应式 | NOT_STARTED | 设计 3/2/8 已确认 |
 | P6.1 | 冻结候选、短门槛、负载 | NOT_STARTED | - |
 | P6.2 | 24 小时真实验收 | NOT_STARTED | - |
@@ -87,7 +87,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G07 升级兼容 | PASSED | SHA 7217ff67；PHASE-P3 gate 141 tests / 0 fail / 0 skip；演练：V1-V7 checksum 不变、5 条旧行保留且可查（legacy-db 身份）、2 条真实 backlog 桥接（稳定 legacy-kafka 身份）、仅回滚镜像被 Flyway 拒绝而「备份恢复 + 旧镜像」可用；`.execution/runs/p33-upgrade/` |
 | G08 来源协议 | PASSED | SHA fbba4d05；PHASE-P4 gate 152 tests / 0 fail / 0 skip；GithubPollerIntegrationTest 11 项覆盖 304/403+Retry-After/429/401/404/500+恢复/超时/坏 JSON/跨页重叠/bootstrap 与 live 模式/重启恢复；`.execution/verify/p4-gate1/` |
 | G09 官方真实源 | PASSED | 官方 api.github.com 无 token；bootstrap 199 条真实事件（mode=BOOTSTRAP、SKIPPED_MODE）、启动后新增 16162901734（mode=LIVE）经 inbox→outbox→Kafka→receipt→raw→API 全链路、重启后检查点保持不重摄；`.execution/runs/p42-smoke/` |
-| G10 操作闭环 | NOT_RUN | - |
+| G10 操作闭环 | PASSED | SHA 4b111417；PHASE-P5 gate 163 tests / 0 fail / 0 skip；incident 关联并发唯一、resolve 语义与自动解决、ack 幂等/409、静默 scheduler 单次转换、GET 无副作用；`.execution/verify/p5-gate3/` |
 | G11 保留与恢复 | NOT_RUN | - |
 | G12 浏览器与四断点 | NOT_RUN | - |
 | G13 安全与漏洞 | NOT_RUN | - |
@@ -251,6 +251,14 @@ P3.1 之后仍需完成（下一动作）：
 - G08（`.execution/verify/p4-gate1/`，152 tests / 0 fail / 0 err / 0 skip）：本地 stub 覆盖 304 游标不动、403+Retry-After 退避并记 BUDGET_EXHAUSTED 缺口、429 指数退避、401/404 进入 ERROR 且不回显 token、500 后退避并在下一轮恢复、8s 慢响应超时、坏 JSON 失败且下一轮可用、跨页重叠不重复入库、重复轮询不新增、BOOTSTRAP→LIVE 模式记录、重启恢复（失败轮不推进检查点）。
 - G09（`.execution/runs/p42-smoke/`）：官方 `api.github.com` 无 token 只读证据（ETag、x-poll-interval、rate-limit 头）；bootstrap 轮 mode=BOOTSTRAP 摄取 199 条真实事件（窗口评估 SKIPPED_MODE），outbox 199 条全部 SENT；抽样事件 16156955211 全链路可查（raw origin=GITHUB、receipt、`GET /api/v1/events/{ingestionId}`）；重启后 inbox 仍 199、etag_applied 保持、无重复摄取；随后轮询发现启动后新增事件 16162901734（created 06:02:59Z，mode=LIVE，run #4 LIVE records_seen=199/new=1 APPLIED），raw 行 source=github:apache/kafka；QUIET 轮（304）证明无变化时不推进游标。速率预算按 PT2M 轮询（约 30 次/小时）低于未认证 60 次/小时上限；生产默认仍为 5 分钟。
 - 观察：BOOTSTRAP 事件按契约不参与实时窗口，因此其 baseline_status 为空（未执行基线检查），LIVE 事件才带 APPLIED/PENDING。
+
+### 2026-10-01 P5.1 incident、定时健康与采集器状态（PASSED，G10）
+
+- incident 关联（SHA 4b111417）：`AlertIncidentService` 只对非 INFO 告警按 source/event_type 关联最近 5 分钟内的 OPEN incident，使用 PostgreSQL advisory transaction lock 串行化同 scope 关联（并发告警只产生一个 incident、每条告警只关联一次）；INFO 告警只留在 alerts 以免重复提示制造 incident 洪水；sink 在同一事务内关联它持久化的告警。
+- 生命周期：`resolveIncident` 事务内解决其全部未解决告警；`resolveAlert` 在最后一条告警解决时自动解决 incident；`acknowledgeAlert` 幂等（重复保持原时间），对已解决告警 acknowledge 返回 409；控制器改走服务层。
+- 定时健康：`SourceHealthService.list()/get()` 恢复为纯读（GET 不再刷新、不再产生告警）；新增 30s `SourceHealthScheduler`（可注入 Clock）执行刷新，静默来源在没有 Dashboard 流量时仍产生 STALE 转换；sink 只刷新受影响来源（不再每次事件全表扫描）；转换告警每次失联仅一次、恢复后可再次告警（单元测试覆盖）。
+- 采集器状态：`GET /api/v1/sources/collectors` 返回 last_poll_at/last_success_at/next_poll_at/last_event_at/upstream_lag_seconds/lost/backoff_until/etag_applied/pending_outbox/open_gaps/last_error；`lost` 仅在 last_poll_success 超过 max(15 分钟, 2×poll interval) 时为真，成功但无新事件为 QUIET（依据 last_event_at 与 last_poll_success 关系），BACKOFF/ERROR 单独呈现。
+- 测试：`SourceHealthSchedulerTest`（每次失联一次告警、恢复后二次告警、读无副作用）、`IncidentLifecycleIntegrationTest`（关联、并发唯一、resolve/自动解决、ack 幂等与 409、health/dashboard/alerts 反复 GET 不新增行）、`CollectorStatusServiceTest`（QUIET/LOST 阈值/积压与缺口）；旧 `SourceHealthServiceTest` 更新为纯读契约。
 
 后续每条保留：
 
