@@ -9,7 +9,7 @@
 #   scripts/verify.sh freeze    --out DIR [--image IMAGE]
 #   scripts/verify.sh load      --rate N --duration SECONDS --project NAME --env-file FILE --out DIR
 #   scripts/verify.sh package   --out DIR [--image IMAGE] [--version TAG] [--manifest FILE]
-#   scripts/verify.sh soak-start --duration SECONDS --run-id ID --project NAME --env-file FILE --out DIR
+#   scripts/verify.sh soak-start --duration SECONDS --run-id ID --project NAME --env-file FILE --out DIR [--fault-plan FILE]
 #   scripts/verify.sh soak-status --run-id ID
 #   scripts/verify.sh soak-resume --run-id ID
 #   scripts/verify.sh soak-report --run-id ID [--out DIR]
@@ -43,6 +43,7 @@ BASE=""
 VERSION=""
 MANIFEST=""
 PR_NUMBER=""
+FAULT_PLAN=""
 
 usage() {
   sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
@@ -61,6 +62,7 @@ while [ $# -gt 0 ]; do
     --base)      BASE="$2"; shift 2 ;;
     --version)   VERSION="$2"; shift 2 ;;
     --pr)        PR_NUMBER="$2"; shift 2 ;;
+    --fault-plan) FAULT_PLAN="$2"; shift 2 ;;
     --manifest)  MANIFEST="$2"; shift 2 ;;
     --keep)      KEEP=1; shift ;;
     --no-build)  NO_BUILD=1; shift ;;
@@ -433,6 +435,7 @@ cmd_soak() {
   [ -n "$DURATION" ] && extra+=(--duration "$DURATION")
   python3 "$DWT_REPO_ROOT/scripts/acceptance.py" "$sub" \
     --run-id "${RUN_ID:-}" ${extra[@]+"${extra[@]}"} \
+    ${FAULT_PLAN:+--fault-plan "$FAULT_PLAN"} \
     --project "${PROJECT:-}" --env-file "$ENV_FILE" --out "$OUT_DIR"
 }
 
