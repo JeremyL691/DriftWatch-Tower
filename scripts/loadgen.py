@@ -33,6 +33,9 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 SAMPLE_INTERVAL = 5.0
+# Every consumer group this stack owns: the Streams topology and the database sink. The sink is
+# what actually drains into processed rows, so its lag is the one that must reach zero.
+LAG_GROUPS = ["driftwatch-streams-v1", "driftwatch-sink", "driftwatch-dlt-projection"]
 
 
 def utc_now() -> str:
@@ -135,23 +138,27 @@ def psql(project: str, env_file: str, sql: str) -> str:
                    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc ' + json.dumps(sql)).strip()
 
 
-def consumer_lag(project: str, env_file: str, group: str) -> tuple[int, list[str]]:
-    try:
-        output = compose(project, env_file, "exec", "-T", "kafka", "/opt/kafka/bin/kafka-consumer-groups.sh",
-                         "--bootstrap-server", "localhost:29092", "--describe", "--group", group)
-    except Exception as error:
-        return -1, [str(error)]
+def consumer_lag(project: str, env_file: str, groups: list[str]) -> tuple[int, list[str]]:
+    """Total lag across every consumer group this stack owns."""
     total = 0
-    lines = []
-    for line in output.splitlines():
-        parts = line.split()
-        if len(parts) >= 6 and parts[0] != "GROUP":
-            try:
-                lag = int(parts[5])
-            except ValueError:
-                continue
-            total += lag
-            lines.append(line.strip())
+    lines: list[str] = []
+    for group in groups:
+        try:
+            output = compose(project, env_file, "exec", "-T", "kafka",
+                             "/opt/kafka/bin/kafka-consumer-groups.sh",
+                             "--bootstrap-server", "localhost:29092", "--describe", "--group", group)
+        except Exception as error:
+            lines.append(f"{group}: {error}")
+            total = -1
+            continue
+        for line in output.splitlines():
+            parts = line.split()
+            if len(parts) >= 6 and parts[0] != "GROUP":
+                try:
+                    total += int(parts[5])
+                except ValueError:
+                    continue
+                lines.append(line.strip())
     return total, lines
 
 
@@ -328,7 +335,7 @@ def main() -> int:
     lag_lines: list[str] = []
     while time.perf_counter() - drain_started < 600:
         processed = int(psql(args.project, args.env_file, "select count(*) from processed_receipts") or 0)
-        lag_total, lag_lines = consumer_lag(args.project, args.env_file, "driftwatch-streams-v1")
+        lag_total, lag_lines = consumer_lag(args.project, args.env_file, LAG_GROUPS)
         if processed == previous and lag_total <= 0:
             stable += 1
             if stable >= 3:
@@ -339,7 +346,7 @@ def main() -> int:
         time.sleep(5)
     report["drain"] = {
         "seconds": round(time.perf_counter() - drain_started, 1),
-        "consumer_group": "driftwatch-streams-v1",
+        "consumer_groups": LAG_GROUPS,
         "lag_total": lag_total,
         "lag_detail": lag_lines,
     }
