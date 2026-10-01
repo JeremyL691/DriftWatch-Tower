@@ -30,7 +30,9 @@ def main() -> int:
     classes = []
 
     pattern = os.path.join(args.reports, "TEST-*.xml")
-    for path in sorted(glob.glob(pattern), key=os.path.getmtime):
+    # Newest first so a retry's report wins over the attempt it replaced, which is what the
+    # docstring promises; ascending order with a "seen" set would keep the oldest instead.
+    for path in sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True):
         root = ET.parse(path).getroot()
         name = root.get("name")
         if name in seen:
