@@ -31,6 +31,8 @@
 
 > **给每小时自动化/接手者的醒目标记**：`automation-82c729b4` 的提示词仍写死旧 run id `20261001T145553Z-soak24`（已 FAILED）、旧候选 `8a798a6e`、旧 content identity `e574ffcf…`、旧制品目录 `p61-package-final3` 与旧 manifest `p61-freeze`。**当前有效 run 是 `20261001T182403Z-soak24`，候选 `573154b9`（HEAD 其后代），content identity `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`，制品目录 `.execution/verify/p7-package2`，manifest `.execution/runs/p7-freeze/manifest.json`。** 自动化提示词无法在本会话修改（本会话工具集只有 CronList，无 CronUpdate/CronCreate；automations 存于服务端，不在本地 DB）——但它在本会话中执行、携带完整历史，因此执行时**必须**以本标记与本节为准：不要为旧 run id 启动新窗口（`soak-start` 也会因存在存活 runner 而拒绝），改用动态发现：读 `.execution/soak/*/state.json` 取 `status=RUNNING` 的那个 run id，并把上表「active_soak_run」的值当作当前 run。用户可在 Automations 页面把提示词中的旧值一次性替换为上述新值。
 
+> **陷阱警告（防止误记）**：旧 run `20261001T145553Z-soak24` 的 `faults.jsonl` 里**已有一条 completed 的 2h 故障**（它死于字段路径缺陷前的自身计划）。它是**旧窗口**的证据，**不能**用来给当前窗口做「重启恢复对比」。当前窗口的三次故障时间：2h → **2026-10-01T20:24:03Z**、8h → **2026-10-02T02:24:03Z**、16h → **2026-10-02T10:24:03Z**；只有在 `.execution/soak/20261001T182403Z-soak24/faults.jsonl` 里看到对应故障 `completed` 之后，才可用 `scripts/poller-state.sh --project dwt-soak --env-file .execution/soak.env` 与 `.execution/verify/p61-soak-prefault-baseline.json`（已更新为本窗口的故障前基线：BOOTSTRAP 1 / 96 事件 / inbox 96 / failures 0）做对比，并把**前后两组数字**写进状态文件。在 20:24:03Z 之前，当前窗口**没有任何**故障证据，不得记录任何「故障后」数字。
+
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
 
 ## 收尾程序（G16 之后，按序执行，勿跳步）
