@@ -67,7 +67,7 @@
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
 | P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
 | P6.1 | 冻结候选、短门槛、负载 | PASSED | G13/G14/G15 PASSED；冻结 SHA 791c75f、镜像 sha256:4f064add…；100/s×1800s 全部指标达标；见 `.execution/runs/p61-freeze/`、`.execution/verify/p61-load2/`、`.execution/verify/p61-package2/` |
-| P6.2 | 24 小时真实验收 | RUNNING | run 20261001T083508Z-soak24；采样与受控故障计划已写入 state；G16 待结束后判定 |
+| P6.2 | 24 小时真实验收 | RUNNING | run 20261001T103023Z-soak24（PID 85137，镜像 sha256:1f915abc…，2026-10-01T10:30:23Z 起，预计 2026-10-02T10:30:23Z 结束）；2h/8h/16h 受控故障已排程；G16 待结束后用 `soak-report` 判定 |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
 | P7.2 | 公共 Release / GHCR | NOT_STARTED | - |
 | P7.3 | 匿名安装及最终报告 | NOT_STARTED | - |
@@ -94,7 +94,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G13 安全与漏洞 | PASSED | SHA 791c75f；Trivy 0.58.1，DB UpdatedAt 2026-10-01T01:24:14Z；依赖树与运行时镜像 0 HIGH/CRITICAL，镜像与 tracked 树 0 secret，镜像内无凭证文件；`.execution/verify/p61-g13c/` |
 | G14 100/s、30分钟 | PASSED | SHA 791c75f（镜像 sha256:4f064add…）；180000/180000 offer 于 1800.0s 内发出（100.0/s），accepted 180000、failed 0；ack p95 12.4ms（≤1s，p99 43ms）、commit p95 134ms（≤5s，180000 样本，直方图差分）；账本 180100 accepted = 180100 processed = 180100 raw、0 未确认、0 DLT、0 孤儿；三组 consumer lag 归零用时 31.3s；资源曲线 263 点/容器（app 峰值 864MiB、pg 280MiB、kafka 1015MiB）；`.execution/verify/p61-load2/` |
 | G15 候选包安装 | PASSED | SHA 791c75f；从制品安装（不构建）：镜像导出 tar sha256 校验一致、docker load 后 id 与冻结 id 相同、SBOM CycloneDX、checksums 覆盖全部制品；全新 project/volume/env（18082）启动后匿名 health 200、管理员 API 200、Bearer 摄取 202 且落库、重启后 readiness 恢复；`.execution/verify/p61-package2/` |
-| G16 连续24小时 | NOT_RUN | - |
+| G16 连续24小时 | RUNNING | run 20261001T103023Z-soak24 进行中；启动后 300 条真实 GitHub 事件（299 bootstrap + 1 live）、告警 1（来自 LIVE 事件）、incident 0、DLT 0、gap 0；判定脚本 `soak-report` 已按指南 11.1 实现并预演通过 |
 | G17 公开发布/匿名安装 | NOT_RUN | - |
 
 ## 长任务与恢复字段
