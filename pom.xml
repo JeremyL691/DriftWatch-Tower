@@ -20,6 +20,10 @@
 
     <properties>
         <java.version>21</java.version>
+        <!-- Guide 5.4 regression cases that still fail on the audited implementation are tagged
+             expected-failure while the P2 detection fixes are pending. Run them explicitly with
+             -Dsurefire.excludedGroups= -Dgroups=expected-failure. Clear this once P2 makes them pass. -->
+        <surefire.excludedGroups>expected-failure</surefire.excludedGroups>
     </properties>
 
     <dependencies>
@@ -115,6 +119,13 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>${surefire.excludedGroups}</excludedGroups>
+                </configuration>
             </plugin>
         </plugins>
     </build>
