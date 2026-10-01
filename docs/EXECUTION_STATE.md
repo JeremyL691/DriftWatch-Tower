@@ -27,7 +27,7 @@
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
 | active_soak_run | **`20261001T182403Z-soak24`（RUNNING）**：2026-10-01T18:24:03Z 启动，PID 5002（`caffeinate -i -w 5002`），86400s，预计 **2026-10-02T18:24:03Z** 结束；`state.json` 记录 `git_sha=20f948be`、镜像 `sha256:2901be88…`（= 冻结候选），app 容器同一镜像且 healthy；故障计划 2h app-restart / 8h kafka-stop / 16h db-stop；启动后 bootstrap 轮已入库真实事件、readiness 200。其余历史 run（含 20261001T145553Z-soak24）均 FAILED，仅作证据保留 |
-| external_blocker | 无 |
+| external_blocker | **预先识别的外部依赖（尚未阻塞，预计在 P7.2 出现）**：GHCR 包首次发布默认 private，而本机 `gh` 凭据作用域为 `gist, read:org, repo, workflow`（无 `read/write:packages`，实测 `gh api /user/packages` 403），环境中也没有 packages 作用域的 token（GH_TOKEN/GITHUB_TOKEN/GHCR_TOKEN/CR_PAT 全部 absent），工作流的 `GITHUB_TOKEN` 能 push 但通常不能改可见性。因此 `release.yml` 的「Make the package public」PATCH **可能失败**，紧随其后的「匿名按 digest 拉取」会如实失败并使发布 FAILED（此时镜像与 tag 已推送、Release 尚未创建，失败模式干净）。恢复（一次性）：打开 `https://github.com/users/JeremyL691/packages/container/driftwatch-tower/settings` → Danger Zone → Change visibility → Public；或用具 `write:packages` 的 token 执行 `gh api --method PATCH /user/packages/container/driftwatch-tower -f visibility=public`；然后重跑 `./scripts/verify.sh release --out .execution/verify/p7-release --version v1.0.0 --pr 1`（工作流可重入）。用户可提前点击以消除该依赖 |
 
 > **给每小时自动化/接手者的醒目标记**：`automation-82c729b4` 的提示词仍写死旧 run id `20261001T145553Z-soak24`（已 FAILED）、旧候选 `8a798a6e`、旧 content identity `e574ffcf…`、旧制品目录 `p61-package-final3` 与旧 manifest `p61-freeze`。**当前有效 run 是 `20261001T182403Z-soak24`，候选 `573154b9`（HEAD 其后代），content identity `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`，制品目录 `.execution/verify/p7-package2`，manifest `.execution/runs/p7-freeze/manifest.json`。** 自动化提示词无法在本会话修改（本会话工具集只有 CronList，无 CronUpdate/CronCreate；automations 存于服务端，不在本地 DB）——但它在本会话中执行、携带完整历史，因此执行时**必须**以本标记与本节为准：不要为旧 run id 启动新窗口（`soak-start` 也会因存在存活 runner 而拒绝），改用动态发现：读 `.execution/soak/*/state.json` 取 `status=RUNNING` 的那个 run id，并把上表「active_soak_run」的值当作当前 run。用户可在 Automations 页面把提示词中的旧值一次性替换为上述新值。
 
@@ -762,6 +762,15 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 随后 `verify.sh package` 一次 **FAILED**：`checksums do not match the shipped artifacts`（18 行，其中 1 行是 bundle 条目）。根因在**我自己本轮新加的脚本** `scripts/phases/package-release.sh`：它先对 `OUT_DIR` 算 checksums、之后才用 `tar -czf` 生成 bundle，于是 `checksums.txt` 里记录的 bundle sha256 与最终落盘的 bundle 不同（内容相同、mtime 不同）。修复：把 bundle 的生成移到 checksums 之前（先 `tar`、后 `find ... > checksums.txt`）。重跑进入全新目录：`./scripts/verify.sh package --out .execution/verify/p7-package2 --image driftwatch-tower:local --version v1.0.0 --manifest .execution/runs/p7-freeze/manifest.json` → **PASSED**（`gate.json: status PASSED, git_sha 20f948be`），镜像身份一致、匿名 health 200、API 200、ingest 202、重启恢复 true、`problems []`。即：上一轮暴露的打包缺陷已修好并用干净证据覆盖，本轮的 load 门禁（180000@100.0/s、ack p95 4.9ms、commit p95 111.8ms、drain 30.1s）与 package 门禁都是新候选上的最终记录。
 
 **第九个 24 小时 run `20261001T182403Z-soak24`**：2026-10-01T18:24:03Z 启动（PID 5002，`caffeinate -i -w 5002` 防休眠），86400s，预计 **2026-10-02T18:24:03Z** 结束；`state.json` 记录 `git_sha=20f948be`、`image.image_id=sha256:2901be88…`（与冻结候选一致），app 容器实测同一镜像且 healthy，fault plan 为 2h app-restart / 8h kafka-stop / 16h db-stop。启动即开始真实事件轮询（bootstrap 轮），此前每个窗口启动后约 1 分钟即可见数百条真实事件。本窗口是**第一个用加固后 runner 启动的窗口**（含 live-runner 拒绝与镜像归属校验），且启动前已确认全局只有这一个 runner。
+
+### 2026-10-01 发布前预检（把「24 小时后才会知道」的风险提前到现在）
+
+1. **跨平台内容身份已对齐**：CI run `36900410544`（head `573154b9`，原生 amd64）的 `Image and SCA` 任务构建镜像并上传 `content-identity` 附件，值为 `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`，与本机 arm64 冻结值**逐字节相同**（证据 `.execution/verify/p7-amd64-identity/`，含 note.txt）。即 `release.yml` 的「Assert the application content identity」不会因平台差异在发布时失败。
+2. **发布失败模式复核**：`release.yml` 的步骤顺序是 build → identity 断言 → 推送 tag/镜像 → 尝试改可见性 → **匿名按 digest 拉取（失败即 `::error::` 并使 job 失败）** → 最后才 `gh release create`。因此可见性问题的失败是干净的：镜像与 tag 已推送、Release 不创建，重跑可入。
+3. **匿名探针（当前）**：`https://ghcr.io/token?scope=repository:jeremyl691/driftwatch-tower:pull` → 403、`/v2/.../manifests/v1.0.0` → 401（包尚不存在或不可匿名访问，与预期一致，无法据此预判发布后的可见性）。
+4. **凭据作用域实测**：`gh auth status` → `gist, read:org, repo, workflow`；`gh api /user/packages` → 403「need at least read:packages」；环境无 packages 作用域 token。结合 GitHub 文档「首次发布默认 private」，判定可见性很可能需要一次人工动作（见「当前入口」的 external_blocker 与恢复命令）。
+5. **pre-fault 基线已就位**：本窗口（`20261001T182403Z-soak24`）的 2h 故障前状态已写入 `.execution/verify/p61-soak-prefault-baseline.json`（自动化读的路径）并另存 `.execution/verify/p7-soak-prefault-baseline.json`；第七窗口的旧基线保留为 `p61-soak-prefault-baseline-run7.json`。当前值：BOOTSTRAP 1 轮、真实事件 96、LIVE 0、inbox 96、outbox 0、gaps 0、failures 0（2h 故障在 20:24:03Z，届时按 `scripts/poller-state.sh` 对比）。
+6. **PR #1 状态**：OPEN、head `cb838e3c`（分支 `codex/release-v1`）、base main、`MERGEABLE`（`mergeStateStatus=UNSTABLE`，因新 head 的 CI 正在跑）；合并前置条件（head 为 `573154b9` 的后代、五 job 全绿）在 G16 通过后逐条复核。
 
 ### 后续记录要求
 
