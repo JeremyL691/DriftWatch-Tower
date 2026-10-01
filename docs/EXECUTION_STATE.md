@@ -10,15 +10,15 @@
 | handoff_date | 2026-09-30，America/Los_Angeles |
 | product_goal_status | RUNNING，P0-P2 完成，P3 进行中 |
 | current_phase | P3 |
-| current_task | P3.1 |
-| next_action | P3.1：补 IdempotencyIntegrationTest（G05 清单）与 GET /api/v1/events/{ingestionId}，然后新建 scripts/phases/phase-P3.sh 并跑 G05 |
+| current_task | P3.2 |
+| next_action | P3.2：bytes 入口校验 + 有限 sink 重试 + Kafka DLT（dead-letter-events-v1）+ 投影与运维重放，随后跑 G06 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（本地；尚未推送） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | bb13ab9（P3.1 部分；G05 未过，不能作为发布候选） |
+| candidate_sha | 45d18bce（P3.1 完成；P3.2/P3.3 未完成，仍不能作为发布候选） |
 | source_tree_hash | 8c8797ad9fe505c8e12d0f797264e4cb15de7fc5c00ffddce25c61cdd023570c（src+pom+Dockerfile+compose） |
 | candidate_image_id / public_digest | 本地镜像 sha256:1a419f6a…（仅本地验证，未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
@@ -57,8 +57,8 @@
 | P2.1 | scope / 窗口 / 漏报修复 | PASSED | G03 PASSED（101/0/0/0，DetectionContractTest 18 项）；G01 三例已转绿 |
 | P2.2 | 规则与配置覆盖 | PASSED | 规则边界/哈希规范/数组契约/OpenAPI 契约测试；126/0/0/0 |
 | P2.3 | schema 事务及基线反馈 | PASSED | G04 PASSED；ACTIVE 唯一、advisory lock、outbox 补发、激活 API；126/0/0/0 |
-| P3.1 | 摄取确认、envelope、幂等 | RUNNING | 管道/摄取/receipt 已落地（126/0/0/0）；G05 验收用例与 GET /events/{ingestionId} 待补 |
-| P3.2 | retry / DLT / replay | NOT_STARTED | - |
+| P3.1 | 摄取确认、envelope、幂等 | PASSED | G05 PASSED（132/0/0/0）；见 `.execution/verify/p3-gate1/` |
+| P3.2 | retry / DLT / replay | RUNNING | - |
 | P3.3 | 历史升级与回滚演练 | NOT_STARTED | - |
 | P4.1 | GitHub 持久 poller | NOT_STARTED | - |
 | P4.2 | 官方真实数据全链路 | NOT_STARTED | - |
@@ -82,7 +82,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G02 全新 Compose | PASSED | 无缓存拉取+构建；容器启动后 6–19s 内全部 healthy（≤120s）；3 分区 topic、Streams changelog、状态卷、仅回环暴露；`runs/20261001T022637Z-p11-g02/` |
 | G03 检测正确性 | PASSED | 已随候选重新绑定：SHA 653a7e3（含 bb13ab9 应用代码）；PHASE-P2 gate 126 tests / 0 fail / 0 skip；`.execution/verify/p2-gate6/` |
 | G04 schema 反馈 | PASSED | 已随候选重新绑定：SHA 653a7e3；PHASE-P2 gate 126 tests / 0 fail / 0 skip，SchemaTransactionIntegrationTest 4 项；`.execution/verify/p2-gate6/` |
-| G05 摄取与幂等 | NOT_RUN | - |
+| G05 摄取与幂等 | PASSED | SHA 45d18bce；PHASE-P3 gate：132 tests / 0 fail / 0 skip，IdempotencyIntegrationTest 5 + PreAckFailureTest 1 + KafkaIngestionIntegrationTest 1；`.execution/verify/p3-gate1/` |
 | G06 故障与死信 | NOT_RUN | - |
 | G07 升级兼容 | NOT_RUN | - |
 | G08 来源协议 | NOT_RUN | - |
@@ -213,7 +213,13 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 - V9 迁移：raw_events 增加 ingestion_id（旧行 legacy-db:<pk> 稳定身份）、origin/mode/window_evaluation/baseline_status、唯一索引；processed_receipts、ingestion_receipts、dead_letter_records（P3.2 用）。
 - 期间修复：demo 场景与测试改走 envelope；生产者分区键断言改为规范 key（含防碰撞断言）；sink 单测 ObjectMapper 注册 JavaTimeModule。
 
-G05 尚未通过，剩余工作（下一动作）：
+G05 已通过（`.execution/verify/p3-gate1/`，SHA 45d18bce，132 tests / 0 fail / 0 skip），新增：
+- `IdempotencyIntegrationTest`：丢失响应后同 key 重试得到同一身份且只有一个 raw row/receipt；同 key 改内容 409；两次业务重复保留两行并产生 DUPLICATE 证据；重投 ProcessedEvent 被 receipt 去重；并发同 key 得到单一身份。
+- `PreAckFailureTest`：未确认发布返回 503 且保留身份，重试按保留身份重新发布并转 CONFIRMED。
+- 测试暴露并修复：未确认 receipt 重试必须重新发布（原来直接返回"已接受"）；并发插入 receipt 冲突后改为读取获胜者继续；`ResponseStatusException` 保留 409/503 而不是被兜底成 500。
+- `GET /api/v1/events/{ingestionId}` 返回该次摄取的 origin/mode、window_evaluation、baseline_status 与关联告警。
+
+P3.1 之后仍需完成（下一动作）：
 
 1. 新增 `IdempotencyIntegrationTest`（容器）覆盖 §11 的 G05 清单：确认前发布失败→503 且 receipt 保持未确认；确认后响应丢失→同 Idempotency-Key 重试得到同一 ingestion_id 且只有一次副作用；发布后重启→重放不重复；DB commit 后 offset 未 commit 的重投→receipt 去重且计数不变；并发同 key 请求→单一身份；两次业务重复（不同 ingestion_id 同 event_id）→保留两条并产生 DUPLICATE 证据。
 2. 补 `GET /api/v1/events/{ingestionId}`（§4.5）返回该次摄取的 event、检测结果与 window_evaluation，并在 API 契约测试中断言。
