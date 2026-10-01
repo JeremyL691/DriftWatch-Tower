@@ -35,6 +35,8 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$OUT_DIR" ] || die "release-check.sh requires --out DIR"
 mkdir -p "$OUT_DIR"
+# Absolute, because checksum verification runs inside a subshell that changes directory.
+OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 require_docker
 require_python
 require_cmd gh
