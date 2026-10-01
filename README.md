@@ -122,6 +122,9 @@ and the resumable 24-hour runner (`acceptance.py`).
 
 ## Project documents
 
+- [Architecture](docs/assets/driftwatch-architecture.svg): the deployed topology — the GitHub
+  poller with its checkpoints and outbox, the Kafka topics, the Kafka Streams quality topology
+  with its detectors and dead-letter branch, PostgreSQL, and the dashboard.
 - [Project execution guide](docs/PROJECT_EXECUTION_GUIDE.md): the authoritative product,
   implementation, acceptance and release specification.
 - [Execution state](docs/EXECUTION_STATE.md): current task, gate results, evidence paths and
