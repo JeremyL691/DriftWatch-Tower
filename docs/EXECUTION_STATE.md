@@ -8,24 +8,24 @@
 |---|---|
 | document_revision | 1.0 |
 | handoff_date | 2026-09-30，America/Los_Angeles |
-| product_goal_status | RUNNING，P0.1 已完成，P0.2 进行中 |
-| current_phase | P0 |
-| current_task | P0.2 |
-| next_action | 安装/使用 Java 21 干净构建，复跑基线并加入 5.4 节红色回归用例 |
+| product_goal_status | RUNNING，P0 完成，P1 进行中 |
+| current_phase | P1 |
+| current_task | P1.1 |
+| next_action | 替换不可获取的 Kafka 镜像、修正 listener/健康检查、锁定依赖并加入 SCA |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验，即为 execution_base_sha |
-| execution_branch | codex/release-v1（本地已创建；尚未推送） |
+| execution_branch | codex/release-v1（本地；尚未推送） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha / source_tree_hash | 未确定 |
+| candidate_sha / source_tree_hash | 未确定（P0.2 代码变更尚未提交；见运行记录） |
 | candidate_image_id / public_digest | 未确定 |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
 | active_soak_run | 无；24 小时验收尚未启动 |
-| external_blocker | Java 21 未安装（本机仅 Java 25/11）；正在安装 Homebrew openjdk@21，不影响 P0.1 |
+| external_blocker | 无（Java 21 已安装；Docker 29 兼容性已在测试配置中解决） |
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
 
@@ -49,8 +49,8 @@
 | Task | 内容 | 状态 | 证据 / 说明 |
 |---|---|---|---|
 | P0.1 | 保护交接、对齐远端 | PASSED | codex/release-v1 @ 0a2bb07，base 082fd84；见 2026-09-30 运行记录 |
-| P0.2 | 基线与红色回归 | RUNNING | 历史结果不能代替重跑 |
-| P1.1 | 可重复部署、固定依赖 | NOT_STARTED | - |
+| P0.2 | 基线与红色回归 | PASSED | 60/0/0/0 真实容器；G01 三例 EXPECTED_FAILURE 已绑定 SHA |
+| P1.1 | 可重复部署、固定依赖 | RUNNING | - |
 | P1.2 | 配置和认证基础 | NOT_STARTED | - |
 | P1.3 | 验证脚本及后台 runner | NOT_STARTED | 指南命令目前待实现 |
 | P2.1 | scope / 窗口 / 漏报修复 | NOT_STARTED | - |
@@ -76,8 +76,8 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 
 | Gate | 状态 | 绑定 SHA / 配置 / 证据 |
 |---|---|---|
-| G00 基线 | NOT_RUN | - |
-| G01 红色回归复现 | NOT_RUN | - |
+| G00 基线 | PASSED | Java 21.0.12.1 + Docker 29.5.3；60 tests / 0 fail / 0 err / 0 skip；`.execution/runs/20261001T020542Z-p02-baseline/` |
+| G01 红色回归复现 | EXPECTED_FAILURE | 3 个 5.4 用例在旧实现复现（null 全缺失 / 单事件基线突增 / 乱序覆盖窗口）；`g01-red-regression.log`、`g01-cases.json` |
 | G02 全新 Compose | NOT_RUN | - |
 | G03 检测正确性 | NOT_RUN | - |
 | G04 schema 反馈 | NOT_RUN | - |
@@ -131,6 +131,19 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
   - `git ls-remote origin refs/heads/main`：082fd84…；`git ls-remote --tags origin`：仅 v0.1.0，v1.0.0 无冲突。
 - 未执行：推送、24 小时任务、发布。工作树 clean。
 - 环境：Homebrew openjdk@21 已安装，供 P0.2 使用；Docker 29.5.3、Compose v5.1.4、Python 3.14.7、gh 2.101.0（ADMIN）。
+
+### 2026-10-01 P0.2 基线与红色回归（PASSED）
+
+运行目录：`.execution/runs/20261001T020542Z-p02-baseline/`（机器 11 CPU / 19.3 GiB RAM / 96 GiB 空闲，arm64，macOS）。
+
+- 环境修复：Docker Engine 29.5.3 最低要求 API 1.40（实测 `/v1.32/info` 400、`/v1.40/info` 200），而 Testcontainers 1.19.8 内嵌 docker-java 默认 1.32，导致 4 个容器测试类被 `disabledWithoutDocker` 静默跳过。新增 `src/test/resources/docker-java.properties`（`api.version=1.40`，兼容 Engine 19.03–29）后真实容器全部运行。1.21.3 及环境变量方式均无效，故采用项目内显式配置而非临时参数。
+- G00：`./mvnw clean test --batch-mode`（JAVA_HOME=OpenJDK 21.0.12.1）→ 60 tests / 0 failures / 0 errors / 0 skipped，19 个测试类，含 4 个真实 Kafka/PostgreSQL 容器类；与历史 57/0/0/0 的差异 = +3 个新增绿色回归用例（新增测试类其余 3 例），旧 57 项全部保留。
+- G01：`./mvnw test -Dtest=Guide54DetectionRegressionTest -Dgroups=expected-failure -Dsurefire.excludedGroups= --batch-mode` → 3 run / 3 failures（EXPECTED_FAILURE）。失败原因（读源码确认，非猜测）：NULL/ANOMALY 处理器用“前一状态低于阈值且当前高于阈值”的跃迁判定，替代了契约要求的 per-window fired 标志；null 窗口状态 key 不含窗口，导致乱序旧窗口事件覆盖当前窗口计数。绿色锁定用例：旧 null [正常、缺失、缺失]、旧 anomaly [2、2、8]、重复 event_id 保留双输入。
+- 已知红色用例以 JUnit tag `expected-failure` 排除出默认 surefire 运行（`surefire.excludedGroups` 属性可覆盖），P2 修复后必须移除该排除并转绿。
+- Compose 镜像核验：`docker manifest inspect bitnami/kafka:3.7` → `no such manifest`；`apache/kafka:3.8.0` 与 `postgres:16` 存在。P1.1 必须替换镜像。
+- 真实 GitHub 只读核验（2026-10-01T02:05Z）：HTTP 200、5 条真实事件（如 IssueCommentEvent 16151737466）、ETag、`x-poll-interval: 60`、`x-ratelimit-limit: 60`（remaining 52）；证据 `github-headers.txt`、`github-events-sample.json`。
+- 已核验远端修复：`SourceHealthService` 的 healthy→STALE 单次转换告警已存在并有测试锁定，不重写。
+- 未推送、未发布。
 
 后续每条保留：
 
