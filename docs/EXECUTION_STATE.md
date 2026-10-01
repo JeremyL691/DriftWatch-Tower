@@ -8,17 +8,17 @@
 |---|---|
 | document_revision | 1.0 |
 | handoff_date | 2026-09-30，America/Los_Angeles |
-| product_goal_status | RUNNING，P0-P6.1 完成（G00-G15 曾在候选 8a798a6e 上 PASSED），P6.2 进行中：真实接入字段路径缺陷已修复（e8315ac9），门禁复跑中 |
+| product_goal_status | RUNNING，P0-P6.1 完成，P6.2 进行中：候选 573154b9（适配器字段路径 + 320px 布局修复）上 UNIT/P2/P3/P4/P5/P5b/P5c/P6/load/package **全部 PASSED**，第九个 24 小时窗口正在运行 |
 | current_phase | P6 |
 | current_task | P6.2 |
-| next_action | P6.2：等待后台门禁链（`.execution/p7-gate-chain.sh`：P2→P3→P4→P5→P5b→P5c→P6→load→package）在新候选 e8315ac9 上跑完，它会自动重建栈并启动新的 24 小时窗口（run 8）；随后按「收尾程序」执行 G16 判定与 P7 发布 |
+| next_action | 监控 run `20261001T182403Z-soak24`（2h/8h/16h 三次计划故障，结束时 `./scripts/verify.sh soak-report --run-id 20261001T182403Z-soak24 --out .execution/verify/p7-soak` 判定 G16），通过后按「收尾程序」合并 PR #1、发布 Release/GHCR 并匿名核验 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（已推送到 origin；PR #1 已开） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 573154b9（应用面；GitHub 适配器字段路径 + 320px 布局两处修复后冻结，门禁复跑中） |
+| candidate_sha | 573154b9（应用面；GitHub 适配器字段路径 + 320px 布局两处修复后冻结，全部受影响门禁已在其上重跑 PASSED） |
 | source_tree_hash | bb6d14e7c7c02ed0f3aa26073c206f99976aa0ec493440b72a0d9a013b1483b7（见 `.execution/runs/p7-freeze/manifest.json`；204 文件） |
 | config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
 | candidate_image_id / public_digest | 本地镜像 sha256:2901be88df52de693b892825700ab8101fd72efb7bb944ad639b6018ad77d0d3（未发布；`content_identity.jar_content_hash` = 1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d；发布断言使用该值） |
@@ -26,8 +26,10 @@
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | 无（第 7 个 run `20261001T145553Z-soak24` 已于 17:05Z 标 FAILED：其检测证据无效，见「字段路径缺陷」事件记录；新窗口由门禁链在新候选 e8315ac9 上自动启动） |
+| active_soak_run | **`20261001T182403Z-soak24`（RUNNING）**：2026-10-01T18:24:03Z 启动，PID 5002（`caffeinate -i -w 5002`），86400s，预计 **2026-10-02T18:24:03Z** 结束；`state.json` 记录 `git_sha=20f948be`、镜像 `sha256:2901be88…`（= 冻结候选），app 容器同一镜像且 healthy；故障计划 2h app-restart / 8h kafka-stop / 16h db-stop；启动后 bootstrap 轮已入库真实事件、readiness 200。其余历史 run（含 20261001T145553Z-soak24）均 FAILED，仅作证据保留 |
 | external_blocker | 无 |
+
+> **给每小时自动化/接手者的醒目标记**：`automation-82c729b4` 的提示词仍写死旧 run id `20261001T145553Z-soak24`（已 FAILED）、旧候选 `8a798a6e`、旧 content identity `e574ffcf…`、旧制品目录 `p61-package-final3` 与旧 manifest `p61-freeze`。**当前有效 run 是 `20261001T182403Z-soak24`，候选 `573154b9`（HEAD 其后代），content identity `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`，制品目录 `.execution/verify/p7-package2`，manifest `.execution/runs/p7-freeze/manifest.json`。** 自动化提示词无法在本会话修改（本会话工具集只有 CronList，无 CronUpdate/CronCreate；automations 存于服务端，不在本地 DB）——但它在本会话中执行、携带完整历史，因此执行时**必须**以本标记与本节为准：不要为旧 run id 启动新窗口（`soak-start` 也会因存在存活 runner 而拒绝），改用动态发现：读 `.execution/soak/*/state.json` 取 `status=RUNNING` 的那个 run id，并把上表「active_soak_run」的值当作当前 run。用户可在 Automations 页面把提示词中的旧值一次性替换为上述新值。
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
 
@@ -720,7 +722,7 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 结论：应用重启后轮询器**没有重新 bootstrap**、etag 保留、LIVE 轮询继续、inbox 连续、无失败计数——重启恢复路径成立；`scripts/poller-state.sh` 的对比方法也得到验证。
 
 
-**待办（下一个人工轮次）**：每小时自动化 `automation-82c729b4` 的提示词仍引用旧 run id `20261001T145553Z-soak24`、旧制品目录 `p61-package-final3` 与旧 content identity `e574ffcf…`；本次是在自动化自身运行中，工具不允许自我更新。下一次非自动化轮次必须把它改为：动态发现 RUNNING 的 run（当前为 `20261001T182403Z-soak24`，预计 2026-10-02T18:24:03Z 结束）、制品目录 `.execution/verify/p7-package2`、content identity `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`、候选 `573154b9`（HEAD `20f948be`）。
+**待办（下一个人工轮次）**：每小时自动化 `automation-82c729b4` 的提示词仍引用旧 run id `20261001T145553Z-soak24`、旧制品目录 `p61-package-final3` 与旧 content identity `e574ffcf…`。**本轮（非自动化轮次）尝试更新时发现：本会话工具集不含任何修改 automations 的工具（只有 CronList；无 CronUpdate/CronCreate/CronDelete），且 automations 存于服务端——本地 `~/.zcode/cli/db/db.sqlite` 中没有任何 automation/cron 表（只读查证），因此无法从本会话改写提示词。** 采取的替代措施：在「当前入口」表中加入醒目标记与当前 run/候选/identity/路径，并要求执行该自动化的 Agent（在本会话中运行、携带完整历史）以标记为准、动态发现 `status=RUNNING` 的 run；用户可在 Automations 页面把提示词中的旧值一次性替换为：run id 动态发现（当前 `20261001T182403Z-soak24`）、制品目录 `.execution/verify/p7-package2`、content identity `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`、候选 `573154b9`（HEAD `20f948be` 起）、manifest `.execution/runs/p7-freeze/manifest.json`。风险与缓解：即使提示词未更新，`soak-start` 的存活 runner 守卫会拒绝为旧 run id 启动重复窗口（宁可失败也不动别人的环境），且 G16 判定与收尾程序仍会由本会话的后续轮次推进。
 
 ### 2026-10-01 P6.2 等待期：320px 布局的真实溢出（确定性 91px）与修复
 
