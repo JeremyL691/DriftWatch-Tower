@@ -11,14 +11,14 @@
 | product_goal_status | RUNNING，P0-P2 完成，P3 进行中 |
 | current_phase | P3 |
 | current_task | P3.1 |
-| next_action | P3.1：RawEnvelope 摄取、ingestion_id、幂等 receipt、原子 sink 与 way 5.4 幂等/重放对账 |
+| next_action | P3.1：补 IdempotencyIntegrationTest（G05 清单）与 GET /api/v1/events/{ingestionId}，然后新建 scripts/phases/phase-P3.sh 并跑 G05 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（本地；尚未推送） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 03b6ca58（P2 完成；source_tree_hash 见下） |
+| candidate_sha | bb13ab9（P3.1 部分；G05 未过，不能作为发布候选） |
 | source_tree_hash | 8c8797ad9fe505c8e12d0f797264e4cb15de7fc5c00ffddce25c61cdd023570c（src+pom+Dockerfile+compose） |
 | candidate_image_id / public_digest | 本地镜像 sha256:1a419f6a…（仅本地验证，未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
@@ -57,7 +57,7 @@
 | P2.1 | scope / 窗口 / 漏报修复 | PASSED | G03 PASSED（101/0/0/0，DetectionContractTest 18 项）；G01 三例已转绿 |
 | P2.2 | 规则与配置覆盖 | PASSED | 规则边界/哈希规范/数组契约/OpenAPI 契约测试；126/0/0/0 |
 | P2.3 | schema 事务及基线反馈 | PASSED | G04 PASSED；ACTIVE 唯一、advisory lock、outbox 补发、激活 API；126/0/0/0 |
-| P3.1 | 摄取确认、envelope、幂等 | RUNNING | - |
+| P3.1 | 摄取确认、envelope、幂等 | RUNNING | 管道/摄取/receipt 已落地（126/0/0/0）；G05 验收用例与 GET /events/{ingestionId} 待补 |
 | P3.2 | retry / DLT / replay | NOT_STARTED | - |
 | P3.3 | 历史升级与回滚演练 | NOT_STARTED | - |
 | P4.1 | GitHub 持久 poller | NOT_STARTED | - |
@@ -202,6 +202,23 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 - P2.3：schema 观察与 drift 告警移入 sink 事务（拓扑不再访问 JPA），active leaf types 来自 Streams global store（compacted `schema-baselines-v1`）；V8 迁移增加 ACTIVE 部分唯一索引（升级时保留最早 ACTIVE、其余降级并写迁移记录）与 `baseline_outbox`；`SchemaObservationService` 用 advisory transaction lock，首个观察即 ACTIVE 并同事务写 outbox，NULL 不覆盖已确定的非空类型；`BaselineOutboxRelay` 在 broker ack 后才标 SENT，崩溃窗口内的 PENDING 行会被下一轮补发；`PUT /api/v1/schemas/{eventType}/baseline` 原子激活并降级旧 ACTIVE（不删除版本），响应报告 PUBLISHED/PENDING 而不是宣称 Streams 已应用。
 - 期间修复：激活时先 flush 降级再提升（部分唯一索引要求）；测试清理按外键顺序删除；测试 profile 为每个上下文使用独立 Streams application id（消除并发 rebalance 造成的 readiness/落库抖动）。
 - 证据：`.execution/verify/p2-gate5/`（PHASE-P2 PASSED，126 tests / 0 fail / 0 err / 0 skip，required classes 全部运行）。
+
+### 2026-10-01 P3.1 摄取身份与幂等投递（RUNNING，未过 G05）
+
+已完成并全绿（126 tests / 0 fail / 0 err / 0 skip，SHA bb13ab9）：
+
+- 管道切到 `raw-events-v1`（RawEnvelope）与 `quality-events-v1`（ProcessedEvent）；旧 topic 名保留仅用于 P3.3 bridge。
+- `RawEventProducer` 以规范 scope key 发布并等待 broker ack（10s）；`IngestionService` 单条/批量摄取：Idempotency-Key receipt 先于发布在独立事务写入、同 key 不同内容 409、未确认返回 503 带重试提示、256KiB/100 条限制、逐条结果；`EventController` 保留 status/event_id 并追加 ingestion_id，OpenAPI 记录 202/400/409/503，page/size 有界。
+- sink 消费 `quality-events-v1`，在同一事务内先查 processed receipt：同 ingestion_id 同摘要直接返回（不重复副作用），同 id 不同内容抛失败路径；告警写入 ingestion_id/detector_key/window_key（部分唯一约束）。
+- V9 迁移：raw_events 增加 ingestion_id（旧行 legacy-db:<pk> 稳定身份）、origin/mode/window_evaluation/baseline_status、唯一索引；processed_receipts、ingestion_receipts、dead_letter_records（P3.2 用）。
+- 期间修复：demo 场景与测试改走 envelope；生产者分区键断言改为规范 key（含防碰撞断言）；sink 单测 ObjectMapper 注册 JavaTimeModule。
+
+G05 尚未通过，剩余工作（下一动作）：
+
+1. 新增 `IdempotencyIntegrationTest`（容器）覆盖 §11 的 G05 清单：确认前发布失败→503 且 receipt 保持未确认；确认后响应丢失→同 Idempotency-Key 重试得到同一 ingestion_id 且只有一次副作用；发布后重启→重放不重复；DB commit 后 offset 未 commit 的重投→receipt 去重且计数不变；并发同 key 请求→单一身份；两次业务重复（不同 ingestion_id 同 event_id）→保留两条并产生 DUPLICATE 证据。
+2. 补 `GET /api/v1/events/{ingestionId}`（§4.5）返回该次摄取的 event、检测结果与 window_evaluation，并在 API 契约测试中断言。
+3. 批量 4MiB 总大小限制与「重试只发送未确认项」的显式用例；随后运行 `verify.sh phase P3`（阶段脚本尚未创建）并把 G05 置为 PASSED。
+4. 24 小时验收、P4-P7 均未开始；G05-G17 仍为 NOT_RUN。
 
 后续每条保留：
 
