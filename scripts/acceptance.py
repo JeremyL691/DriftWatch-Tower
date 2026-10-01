@@ -95,9 +95,12 @@ def sha256_file(path: str) -> str | None:
         return None
 
 
-def identify_image(project: str) -> dict:
+def identify_image(project: str, env_file: str | None = None) -> dict:
     try:
-        cid = subprocess.run(["docker", "compose", "-p", project, "ps", "-q", "app"],
+        command = ["docker", "compose", "-p", project]
+        if env_file:
+            command.extend(["--env-file", env_file])
+        cid = subprocess.run([*command, "ps", "-q", "app"],
                              capture_output=True, text=True, check=True).stdout.strip()
         if not cid:
             return {}
@@ -192,7 +195,7 @@ def execute_fault(project: str, env_file: str, action: str, app_port: str,
     service = {"app-restart": "app", "kafka-stop": "kafka", "db-stop": "postgres"}.get(action)
     if service is None:
         return {"action": action, "utc": started, "status": "unsupported"}
-    current_image = identify_image(project).get("image_id")
+    current_image = identify_image(project, env_file).get("image_id")
     if expected_image and current_image != expected_image:
         return {"action": action, "utc": started, "status": "skipped-environment-changed",
                 "expected_image": expected_image, "current_image": current_image}
@@ -227,7 +230,7 @@ def runner(args: argparse.Namespace) -> int:
         print(f"no state for run {args.run_id}", file=sys.stderr)
         return 2
     expected_image = (state.get("image") or {}).get("image_id")
-    current_image = identify_image(args.project).get("image_id")
+    current_image = identify_image(args.project, state["env_file"]).get("image_id")
     if expected_image and current_image != expected_image:
         # The compose project belongs to a different candidate now: this run cannot observe or
         # fault the environment it was started against, so it fails instead of damaging it.
@@ -362,7 +365,7 @@ def cmd_soak_start(args: argparse.Namespace) -> int:
         "app_port": env.get("DWT_APP_PORT", "18080"),
         "git_sha": git_head(),
         "fault_plan_file": args.fault_plan,
-        "image": identify_image(args.project),
+        "image": identify_image(args.project, args.env_file),
     }
     if args.fault_plan and os.path.exists(args.fault_plan):
         state["planned_faults"] = read_json(args.fault_plan, [])
@@ -507,8 +510,11 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
     if state.get("status") != "PASSED" or result.get("status") != "PASSED":
         problems.append("runner has not completed successfully")
     expected_image = (state.get("image") or {}).get("image_id")
-    if not expected_image or identify_image(project).get("image_id") != expected_image:
+    current_image = identify_image(project, env_file)
+    if not expected_image or current_image.get("image_id") != expected_image:
         problems.append("running image differs from the observed candidate")
+    if not (state.get("image") or {}).get("container") or current_image.get("container") != state["image"]["container"]:
+        problems.append("application container was replaced; immutable runtime configuration cannot be proven")
 
     # 1. duration and monitor continuity
     measured = float(result.get("measured_seconds") or 0)

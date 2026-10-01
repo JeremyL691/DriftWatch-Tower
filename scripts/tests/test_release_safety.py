@@ -165,7 +165,7 @@ class ReleaseSafety(unittest.TestCase):
         start=end-datetime.timedelta(seconds=86400)
         stamp=lambda t:t.strftime('%Y-%m-%dT%H:%M:%SZ')
         directory=self.root/'formal-run';directory.mkdir()
-        state={'run_id':'formal','status':'PASSED','project':'test','env_file':'unused','started_utc':stamp(start),'duration_seconds':86400,'image':{'image_id':'sha256:frozen'},'git_sha':self.context['candidate_application_sha'],'planned_faults':[{'action':action,'at_seconds':when} for action,when in [('app-restart',7200),('kafka-stop',28800),('db-stop',57600)]]}
+        state={'run_id':'formal','status':'PASSED','project':'test','env_file':'unused','started_utc':stamp(start),'duration_seconds':86400,'image':{'image_id':'sha256:frozen','container':'accepted-container'},'git_sha':self.context['candidate_application_sha'],'planned_faults':[{'action':action,'at_seconds':when} for action,when in [('app-restart',7200),('kafka-stop',28800),('db-stop',57600)]]}
         (directory/'state.json').write_text(json.dumps(state))
         (directory/'result.json').write_text(json.dumps({'status':result_status,'measured_seconds':86401,'finished_utc':stamp(end)}))
         faults=[{'action':f['action'],'utc':stamp(start+datetime.timedelta(seconds=f['at_seconds'])),'status':'completed','outage_seconds':30,'readiness_recovery_seconds':10} for f in state['planned_faults']]
@@ -174,7 +174,7 @@ class ReleaseSafety(unittest.TestCase):
         ledger={'accepted':0,'unconfirmed':0,'processed':20,'raw':20,'dlt_open':0,'pending_outbox':0,'accepted_without_processed':0,'processed_without_raw':0,'source_without_processed':0,'raw_without_processed':0}
         if ledger_override is not None:ledger=ledger_override
         source={'github_distinct_events':20,'github_live_events':1}
-        with patch.object(acceptance,'run_dir',return_value=str(directory)), patch.object(acceptance,'continuity_report',return_value={'continuity_valid':True,'samples':721,'max_gap_seconds':120}), patch.object(acceptance,'read_samples',return_value=samples), patch.object(acceptance,'identify_image',return_value={'image_id':'sha256:frozen'}), patch.object(acceptance,'psql_json',side_effect=[source,ledger]), patch.object(acceptance,'consumer_lag_total',return_value=(0,[])), patch.object(acceptance,'container_health',return_value={'containers':{},'problems':[]}), contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(acceptance,'run_dir',return_value=str(directory)), patch.object(acceptance,'continuity_report',return_value={'continuity_valid':True,'samples':721,'max_gap_seconds':120}), patch.object(acceptance,'read_samples',return_value=samples), patch.object(acceptance,'identify_image',return_value={'image_id':'sha256:frozen','container':'accepted-container'}), patch.object(acceptance,'psql_json',side_effect=[source,ledger]), patch.object(acceptance,'consumer_lag_total',return_value=(0,[])), patch.object(acceptance,'container_health',return_value={'containers':{},'problems':[]}), contextlib.redirect_stdout(io.StringIO()):
             code=acceptance.cmd_soak_report(types.SimpleNamespace(run_id='formal',out=str(directory/'report')))
         return code,json.loads((directory/'report/soak-report.json').read_text())
     def test_formal_soak_pass_requires_deadline_evidence(self):
