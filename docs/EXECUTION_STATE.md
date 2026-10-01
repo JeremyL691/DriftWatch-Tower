@@ -430,7 +430,7 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 3. 工具修复（commit 57baf06，仅 `scripts/`）：`soak-start` 在存在其它存活 runner 时拒绝启动并列出 run_id/PID；`runner` 启动时与**每次注入故障前**都校验 app 容器镜像 id 是否等于本 run 记录的镜像，不等则记 `skipped-environment-changed` 并让 run FAILED——宁可失败也不去动别人的环境。
 4. 启动前复核制品：镜像 `driftwatch-tower:local` = sha256:aeb1c9f9…，jar content identity `e574ffcf…` 与冻结值一致；当前工作树 source_tree_hash 重算 = `d5ca0f55…`（203 文件）与 manifest 一致；`git diff 8a798a6e..HEAD -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 为空（冻结后提交只动 `.github/workflows`、`docs`、`scripts`）。
 5. 重建环境：`docker compose -p dwt-soak --env-file .execution/soak.env down -v`（仅该验收项目自有测试卷）再 `up -d --wait`，三容器 healthy、app `RestartCount=0`、readiness 200。
-6. 启动第 7 个 run `20261001T145553Z-soak24`（PID 42061，86400s，预计 2026-10-02T14:55:53Z 结束，`caffeinate -i -w 42061`）。启动后约 1 分钟 bootstrap 轮已落库 300 条真实 GitHub 事件、readiness 200。run 记录的 `git_sha=1213d3b8`（启动时 HEAD），工具修复 57baf06 在启动后数分钟提交；应用面与冻结候选逐字节相同，因此该窗口仍覆盖冻结制品。
+6. 启动第 7 个 run `20261001T145553Z-soak24`（PID 42061，86400s，预计 2026-10-02T14:55:53Z 结束，`caffeinate -i -w 42061`）。启动后约 1 分钟 bootstrap 轮已落库 300 条真实 GitHub 事件、readiness 200。run 记录的 `git_sha=1213d3b8`（启动时 HEAD），工具修复 57baf06/fa27c7b 在启动后数分钟提交；应用面与冻结候选逐字节相同，因此该窗口仍覆盖冻结制品。注意：正在运行的 runner 进程是 14:55:53 启动时加载的**加固前**代码（Python 启动即读源码），所以本窗口内的故障注入没有镜像归属校验；缓解措施是已确认全局只有 1 个 runner（`ps`）、每小时自动化会复查并先停掉多余 runner，且任何未来窗口都用加固后的 runner。不为此重启窗口（会破坏连续性）。
 7. 两条守卫实测（不触碰环境）：`soak-start` 在有存活 runner 时拒绝并列出 run_id/PID（exit 2，未创建 run 目录）；`execute_fault(..., expected_image='sha256:deadbeef')` 返回 `skipped-environment-changed` 且 app 容器 `RestartCount` 仍 0、`StartedAt` 未变、readiness 200。测试中发现 `live_runners` 会被 `.execution/soak/` 下的非目录文件绊倒（`NotADirectoryError`），已加 `isdir` 过滤并复测通过（commit 见下）。
 
 后续每条保留：
