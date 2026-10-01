@@ -54,7 +54,22 @@ jobs:
           echo "candidate=${{ github.event.inputs.candidate_sha || github.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Build the candidate image from the locked inputs
-        run: docker build --tag candidate:local .
+        # Maven Central occasionally answers 5xx while the build resolves dependencies (observed
+        # 2026-10-01: 502 Bad Gateway on net.bytebuddy:byte-buddy-parent). The build is
+        # deterministic, so retry the transient failure instead of failing the release; Docker
+        # reuses the layers that completed, so a retry only redoes the failed one. A genuine
+        # build error still fails after the attempts, and the content-identity step below is
+        # what actually decides whether the image may be published.
+        run: |
+          for attempt in 1 2 3; do
+            if docker build --tag candidate:local .; then
+              exit 0
+            fi
+            echo "::warning::image build attempt $attempt failed; retrying in $((attempt * 20))s"
+            sleep $((attempt * 20))
+          done
+          echo "::error::image build failed after 3 attempts"
+          exit 1
 
       - name: Assert the application content identity
         env:

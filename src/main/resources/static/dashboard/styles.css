@@ -268,6 +268,19 @@ a {
     font-size: 0.92rem;
 }
 
+/* The timeline carries the same long unbreakable tokens as the tables (event types, ids,
+   timestamps): at 320px one github.PullRequestReviewCommentEvent token made the item 348px wide
+   and the document 411px, so these containers must be allowed to shrink and to break. */
+.subpanel,
+.timeline,
+.timeline-item,
+.timeline-item p,
+.timeline-item strong,
+.subpanel-head {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .timeline-item.new {
     background: var(--gold-fill);
     border-color: var(--gold);
@@ -307,6 +320,10 @@ td {
     vertical-align: top;
     border-bottom: 1px solid var(--gold-line);
     color: var(--ink);
+    /* Long unbreakable tokens (event types such as github.PullRequestReviewCommentEvent, ids and
+       timestamps) must wrap instead of widening the page: at 320px they pushed the document to
+       411px even though every panel is already a single column there. */
+    overflow-wrap: anywhere;
 }
 
 th {

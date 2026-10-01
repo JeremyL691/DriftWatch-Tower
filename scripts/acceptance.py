@@ -510,8 +510,22 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
     if not continuity.get("continuity_valid"):
         problems.append(f"monitor gap {continuity.get('max_gap_seconds')}s exceeds "
                         f"{MAX_MONITOR_GAP_SECONDS}s")
-    if continuity.get("samples", 0) * SAMPLE_INTERVAL_SECONDS < planned * 0.95:
-        problems.append(f"only {continuity.get('samples')} samples for a {planned}s window")
+    # The sampler sleeps SAMPLE_INTERVAL_SECONDS *after* probing (readiness, liveness, docker
+    # stats), so its effective cadence is a couple of seconds longer than the nominal interval.
+    # Counting samples against the nominal interval therefore fails a perfectly continuous
+    # window: 86400s at ~32s yields ~2700 samples, and 2700*30 is below 0.95*86400. What the
+    # criterion has to prove is that the monitor covered the whole window, so check the span the
+    # samples cover and require at least one sample per continuity limit.
+    if samples:
+        span = samples[-1]["monotonic"] - samples[0]["monotonic"]
+        if span < planned * 0.99:
+            problems.append(f"samples cover {round(span)}s of the {round(planned)}s window")
+        minimum_samples = int(planned / MAX_MONITOR_GAP_SECONDS)
+        if len(samples) < minimum_samples:
+            problems.append(f"only {len(samples)} samples for a {round(planned)}s window "
+                            f"(need at least {minimum_samples}, one per {MAX_MONITOR_GAP_SECONDS}s)")
+    else:
+        problems.append("no samples recorded")
 
     # 2. real source: enough distinct persisted events, at least one discovered after bootstrap
     source = psql_json(project, env_file, """

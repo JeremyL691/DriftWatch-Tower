@@ -141,11 +141,30 @@ and the resumable 24-hour runner (`acceptance.py`).
 - The GitHub source depends on a public API that can be delayed, rate-limited or unavailable;
   when that happens the collector records a gap and the dashboard shows the collector as lost
   rather than reporting success.
+- Gap recording currently over-reports: the collector flags a `NO_OVERLAP` gap whenever a live
+  poll finds an event newer than the start of its initial backfill, which for a busy repository
+  happens on every poll that finds new events. Those rows stay open and mean "the API can no
+  longer serve that range for re-reading", not "events were lost" — ingestion, deduplication and
+  replay are unaffected, and a follow-up release corrects the classifier. The count appears as
+  `open_gaps` on `GET /api/v1/sources/collectors`.
 - Without a GitHub token the collector is limited to 60 requests/hour, which is why the default
   poll interval is five minutes.
+- The source health score is harsher than the alerting path. Its null-rate input is the highest
+  `NULL_RATE` window of the last hour, and event types legitimately omit fields — `action` does not
+  exist on a `PushEvent` — so a field that is absent by design costs the source 25 of 100 points
+  even though no `NULL_SPIKE` alert is raised. Expect the GitHub source to score low while nothing
+  is wrong; the raw values are on `GET /api/v1/sources/health`, and a later release aggregates the
+  null rate only over fields the schema baseline confirms for each event type.
+- `STALE_SOURCE` alerts on the GitHub source are expected and do not mean the collector is broken:
+  the freshness threshold is five minutes while the public API publishes in bursts that can lag by
+  minutes to hours, so a quiet window moves the source healthy → STALE and raises one `WARN` per
+  transition. Polling keeps succeeding throughout; a late release tunes the threshold for delayed
+  polled sources.
 - Retention deletes raw payloads after 30 days; the deduplication identity is kept longer than
   the payload so replays remain correct, but old payload contents are not recoverable.
-- Browser support is verified on Chromium at 320/768/1024/1440 px in dark and light themes.
+- Browser support is verified on Chromium at 320/768/1024/1440 px in dark and light themes, on
+  macOS. The 320 px layout fits there with no margin, so Chromium on Linux with fallback fonts can
+  overflow by about 11 px in the light theme; a follow-up release makes that layout font-robust.
 
 ## License
 

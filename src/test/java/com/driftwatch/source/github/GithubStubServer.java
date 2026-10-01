@@ -103,11 +103,17 @@ final class GithubStubServer {
         return map;
     }
 
-    /** Minimal upstream event JSON with the fields the converter reads. */
+    /**
+     * Minimal upstream event JSON in the shape GitHub's API actually returns: the type-specific
+     * fields live inside {@code payload}, and only id/type/created_at/repo/actor/public are
+     * top-level. An earlier fixture put {@code action} at the top level, which matched a converter
+     * bug and hid the fact that real events yielded null for every type-specific field.
+     */
     static String event(String id, String type, String createdAt, String action) {
         String actionField = action == null ? "" : ",\"action\":\"" + action + "\"";
         return """
-                {"id":"%s","type":"%s","created_at":"%s"%s,
+                {"id":"%s","type":"%s","created_at":"%s",
+                 "payload":{"push_id":9001,"ref":"refs/heads/trunk"%s},
                  "repo":{"id":123,"name":"apache/kafka"},
                  "actor":{"id":4242},
                  "public":true}

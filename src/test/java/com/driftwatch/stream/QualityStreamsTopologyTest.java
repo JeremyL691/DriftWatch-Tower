@@ -173,6 +173,30 @@ class QualityStreamsTopologyTest {
     }
 
     @Test
+    void nullTypedBaselineFieldDoesNotFire() {
+        // A fixed-envelope source (the GitHub adapter) records columns an event type never
+        // populates as NULL in the baseline. Those are not confirmed fields of that type, so they
+        // must not raise NULL_SPIKE (guide 5.4: nullish means a *baseline-confirmed* leaf path is
+        // missing or null) - otherwise every event of that type fires on the same columns.
+        Map<String, Map<String, String>> baseline = Map.of(
+                "demo_null_event", Map.of("ask", "NUMBER", "forkee_id", "NULL"));
+        try (Driver driver = driver(quietLate(), emptyRange(), emptyFormat(), baseline, settings())) {
+            Instant ts = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+            driver.pipe(new DataEvent("evt-y0", "demo-api", "demo_null_event", ts, Map.of("bid", 1.0)));
+            driver.pipe(new DataEvent("evt-y1", "demo-api", "demo_null_event", ts.plusSeconds(1), Map.of("bid", 1.0)));
+            driver.pipe(new DataEvent("evt-y2", "demo-api", "demo_null_event", ts.plusSeconds(2), Map.of("bid", 1.0)));
+
+            List<ProcessedEvent.ProcessedAlert> alerts = driver.output().stream()
+                    .flatMap(entry -> entry.value.alerts().stream())
+                    .filter(alert -> alert.type() == AlertType.NULL_SPIKE)
+                    .toList();
+            // `ask` is confirmed as NUMBER and absent in all three events: exactly one alert.
+            assertThat(alerts).hasSize(1);
+            assertThat(alerts.get(0).evidence().get("field_path").asText()).isEqualTo("ask");
+        }
+    }
+
+    @Test
     void anomalySpikeProducesAlert() {
         try (Driver driver = driver()) {
             Instant base = Instant.now().truncatedTo(ChronoUnit.MINUTES);

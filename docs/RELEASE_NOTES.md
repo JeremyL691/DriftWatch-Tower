@@ -77,8 +77,31 @@ new database.
   token the budget is 60 requests/hour, which is why the default poll interval is five minutes.
   Bootstrap backfill is persisted and schema-observed but never treated as realtime signal;
   gaps are recorded with an unknown size rather than estimated.
+- Gap records are deliberately conservative, and currently over-report. The collector writes a
+  `NO_OVERLAP` gap whenever a live poll finds an event newer than the *start* of its initial
+  backfill, which for a busy repository is always; those rows stay open and accumulate. Read them
+  as "the public API can no longer serve that range for re-reading", not as "these events were
+  lost" — the ingestion ledger, deduplication and replay are unaffected, and the follow-up release
+  corrects the classifier. This is visible as `open_gaps` on `GET /api/v1/sources/collectors`.
+- The source health score penalises fields that the event type does not carry. The null-rate input
+  takes the maximum `NULL_RATE` metric window of the last hour, and for example `action` is absent
+  from every `PushEvent`, so that window is 1.0 and costs the source 25 of its 100 points even
+  though the alerting path correctly raises no `NULL_SPIKE`. A self-hoster may therefore see the
+  GitHub source scored as unhealthy while nothing is wrong; the raw values are visible on
+  `GET /api/v1/sources/health`. A follow-up release aggregates the null rate only over fields the
+  schema baseline confirms for that event type.
+- `STALE_SOURCE` alerts are frequent for the GitHub source by design of its threshold, not because
+  the collector is failing. Freshness defaults to five minutes, and the public events API publishes
+  in bursts that can lag by minutes to hours, so the source legitimately moves healthy → STALE
+  whenever nothing new has been observed in that window; each alert marks one such transition
+  (polling itself keeps succeeding, and the alert carries `WARN`). A follow-up release tunes the
+  threshold for delayed polled sources.
 - Retention removes raw payloads after 30 days while keeping the deduplication identity longer.
 - The dashboard is verified on Chromium at four widths in two themes; other engines are not part
-  of the acceptance matrix.
+  of the acceptance matrix. That verification ran on macOS, where the 320 px layout fits with no
+  margin at all — Chromium on Linux with fallback fonts can therefore overflow horizontally by
+  about 11 px in the light theme (measured in CI: scrollWidth 331 against clientWidth 320). No
+  console errors and no accessibility violations accompany it; the follow-up release makes the
+  narrow layout robust to font metrics.
 - Kafka Streams state is single-instance; a future multi-instance deployment would need
   repartitioning decisions that this release deliberately does not make.
