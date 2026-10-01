@@ -64,7 +64,7 @@ class QualityEventSinkTest {
         staleAlert.setEventType("order_created");
         staleAlert.setMessage("Source legacy-feed is stale");
         staleAlert.setCreatedAt(receivedAt);
-        when(sourceHealthService.refreshAllAndPersist(receivedAt)).thenReturn(List.of(staleAlert));
+        when(sourceHealthService.refreshSourceAndPersist("orders-api", receivedAt)).thenReturn(List.of(staleAlert));
 
         when(schemaObservationService.observe(org.mockito.ArgumentMatchers.anyString(),
                         org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
@@ -84,6 +84,7 @@ class QualityEventSinkTest {
                 alertRepository,
                 sourceHealthService,
                 schemaObservationService,
+                mock(com.driftwatch.source.AlertIncidentService.class),
                 metricWindowProjector,
                 new ObjectMapper().findAndRegisterModules());
 
