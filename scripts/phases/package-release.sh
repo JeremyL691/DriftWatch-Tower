@@ -66,6 +66,12 @@ cp "$DWT_REPO_ROOT/.env.example" "$OUT_DIR/bundle/"
 cp "$DWT_REPO_ROOT/scripts/selfhost.sh" "$OUT_DIR/bundle/scripts/"
 cp "$DWT_REPO_ROOT/scripts/lib/common.sh" "$OUT_DIR/bundle/scripts/lib/"
 cp "$DWT_REPO_ROOT/docs/PROJECT_EXECUTION_GUIDE.md" "$OUT_DIR/bundle/docs/"
+# The runbook and the version notes carry the install, upgrade, backup/restore and limit
+# statements the guide requires a release to publish; an installer who downloads only the
+# bundle must get them.
+for extra in docs/RUNBOOK.md docs/RELEASE_NOTES.md; do
+  [ -f "$DWT_REPO_ROOT/$extra" ] && cp "$DWT_REPO_ROOT/$extra" "$OUT_DIR/bundle/docs/"
+done
 [ -f "$DWT_REPO_ROOT/README.md" ] && cp "$DWT_REPO_ROOT/README.md" "$OUT_DIR/bundle/"
 
 python3 - "$OUT_DIR" "$VERSION" "$git_sha" "$image_id" "$image_tar" "$image_tar_sha" \

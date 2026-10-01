@@ -500,6 +500,10 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
     if lag != 0:
         problems.append(f"consumer lag {lag} is not zero")
 
+    # 5b. no unplanned container restart and no exhausted disk
+    health = container_health(project, env_file)
+    problems.extend(health.pop("problems", []))
+
     # 6. last hour healthy, ignoring the planned fault windows
     fault_windows = [(parse_epoch(fault["utc"]),
                       parse_epoch(fault["utc"]) + (fault.get("outage_seconds") or 0) + 300)
@@ -535,17 +539,39 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
     resource = {"samples": len(memory)}
     if memory:
         base_monotonic = memory[0][0]
+        last_monotonic = memory[-1][0]
+        # The gate compares the first two hours with the last hour (guide 11.1). The first
+        # minutes of a JVM are a cold start, so the report also computes the hours 1-2 plateau:
+        # a bounded warm-up is evidence, not a leak, and the two numbers together show which
+        # one is happening.
         early = [value for when, value in memory if when - base_monotonic <= 7200]
-        late = [value for when, value in memory if when >= memory[-1][0] - 3600]
+        plateau = [value for when, value in memory if 3600 <= when - base_monotonic <= 7200]
+        late = [value for when, value in memory if when >= last_monotonic - 3600]
         early_mean = sum(early) / len(early) if early else None
+        plateau_mean = sum(plateau) / len(plateau) if plateau else None
         late_mean = sum(late) / len(late) if late else None
-        resource.update({"first_two_hours_mean_mib": early_mean, "last_hour_mean_mib": late_mean})
+        resource.update({
+            "first_two_hours_mean_mib": early_mean,
+            "hours_1_to_2_mean_mib": plateau_mean,
+            "last_hour_mean_mib": late_mean,
+            "cold_start_mib": memory[0][1],
+        })
         if early_mean and late_mean:
             growth = late_mean - early_mean
             allowed = max(early_mean * 0.20, 128.0)
             resource.update({"growth_mib": round(growth, 1), "allowed_mib": round(allowed, 1)})
+            if plateau_mean:
+                plateau_growth = late_mean - plateau_mean
+                resource.update({
+                    "plateau_growth_mib": round(plateau_growth, 1),
+                    "plateau_allowed_mib": round(max(plateau_mean * 0.20, 128.0), 1),
+                })
             if growth > allowed:
-                problems.append(f"app memory grew {growth:.1f}MiB (allowed {allowed:.1f}MiB)")
+                problems.append(
+                    f"app memory grew {growth:.1f}MiB against the first two hours "
+                    f"(allowed {allowed:.1f}MiB); hours 1-2 mean was "
+                    f"{plateau_mean:.1f}MiB" if plateau_mean else
+                    f"app memory grew {growth:.1f}MiB (allowed {allowed:.1f}MiB)")
 
     report = {
         "run_id": args.run_id,
@@ -557,12 +583,40 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
         "faults": faults,
         "ledger": ledger,
         "lag": {"total": lag, "detail": lag_detail},
+        "containers": health,
         "resource": resource,
         "problems": problems,
     }
     out_dir = args.out or directory
     os.makedirs(out_dir, exist_ok=True)
     atomic_write_json(os.path.join(out_dir, "soak-report.json"), report)
+    # The release gate looks for a gate.json per gate; the soak verdict needs one too, written
+    # from the measured report rather than hand-entered.
+    gate = {
+        "id": "SOAK",
+        "status": "PASSED" if not problems else "FAILED",
+        "command": f"acceptance.py soak-report --run-id {args.run_id} --out {out_dir}",
+        "started_at": state.get("started_utc"),
+        "ended_at": utc_now(),
+        "exit_code": 0 if not problems else 1,
+        "evidence_paths": [os.path.join(out_dir, "soak-report.json")],
+        "git_sha": state.get("git_sha"),
+        "measurement": {
+            "planned_duration_seconds": planned,
+            "measured_seconds": measured,
+            "samples": continuity.get("samples"),
+            "max_monitor_gap_seconds": continuity.get("max_gap_seconds"),
+            "github_distinct_events": source.get("github_distinct_events"),
+            "github_live_events": source.get("github_live_events"),
+            "faults_completed": len([f for f in faults if f.get("status") == "completed"]),
+            "dlt_open": ledger.get("dlt_open"),
+            "lag_total": lag,
+            "container_restarts": {name: entry.get("restart_count")
+                                   for name, entry in health.get("containers", {}).items()},
+        },
+        "failure_reason": "; ".join(problems) if problems else None,
+    }
+    atomic_write_json(os.path.join(out_dir, "gate.json"), gate)
     print(json.dumps(report, indent=2))
     return 1 if problems else 0
 
@@ -587,6 +641,35 @@ def consumer_lag_total(project: str, env_file: str) -> tuple[int, list[str]]:
                     continue
                 detail.append(line.strip())
     return total, detail
+
+
+def container_health(project: str, env_file: str) -> dict:
+    """Restart counts and disk headroom: the guide requires no unplanned restart and no
+    exhausted disk. A deliberate `compose stop/start` (the planned faults) does not increment
+    RestartCount; a crash under `restart: unless-stopped` does, so this separates the two."""
+    report = {"containers": {}, "problems": []}
+    for service in ("app", "kafka", "postgres"):
+        name = f"{project}-{service}-1"
+        completed = subprocess.run(
+            ["docker", "inspect", "--format",
+             "{{.RestartCount}}|{{.State.StartedAt}}|{{.State.Status}}", name],
+            capture_output=True, text=True)
+        if completed.returncode != 0:
+            report["containers"][service] = {"error": completed.stderr.strip()[:120]}
+            continue
+        restarts, started, status = (completed.stdout.strip().split("|") + ["", ""])[:3]
+        entry = {"restart_count": int(restarts or 0), "started_at": started, "status": status}
+        report["containers"][service] = entry
+        if entry["restart_count"] > 0:
+            report["problems"].append(
+                f"{service} restarted {entry['restart_count']} time(s) outside the planned faults")
+    disk = subprocess.run(["df", "-g", REPO_ROOT], capture_output=True, text=True)
+    if disk.returncode == 0 and disk.stdout.strip():
+        free_gib = disk.stdout.strip().splitlines()[-1].split()[3]
+        report["disk_free_gib"] = int(free_gib)
+        if int(free_gib) < 5:
+            report["problems"].append(f"only {free_gib}GiB free on the run volume")
+    return report
 
 
 def psql_json(project: str, env_file: str, sql: str) -> dict | None:

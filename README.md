@@ -127,6 +127,8 @@ and the resumable 24-hour runner (`acceptance.py`).
   recovery information.
 - [Runbook](docs/RUNBOOK.md): install, upgrade, backup/restore, dead letters, retention and
   troubleshooting.
+- [Release notes](docs/RELEASE_NOTES.md): artifacts, acceptance results, performance conditions
+  and known limits for the current version.
 - [Versions](docs/versions.md): pinned images and dependency versions.
 
 ## Known limits
