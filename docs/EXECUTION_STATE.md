@@ -8,25 +8,25 @@
 |---|---|
 | document_revision | 1.0 |
 | handoff_date | 2026-09-30，America/Los_Angeles |
-| product_goal_status | RUNNING，P0-P6.1 完成（G00-G15 在候选 8a798a6e 上全部 PASSED），P6.2 进行中 |
+| product_goal_status | RUNNING，P0-P6.1 完成（G00-G15 曾在候选 8a798a6e 上 PASSED），P6.2 进行中：真实接入字段路径缺陷已修复（e8315ac9），门禁复跑中 |
 | current_phase | P6 |
 | current_task | P6.2 |
-| next_action | P6.2：等待 run 20261001T145553Z-soak24 结束（2026-10-02T14:55:53Z），然后按下方「收尾程序」执行 G16 判定与 P7 发布 |
+| next_action | P6.2：等待后台门禁链（`.execution/p7-gate-chain.sh`：P2→P3→P4→P5→P5b→P5c→P6→load→package）在新候选 e8315ac9 上跑完，它会自动重建栈并启动新的 24 小时窗口（run 8）；随后按「收尾程序」执行 G16 判定与 P7 发布 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（已推送到 origin；PR #1 已开） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 8a798a6e（应用面；P6.1 冻结并全部门禁通过） |
-| source_tree_hash | d5ca0f55ab8689824e5a4e50919ca7f1ca90fae123d9f96f56cb935023fd7370（完整值见 `.execution/runs/p61-freeze/manifest.json`；src+pom+Dockerfile+compose+.mvn，工具链单独记 tooling_tree_hash）。2026-10-01T15:00Z 用同一算法在当前工作树重算一致（203 文件），且 `git diff 8a798a6e..HEAD -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 为空——冻结后所有提交只动 `.github/workflows`、`docs`、`scripts` |
+| candidate_sha | e8315ac9（应用面；P6.2 修复 GitHub 适配器字段路径后重新冻结，门禁复跑中） |
+| source_tree_hash | 36cf3255292c1c435949e3a366efec4e946fcb31f0f0790b795be44034734b8d（见 `.execution/runs/p7-freeze/manifest.json`；204 文件，比上一冻结多出新增的 `GithubEventConverterTest`） |
 | config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
-| candidate_image_id / public_digest | 本地镜像 sha256:aeb1c9f9ccd68ca352bd2a6cb93751203e3cbd9f78c14db15e175b87c178ce83（未发布；`content_identity.jar_content_hash` = e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a，已实测可由同源重建复现） |
+| candidate_image_id / public_digest | 本地镜像 sha256:e94fd4698ac040baf4259068f403336ee4e126922c61cbfe468cb51c3347033a（未发布；`content_identity.jar_content_hash` = e2029fc2c98b58ea3b5e2b0bf842b8b525439ac6592797c883dd0f23ef08e3fc，取代旧的 e574ffcf…；发布断言使用新值） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | 20261001T145553Z-soak24（RUNNING，PID 42061，dwt-soak，18087，86400s，2026-10-01T14:55:53Z 起，预计 2026-10-02T14:55:53Z 结束；`caffeinate -i -w 42061` 持有防休眠断言）。这是第 7 个 run：第 6 个 run 20261001T134438Z-soak24 因环境干扰在第 1.06 小时作废（见下方 2026-10-01 事件记录），未拼接 |
+| active_soak_run | 无（第 7 个 run `20261001T145553Z-soak24` 已于 17:05Z 标 FAILED：其检测证据无效，见「字段路径缺陷」事件记录；新窗口由门禁链在新候选 e8315ac9 上自动启动） |
 | external_blocker | 无 |
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
@@ -35,19 +35,19 @@
 
 以下值取自 `.execution/runs/p61-freeze/manifest.json` 与当前 run，勿手抄：
 
-- candidate（应用面）: `8a798a6e7396f2a267cc26e1519bf987c7f13ff3`
-- 镜像（本地，未发布）: `sha256:aeb1c9f9ccd68ca352bd2a6cb93751203e3cbd9f78c14db15e175b87c178ce83`
-- `content_identity.jar_content_hash`: `e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a`
-- 当前 24 小时 run: `20261001T145553Z-soak24`（2026-10-01T14:55:53Z 起，预计 2026-10-02T14:55:53Z 结束；第 6 个 run 20261001T134438Z-soak24 因环境干扰作废，见事件记录）
-- 最终制品目录: `.execution/verify/p61-package-final3/artifacts`
+- candidate（应用面）: `e8315ac901a2c91d89459d2f9964620fba9bb6ab`（GitHub 适配器字段路径修复）
+- 镜像（本地，未发布）: `sha256:e94fd4698ac040baf4259068f403336ee4e126922c61cbfe468cb51c3347033a`
+- `content_identity.jar_content_hash`: `e2029fc2c98b58ea3b5e2b0bf842b8b525439ac6592797c883dd0f23ef08e3fc`
+- 当前 24 小时 run: run 8（由 `.execution/p7-gate-chain.sh` 在新候选上自动启动；第 7 个 run 20261001T145553Z-soak24 因字段路径缺陷作废，见事件记录）
+- 最终制品目录: `.execution/verify/p7-package/artifacts`（新候选；旧 `p61-package-final3` 属已废弃的 8a798a6e）
 
-1. `./scripts/verify.sh soak-report --run-id 20261001T145553Z-soak24 --out .execution/verify/p61-soak` → 判定 G16 并写出 `gate.json`(SOAK)。有问题就记录并修复后重开完整 24 小时，不拼接。
+1. `./scripts/verify.sh soak-report --run-id <run 8 的 run-id> --out .execution/verify/p7-soak` → 判定 G16 并写出 `gate.json`(SOAK)。有问题就记录并修复后重开完整 24 小时，不拼接。
 1b. 判定完成后释放验收资源（指南 §12 第 7 条的所有权清理，必须在打包前做，打包会起自己的 compose 项目）：`docker compose -p dwt-soak --env-file .execution/soak.env down -v`（报告在判定前已读完数据库，证据已落盘到 `.execution/`，卷是该验收项目自有的测试卷）；`caffeinate -i -w <runner pid>` 随 runner 结束自动退出；确认 `docker ps` 只剩用户自己的栈、`docker volume ls` 只剩 `dwt-trivy-cache`（保留给收尾期的 G13 复跑）。
 2. 通过后更新本文件（G16/P6.2 PASSED、实测数字与证据路径），提交并推送 `codex/release-v1`。
-3. 把阶段门禁重新绑定到冻结候选：`for ph in P2 P3 P4 P5 P5b; do ./scripts/verify.sh phase $ph --project dwt-soak --env-file .execution/soak.env --out .execution/verify/p7-$ph; done`（每个脚本跑一次完整套件，约 35 分钟；只依赖 Docker，不需要运行中的栈）。若某个门禁失败且**唯一**失败用例是 `DeadLetterIntegrationTest.malformedRecordIsDeadLetteredAndDoesNotBlockLaterRecords`（已知隔离竞态），该门禁可**重跑一次**并记为已知 flaky（附断言原文）；其它原因的失败都是真失败，必须记录并修复或如实上报，不得跳过。理由：指南 §11.2 要求发布验证「同一候选的 manifest/gate 证据」并拒绝「过期于代码变更」的报告，而这五个门禁的记录仍绑定在更早的 SHA 上（实测：G03/G04=653a7e39、G05-G07=7217ff67、G08/G09=fbba4d05、G10=4b111417、G11=6bf026de，应用面与发布面不同）；`verify.sh release` 会检查每个 gate id 的最新记录，重跑后整套证据都绑定到冻结候选。**`release-check.sh` 现在会强制这一点**：它取 tag 指向的提交，对每个 gate 用 `git diff --quiet <gate_sha> <released_sha> -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 断言应用面一致，不一致即 RELEASE 门禁 FAILED（此前只记录 git_sha、不校验，等于没有牙齿）。
-4. 合并 PR：`gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 `8a798a6e`（或其后代，当前为 215dc7c7）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`（不绕过必需检查）；合并后确认 main 含该候选树：`git fetch origin main` 后 `git diff <main-sha> 8a798a6e -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 为空。**已知不稳定测试**：`DeadLetterIntegrationTest.malformedRecordIsDeadLetteredAndDoesNotBlockLaterRecords` 有测试隔离竞态（详见事件记录），CI 与 P3 门禁都可能偶发在此红；遇到时**重跑一次**并注明「已知 flaky（隔离竞态）+ 失败断言」，仍要求全绿后才合并，不得跳过或绕过。
-5. 发布：`release.yml` 只有在默认分支上才会注册，所以合并后再用**合并后 main 的 SHA** 作为 candidate_sha（它含冻结应用面，是真正被发布的修订；比 8a798a6e 更准确）：`gh workflow run release.yml --ref main -f version=v1.0.0 -f candidate_sha=$(git rev-parse origin/main) -f content_identity=e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a`，然后 `gh run watch`。该 job 用同一锁定输入重建并比对 content identity（不一致即拒绝推送；已在原生 amd64 CI 上核验与冻结值逐字节一致；**未提供 content_identity 时直接拒绝发布**，包括 tag push 触发），推送 `v1.0.0` 与 `sha-<candidate_sha 前 12 位>`、尝试把 package 设为 public、在干净 Docker config 中匿名拉取 digest、创建指向该 SHA 的 Release（正文含 image@digest，供第 7 步取用）。匿名拉取失败即 package 非 public：记录确切错误与恢复动作（GitHub UI 或具 `write:packages` 的 token），不得当作成功。
-6. 附件：先 `./scripts/verify.sh package --out .execution/verify/p61-package-final3 --image driftwatch-tower:local --version v1.0.0 --manifest .execution/runs/p61-freeze/manifest.json`（必须等 soak 栈结束、无验收栈运行时再做，打包会起自己的 compose 项目）；再 `./scripts/evidence-pack.sh --out .execution/evidence --run-id p7-release`；然后 `./scripts/upload-release-assets.sh --version v1.0.0 --artifacts .execution/verify/p61-package-final3/artifacts --evidence .execution/evidence --digest sha256:...`（digest 取自 Release 正文）。
+3. 阶段门禁已在新候选上复跑（后台链，输出 `p7-P2`…`p7-P5b`、`p7-P5c`、`p7-P6`、`p7-load`、`p7-package`）；若需重跑：`for ph in P2 P3 P4 P5 P5b; do ./scripts/verify.sh phase $ph --project dwt-soak --env-file .execution/soak.env --out .execution/verify/p7-$ph; done`（每个脚本跑一次完整套件，约 35 分钟；只依赖 Docker，不需要运行中的栈）。若某个门禁失败且**唯一**失败用例是 `DeadLetterIntegrationTest.malformedRecordIsDeadLetteredAndDoesNotBlockLaterRecords`（已知隔离竞态），该门禁可**重跑一次**并记为已知 flaky（附断言原文）；其它原因的失败都是真失败，必须记录并修复或如实上报，不得跳过。理由：指南 §11.2 要求发布验证「同一候选的 manifest/gate 证据」并拒绝「过期于代码变更」的报告，而这五个门禁的记录仍绑定在更早的 SHA 上（实测：G03/G04=653a7e39、G05-G07=7217ff67、G08/G09=fbba4d05、G10=4b111417、G11=6bf026de，应用面与发布面不同）；`verify.sh release` 会检查每个 gate id 的最新记录，重跑后整套证据都绑定到冻结候选。**`release-check.sh` 现在会强制这一点**：它取 tag 指向的提交，对每个 gate 用 `git diff --quiet <gate_sha> <released_sha> -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 断言应用面一致，不一致即 RELEASE 门禁 FAILED（此前只记录 git_sha、不校验，等于没有牙齿）。
+4. 合并 PR：`gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 `e8315ac9`（或其后代）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`（不绕过必需检查）；合并后确认 main 含该候选树：`git fetch origin main` 后 `git diff <main-sha> e8315ac9 -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 为空。**已知不稳定测试**：`DeadLetterIntegrationTest.malformedRecordIsDeadLetteredAndDoesNotBlockLaterRecords` 有测试隔离竞态（详见事件记录），CI 与 P3 门禁都可能偶发在此红；遇到时**重跑一次**并注明「已知 flaky（隔离竞态）+ 失败断言」，仍要求全绿后才合并，不得跳过或绕过。
+5. 发布：`release.yml` 只有在默认分支上才会注册，所以合并后再用**合并后 main 的 SHA** 作为 candidate_sha（它含冻结应用面，是真正被发布的修订；比 e8315ac9 更准确）：`gh workflow run release.yml --ref main -f version=v1.0.0 -f candidate_sha=$(git rev-parse origin/main) -f content_identity=e2029fc2c98b58ea3b5e2b0bf842b8b525439ac6592797c883dd0f23ef08e3fc`，然后 `gh run watch`。该 job 用同一锁定输入重建并比对 content identity（不一致即拒绝推送；已在原生 amd64 CI 上核验与冻结值逐字节一致；**未提供 content_identity 时直接拒绝发布**，包括 tag push 触发），推送 `v1.0.0` 与 `sha-<candidate_sha 前 12 位>`、尝试把 package 设为 public、在干净 Docker config 中匿名拉取 digest、创建指向该 SHA 的 Release（正文含 image@digest，供第 7 步取用）。匿名拉取失败即 package 非 public：记录确切错误与恢复动作（GitHub UI 或具 `write:packages` 的 token），不得当作成功。
+6. 附件：先 `./scripts/verify.sh package --out .execution/verify/p7-package --image driftwatch-tower:local --version v1.0.0 --manifest .execution/runs/p7-freeze/manifest.json`（必须等 soak 栈结束、无验收栈运行时再做，打包会起自己的 compose 项目）；再 `./scripts/evidence-pack.sh --out .execution/evidence --run-id p7-release`；然后 `./scripts/upload-release-assets.sh --version v1.0.0 --artifacts .execution/verify/p7-package/artifacts --evidence .execution/evidence --digest sha256:...`（digest 取自 Release 正文）。
 7. 匿名核验：`./scripts/verify.sh release --out .execution/verify/p7-release --version v1.0.0 --pr 1`。
 8. 最终报告写回本文件：Release URL、image@digest、源码 SHA、证据路径、性能条件与已知限制；同步 `docs/RELEASE_NOTES.md` 的 digest 行。
 
@@ -87,7 +87,7 @@
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
 | P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
 | P6.1 | 冻结候选、短门槛、负载 | PASSED | G13/G14/G15 PASSED；冻结 SHA 791c75f、镜像 sha256:4f064add…；100/s×1800s 全部指标达标；见 `.execution/runs/p61-freeze/`、`.execution/verify/p61-load2/`、`.execution/verify/p61-package2/` |
-| P6.2 | 24 小时真实验收 | RUNNING | run 20261001T145553Z-soak24（PID 42061，镜像 sha256:aeb1c9f9…，2026-10-01T14:55:53Z 起，预计 2026-10-02T14:55:53Z 结束）；2h/8h/16h 受控故障已排程；G16 待结束后用 `soak-report` 判定。前一个 run 20261001T134438Z-soak24 在第 1.06 小时被遗留 runner 干扰（非计划 app 重启），已留 FAILED 记录并重开完整窗口 |
+| P6.2 | 24 小时真实验收 | RUNNING | 第 7 个 run `20261001T145553Z-soak24` 已 FAILED（字段路径缺陷使检测证据无效，2h 故障与重启恢复对比有效并保留）；新候选 `e8315ac9` 的门禁复跑进行中，完成后自动启动 run 8 |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
 | P7.2 | 公共 Release / GHCR | NOT_STARTED | - |
 | P7.3 | 匿名安装及最终报告 | NOT_STARTED | - |
@@ -114,7 +114,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G13 安全与漏洞 | PASSED | SHA 791c75f；Trivy 0.58.1，DB UpdatedAt 2026-10-01T01:24:14Z；依赖树与运行时镜像 0 HIGH/CRITICAL，镜像与 tracked 树 0 secret，镜像内无凭证文件；`.execution/verify/p61-g13c/` |
 | G14 100/s、30分钟 | PASSED | SHA 791c75f（镜像 sha256:4f064add…）；180000/180000 offer 于 1800.0s 内发出（100.0/s），accepted 180000、failed 0；ack p95 12.4ms（≤1s，p99 43ms）、commit p95 134ms（≤5s，180000 样本，直方图差分）；账本 180100 accepted = 180100 processed = 180100 raw、0 未确认、0 DLT、0 孤儿；三组 consumer lag 归零用时 31.3s；资源曲线 263 点/容器（app 峰值 864MiB、pg 280MiB、kafka 1015MiB）；`.execution/verify/p61-load2/` |
 | G15 候选包安装 | PASSED | SHA 791c75f；从制品安装（不构建）：镜像导出 tar sha256 校验一致、docker load 后 id 与冻结 id 相同、SBOM CycloneDX、checksums 覆盖全部制品；全新 project/volume/env（18082）启动后匿名 health 200、管理员 API 200、Bearer 摄取 202 且落库、重启后 readiness 恢复；`.execution/verify/p61-package2/` |
-| G16 连续24小时 | RUNNING | run 20261001T145553Z-soak24 进行中（第 7 个 run；前 6 个中 5 个因规格审计发现的应用变更作废并留 FAILURE-NOTES，第 6 个 20261001T134438Z-soak24 因遗留 runner 在 14:47:55Z 注入非计划 app 重启而作废，见事件记录）；新窗口启动后 300 条真实 GitHub 事件已落库（bootstrap 轮）、readiness 200；`soak-report` 已按指南 11.1 实现，且内存判据已与指南口径（第 1-2 小时 vs 最后 1 小时）对齐 |
+| G16 连续24小时 | RUNNING | 第 7 个 run 因「字段路径缺陷」（真实接入丢失类型专属证据、NULL_SPIKE 假告警）作废；修复 `e8315ac9` 已冻结并复跑门禁，run 8 将随后启动。`soak-report` 已按指南 11.1 实现，内存判据与指南口径一致，采样节奏误杀已修 |
 | G17 公开发布/匿名安装 | NOT_RUN | - |
 
 ## 长任务与恢复字段
@@ -126,7 +126,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | run_id / run_dir | 20261001T145553Z-soak24 / `.execution/soak/20261001T145553Z-soak24/`（作废的候选 run：20261001T083508Z-soak24、20261001T093502Z-resume、20261001T093737Z-soak24、20261001T103023Z-soak24、20261001T114957Z-soak24、20261001T124728Z-soak24（遗留 runner，2026-10-01T14:49Z 已停止并标 FAILED）、20261001T134438Z-soak24（被 124728Z 的非计划 app 重启打断，2026-10-01T14:52Z 停止并标 FAILED）；`.execution/soak/p13-*` 与 20261001T03* 是 P1.3 runner 测试夹具，非验收 run，其中 p13-resume2 的 state 仍写 RUNNING 是当时故意 kill runner 的测试遗留，`ps` 已确认当前只有 1 个 acceptance.py runner 进程） |
 | compose_project / volume 所有权 | dwt-soak（自有卷 dwt-soak_pgdata、dwt-soak_kafkadata、dwt-soak_streams-state） |
 | env_file 路径 | `.execution/soak.env`（0600，仅路径，不含 secret 内容） |
-| candidate_sha / image_id / config_hash | 8a798a6e（应用面）/ sha256:aeb1c9f9ccd68ca352b…（完整值见 freeze manifest）/ 7457349d… |
+| candidate_sha / image_id / config_hash | e8315ac9（应用面）/ sha256:e94fd4698ac040baf…（完整值见 `.execution/runs/p7-freeze/manifest.json`）/ 7457349d… |
 | started_at_utc / expected_end_at_utc | 2026-10-01T14:55:53Z / 2026-10-02T14:55:53Z |
 | runner_pid / process_start / lock | PID 42061（runner.pid 记录进程创建时间；`runner_alive` 校验命令行与创建时间；`caffeinate -i -w 42061` 绑定其生命周期防休眠） |
 | last_heartbeat_utc / checkpoint | samples.jsonl 每 30s 一行；checkpoint.json 每 5 分钟原子写 |
@@ -676,6 +676,51 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 - **变更日志主题齐全**（`kafka-topics.sh --list`）：`driftwatch-streams-v1-{anomaly-scope,anomaly-window,duplicate-event-id,duplicate-payload,envelope-digest,null-window,scope-watermark}-store-changelog` 七个窗口/去重存储的 changelog 均在；全局基线存储的源主题 `schema-baselines-v1` 也在（另有 `raw-events-v1`、`quality-events-v1`、`dead-letter-events-v1`）。
 - **本地状态存在**（`dwt-soak_streams-state` 卷）：`/state/driftwatch-streams-v1/0_{0,1,2}` 三个分区目录，内含各 store 的 RocksDB 目录，合计 **80.5MB**。
 - 结论：重启时 Streams 走「本地状态优先、必要时回放 changelog」，全局基线存储从 `schema-baselines-v1` 重建；不存在「缺 changelog 导致基线静默丢失」的隐患。这条正是重启后要验证的东西（比对基线文件），现在先确认它有恢复的物质基础；状态体积 80MB/1.25h，对 44GiB 余量无压力。
+
+### 2026-10-01 P6.2 第七个 run 作废：真实接入的字段路径缺陷（本轮最严重的发现）
+
+2h 受控故障按计划执行并完成（`{"action":"app-restart","status":"completed","outage_seconds":32.6,"readiness_recovery_seconds":10.1}`），重启恢复对比也干净（见下）。但记录证据时发现 **10 条 NULL_SPIKE WARN 告警与 1 个自动关联 incident**（`NULL_SPIKE on github:apache/kafka`，`github.PullRequestEvent`，16:12:57Z）出现在完全正常的数据上，于是逐层查证：
+
+**根因：适配器从事件根节点读取类型专属字段，而 GitHub 的 API 把它们放在 `payload` 里。**
+
+三条独立证据：
+
+1. **上游实况**（对 `https://api.github.com/repos/apache/kafka/events` 的一次真实请求）：`PullRequestReviewEvent`/`PullRequestReviewCommentEvent`/`WatchEvent` 的顶层键只有 `actor, created_at, id, org, payload, public, repo, type`；`action` 在顶层**不存在**，而在 `payload.action` 里（值 `created`/`started`）。
+2. **本窗口实测**：`GithubEventConverter` 读的是 `raw.path("action")`、`raw.path("pull_request").path("number")`、`raw.path("forkee").path("id")` 等根路径，因此 334 条真实事件的 `action` **全部为 null**（包括 GitHub 必发 action 的类型），141 条 PullRequestEvent 的 `pull_request_number` 也全为 null——类型专属结构证据整条链路丢失。
+3. **测试为何没发现**：`GithubStubServer.event()` 把 `"action"` 放在**顶层**，正好复刻了这个 bug；集成测试因此永远看不到真实 API 的差异。
+
+**症状**：`NullSpikeProcessor` 按基线里的每个 leaf path 计算空值率，而那些永远为 null 的列在 `total>=3` 时必然 `null_rate 1.0 > 0.6` → 对每个事件类型在每个窗口都产生假告警（2 小时 10 条 WARN + 1 个 incident）。这违反指南第 5.4 节「nullish 指**基线中已确定的** leaf path 缺失或值为 null」——只在某些类型里才存在的列不是该类型的已确认字段。
+
+**处置（不拼接、不掩盖）**：
+
+1. 第七个 run `20261001T145553Z-soak24` 在 7786.8s 处标 FAILED 并写 `FAILURE-NOTES.txt`（保留 234 个样本、已完成的 2h 故障、checkpoint/result）；runner 停止，caffeinate 释放。判定：该窗口的**检测证据无效**，不作为验收。
+2. 修复（commit `e8315ac9`，应用面）：
+   - `GithubEventConverter`：类型专属字段一律从 `raw.path("payload")` 读取（顶层仍读 id/type/created_at/repo/actor/public）。
+   - `NullSpikeProcessor`：只对基线中**记录了值类型**（非 NULL）的 leaf path 计算空值率，符合指南 5.4 的措辞；固定信封来源不再对「该类型从不填充的列」告警。
+   - `GithubStubServer` 夹具改为真实 API 形状（字段放进 `payload`），新增 `GithubEventConverterTest`（真实形状 → 字段被填充；类型不携带的字段保持显式 null）与拓扑回归 `nullTypedBaselineFieldDoesNotFire`（NULL 型基线字段不触发，NUMBER 型缺失字段恰好触发一次）。
+3. 重新冻结候选：`.execution/runs/p7-freeze/manifest.json` —— `git_sha=e8315ac9`、`source_tree_hash=36cf3255292c1c43…`（204 文件）、`tooling_tree_hash=572a0db93370fb81…`（26 文件）、`image_id=sha256:e94fd4698ac040baf4259068f403336ee4e126922c61cbfe468cb51c3347033a`、**`content_identity.jar_content_hash=e2029fc2c98b58ea3b5e2b0bf842b8b525439ac6592797c883dd0f23ef08e3fc`**（取代 `e574ffcf…`；发布断言改用新值）。
+4. 本地验收环境（`.execution/soak.env`、`.execution/p61-load.env`）的 `DWT_APP_IMAGE` 由旧镜像 id 改为新镜像 id，重建后 app 运行 `e94fd469…`、readiness 200。
+5. 门禁复跑（后台链 `.execution/p7-gate-chain.sh`，日志 `.execution/gates.log`→`.execution/p7-gates.log`）：UNIT 已 PASSED（`p7-unit`，**174/0/0/0**，比 171 多出本轮 3 个新测试），随后 P2→P3→P4→P5→P5b→P5c→P6→load→package，最后自动重建栈并启动新的 24 小时窗口（run 8）。
+
+**教训（已写入测试与文档）**：夹具必须复刻上游真实形状，否则「契约测试全绿」与「真实接入可用」是两件事；这一条与本轮此前发现的 check-suite 排序、采样节奏误杀属同一类——判分/夹具与真实语义不一致。
+
+### 2026-10-01 P6.2 第七个 run 的 2h 重启恢复对比（方法有效，数字保留）
+
+尽管该窗口因上述缺陷作废，2h 故障本身按计划执行、恢复数据有效，因此保留对比数字作为**方法验证**（新窗口会重跑同一对比）：
+
+| 指标 | 故障前 15:28Z | 重启后 17:00Z |
+|---|---|---|
+| `polls_by_mode` | LIVE 6 / **BOOTSTRAP 1** | LIVE 24 / **BOOTSTRAP 1** |
+| `bootstrap_events` | 300 | 300（未重放） |
+| `live_events` | 8 | 35 |
+| `inbox_rows` | 308 | 335 |
+| `outbox_pending` | 0 | 0 |
+| `collector_state` | READY，etag 6d5ee8fd…，failures 0 | READY，etag 09642785…（保留并前进），failures 0 |
+
+结论：应用重启后轮询器**没有重新 bootstrap**、etag 保留、LIVE 轮询继续、inbox 连续、无失败计数——重启恢复路径成立；`scripts/poller-state.sh` 的对比方法也得到验证。
+
+
+**待办（下一个人工轮次）**：每小时自动化 `automation-82c729b4` 的提示词仍引用旧 run id `20261001T145553Z-soak24`、旧制品目录 `p61-package-final3` 与旧 content identity `e574ffcf…`；本次是在自动化自身运行中，工具不允许自我更新。下一次非自动化轮次必须把它改为：动态发现 RUNNING 的 run、制品目录 `.execution/verify/p7-package`、content identity `e2029fc2…`、候选 `e8315ac9`。
 
 后续每条保留：
 
