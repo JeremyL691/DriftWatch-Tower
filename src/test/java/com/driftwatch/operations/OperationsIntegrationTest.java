@@ -119,24 +119,29 @@ class OperationsIntegrationTest extends ContainerIntegrationTest {
                 .as("a pending outbox row protects its raw event").isEqualTo(1);
         assertThat(count("SELECT count(*) FROM raw_events WHERE ingestion_id = 'ops-open-dlt'"))
                 .as("an unrecovered dead letter protects its raw event").isEqualTo(1);
-        assertThat(count("SELECT count(*) FROM quality_alerts WHERE status = 'OPEN'"))
+        assertThat(count("SELECT count(*) FROM quality_alerts WHERE source = 'ops-src' AND status = 'OPEN'"))
                 .as("unresolved alerts are never pruned").isEqualTo(1);
-        assertThat(count("SELECT count(*) FROM dead_letter_records WHERE recovery_state = 'OPEN'"))
+        assertThat(count("SELECT count(*) FROM dead_letter_records"
+                + " WHERE diagnostic_id LIKE 'ops-probe-%' AND recovery_state = 'OPEN'"))
                 .as("open dead letters are never pruned").isEqualTo(1);
+        assertThat(count("SELECT count(*) FROM dead_letter_records"
+                + " WHERE diagnostic_id LIKE 'ops-probe-%' AND recovery_state = 'REPLAYED'"))
+                .as("an aged recovered dead letter is pruned").isZero();
         assertThat(count("SELECT count(*) FROM processed_receipts WHERE ingestion_id = 'ops-recent'"))
                 .as("a receipt stays while its raw row exists").isEqualTo(1);
         assertThat(count("SELECT count(*) FROM raw_events WHERE ingestion_id = 'ops-recent'"))
                 .as("recent data is not pruned").isEqualTo(1);
         assertThat(count("SELECT count(*) FROM processed_receipts WHERE ingestion_id = 'ops-orphan'"))
                 .as("an orphaned aged receipt is pruned").isZero();
-        assertThat(count("SELECT count(*) FROM collector_state")).isGreaterThanOrEqualTo(1);
+        assertThat(count("SELECT count(*) FROM collector_state WHERE source = 'github:apache/kafka'"))
+                .isGreaterThanOrEqualTo(1);
         assertThat(count("SELECT count(*) FROM schema_versions")).isEqualTo(schemaRowsBefore);
         assertThat(pruned).containsKey("raw_events");
 
         Map<String, Object> status = retentionService.status();
         assertThat(status.get("raw_retention_days")).isEqualTo(30L);
         assertThat(status.get("batch_size")).isEqualTo(1000);
-        assertThat(status.get("open_dead_letters")).isEqualTo(1L);
+        assertThat((Long) status.get("open_dead_letters")).isGreaterThanOrEqualTo(1L);
     }
 
     @Test
