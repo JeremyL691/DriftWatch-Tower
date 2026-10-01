@@ -13,7 +13,7 @@
 #   scripts/verify.sh soak-status --run-id ID
 #   scripts/verify.sh soak-resume --run-id ID
 #   scripts/verify.sh soak-report --run-id ID [--out DIR]
-#   scripts/verify.sh release --project NAME --env-file FILE --out DIR
+#   scripts/verify.sh release --project NAME --env-file FILE --out DIR [--version TAG] [--pr N]
 #
 # Exit codes: 0 pass, 1 verification failure, 2 external prerequisite missing or not implemented.
 # Every command writes a machine-readable gate.json plus human-readable summary into --out.
@@ -42,6 +42,7 @@ PHASE_NAME=""
 BASE=""
 VERSION=""
 MANIFEST=""
+PR_NUMBER=""
 
 usage() {
   sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
@@ -59,6 +60,7 @@ while [ $# -gt 0 ]; do
     --run-id)    RUN_ID="$2"; shift 2 ;;
     --base)      BASE="$2"; shift 2 ;;
     --version)   VERSION="$2"; shift 2 ;;
+    --pr)        PR_NUMBER="$2"; shift 2 ;;
     --manifest)  MANIFEST="$2"; shift 2 ;;
     --keep)      KEEP=1; shift ;;
     --no-build)  NO_BUILD=1; shift ;;
@@ -442,7 +444,8 @@ cmd_release() {
     finish_gate RELEASE NOT_IMPLEMENTED "$started" 2 >/dev/null
     die "release verification lands with P7 ($check_script)"
   fi
-  "$check_script" --project "$PROJECT" --env-file "$ENV_FILE" --out "$OUT_DIR"
+  "$check_script" --project "$PROJECT" --env-file "$ENV_FILE" --out "$OUT_DIR" \
+    --version "${VERSION:-v1.0.0}" ${PR_NUMBER:+--pr "$PR_NUMBER"}
   local exit_code=$?
   [ "$exit_code" -eq 0 ] && finish_gate RELEASE PASSED "$started" 0 >/dev/null \
                           || finish_gate RELEASE FAILED "$started" "$exit_code" >/dev/null
