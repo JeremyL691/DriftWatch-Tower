@@ -61,8 +61,11 @@ jobs:
           EXPECTED: ${{ github.event.inputs.content_identity }}
         run: |
           if [ -z "$EXPECTED" ]; then
-            echo "::warning::no content identity supplied; a tag push cannot re-verify the accepted candidate"
-            exit 0
+            # A tag push cannot name the frozen identity, and publishing an image that was never
+            # compared with the accepted candidate is what this workflow exists to prevent.
+            # Refuse instead of warning; dispatch the workflow with content_identity instead.
+            echo "::error::refusing to publish: no content identity supplied (dispatch release.yml with the content_identity of the accepted candidate)"
+            exit 1
           fi
           container=$(docker create candidate:local)
           docker cp "$container:/app/app.jar" /tmp/app.jar
