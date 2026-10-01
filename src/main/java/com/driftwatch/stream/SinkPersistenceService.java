@@ -11,6 +11,7 @@ import com.driftwatch.quality.AlertType;
 import com.driftwatch.quality.RuleVersions;
 import com.driftwatch.quality.Severity;
 import com.driftwatch.quality.schema.SchemaObservationService;
+import com.driftwatch.source.AlertIncidentService;
 import com.driftwatch.source.SourceHealthService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -38,6 +39,7 @@ public class SinkPersistenceService {
     private final QualityAlertRepository alertRepository;
     private final SourceHealthService sourceHealthService;
     private final SchemaObservationService schemaObservationService;
+    private final AlertIncidentService alertIncidentService;
     private final MetricWindowProjector metricWindowProjector;
     private final ObjectMapper objectMapper;
 
@@ -46,6 +48,7 @@ public class SinkPersistenceService {
                                   QualityAlertRepository alertRepository,
                                   SourceHealthService sourceHealthService,
                                   SchemaObservationService schemaObservationService,
+                                  AlertIncidentService alertIncidentService,
                                   MetricWindowProjector metricWindowProjector,
                                   ObjectMapper objectMapper) {
         this.rawEventRepository = rawEventRepository;
@@ -53,6 +56,7 @@ public class SinkPersistenceService {
         this.alertRepository = alertRepository;
         this.sourceHealthService = sourceHealthService;
         this.schemaObservationService = schemaObservationService;
+        this.alertIncidentService = alertIncidentService;
         this.metricWindowProjector = metricWindowProjector;
         this.objectMapper = objectMapper;
     }
@@ -108,14 +112,21 @@ public class SinkPersistenceService {
         if (observation.drift() && !observation.changedFields().isEmpty()) {
             alerts.add(schemaDriftAlert(event, observation, now));
         }
-        List<QualityAlertEntity> staleAlerts = sourceHealthService.refreshAllAndPersist(now);
         if (!alerts.isEmpty()) {
             alertRepository.saveAll(alerts);
         }
-        alerts.addAll(staleAlerts);
+        // Scoped health refresh for the affected source only (never a full scan per event).
+        List<QualityAlertEntity> staleAlerts = sourceHealthService.refreshSourceAndPersist(event.source(), now);
+        List<QualityAlertEntity> persisted = new ArrayList<>(alerts);
+        persisted.addAll(staleAlerts);
+        // Non-INFO alerts join an incident for their scope; INFO alerts stay in the alert list so
+        // repeated notices cannot flood the incident view (guide 7.2).
+        for (QualityAlertEntity alert : persisted) {
+            alertIncidentService.correlate(alert);
+        }
 
         metricWindowProjector.project(p);
-        return new PersistResult(false, raw, alerts);
+        return new PersistResult(false, raw, persisted);
     }
 
     public static String ingestionIdOf(ProcessedEvent p) {

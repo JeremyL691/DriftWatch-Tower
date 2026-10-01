@@ -13,6 +13,9 @@ import java.time.Instant;
 @Table(name = "alert_incidents")
 public class AlertIncidentEntity {
 
+    public static final String STATUS_OPEN = "OPEN";
+    public static final String STATUS_RESOLVED = "RESOLVED";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
