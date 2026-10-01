@@ -73,22 +73,29 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: ${DWT_SPRING_PROFILES:-selfhost}
+      # Containers must bind all interfaces; the host-side publish stays on 127.0.0.1.
+      SERVER_ADDRESS: 0.0.0.0
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DWT_POSTGRES_DB:-driftwatch}
       SPRING_DATASOURCE_USERNAME: ${DWT_POSTGRES_USER:-driftwatch}
       SPRING_DATASOURCE_PASSWORD: ${DWT_POSTGRES_PASSWORD:?set DWT_POSTGRES_PASSWORD (see .env.example and scripts/selfhost.sh init)}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       SPRING_KAFKA_STREAMS_APPLICATION_ID: driftwatch-streams-v1
       SPRING_KAFKA_STREAMS_STATE_DIR: /var/lib/driftwatch/streams
+      DRIFTWATCH_SECURITY_ADMIN_USERNAME: ${DWT_ADMIN_USERNAME:-driftwatch}
+      DRIFTWATCH_SECURITY_ADMIN_PASSWORD: ${DWT_ADMIN_PASSWORD:?set DWT_ADMIN_PASSWORD (see .env.example and scripts/selfhost.sh init)}
+      DRIFTWATCH_SECURITY_INGEST_TOKENS: ${DWT_INGEST_TOKEN:-}
     ports:
       - "127.0.0.1:${DWT_APP_PORT:-8080}:8080"
     volumes:
       - streams-state:/var/lib/driftwatch/streams
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      # Readiness, not liveness: an instance whose Streams state is not running yet must not
+      # report healthy. Anonymous callers receive the status only, which is all this needs.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 12
-      start_period: 40s
+      retries: 18
+      start_period: 60s
     networks: [driftwatch]
 
 networks:

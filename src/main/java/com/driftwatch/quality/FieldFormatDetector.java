@@ -1,9 +1,10 @@
 package com.driftwatch.quality;
 
+import com.driftwatch.config.DriftwatchProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -31,8 +32,12 @@ public class FieldFormatDetector implements QualityDetector {
     private final ObjectMapper objectMapper;
     private final Map<String, Pattern> patterns;
 
-    public FieldFormatDetector(ObjectMapper objectMapper,
-                               @Value("${driftwatch.detector.field-format.patterns:}") String spec) {
+    @Autowired
+    public FieldFormatDetector(ObjectMapper objectMapper, DriftwatchProperties properties) {
+        this(objectMapper, properties.detector().fieldFormat().patterns());
+    }
+
+    public FieldFormatDetector(ObjectMapper objectMapper, String spec) {
         this.objectMapper = objectMapper;
         Map<String, Pattern> compiled = new LinkedHashMap<>();
         if (spec != null && !spec.isBlank()) {

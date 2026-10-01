@@ -1,13 +1,19 @@
-# DriftWatch Tower — streaming data quality observability
-# Single-node demo config; all services run via docker-compose
+# DriftWatch Tower — streaming data quality observability.
+#
+# Credentials are never defaulted in this file. Pick a profile:
+#   dev       local development defaults (never use for a deployment)
+#   selfhost  self-host deployment; requires env-provided credentials and enables the live
+#             GitHub public-event collector (see docker-compose.yml and .env.example)
+#   test/load used by the test suites and load harness
+#
+# The execution guide (`docs/PROJECT_EXECUTION_GUIDE.md`) defines the contract for these keys.
 
 spring:
   application:
     name: driftwatch-tower
   datasource:
-    url: jdbc:postgresql://localhost:5432/driftwatch
-    username: driftwatch
-    password: driftwatch
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/driftwatch}
+    username: ${SPRING_DATASOURCE_USERNAME:driftwatch}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -20,27 +26,23 @@ spring:
     enabled: true
     baseline-on-migrate: true
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
+      properties:
+        enable.idempotence: true
     consumer:
-      group-id: driftwatch-tower
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: com.driftwatch.event
-        spring.json.value.default.type: com.driftwatch.event.DataEvent
-    listener:
-      missing-topics-fatal: false
     streams:
-      application-id: driftwatch-streams
+      application-id: driftwatch-streams-v1
       properties:
         commit.interval.ms: 1000
-        spring.json.trusted.packages: com.driftwatch.event,com.driftwatch.quality,com.driftwatch.stream
-        spring.json.value.default.type: com.driftwatch.stream.ProcessedEvent
+    listener:
+      missing-topics-fatal: false
 
 server:
   port: 8080
@@ -51,10 +53,31 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
-# Detector configuration — all thresholds are externalized here
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      # Anonymous callers of /actuator/health receive the status only.
+      show-details: when-authorized
+      roles: ADMIN
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: ping
+        readiness:
+          include: db,kafka,streams,diskSpace
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: driftwatch-tower
+
 driftwatch:
-  # Kafka Streams quality topology. The legacy RawEventConsumer/QualityProcessor path has been
-  # retired — the streams topology + QualityEventSink are now the only processing path.
   streams:
     enabled: true
   detector:
@@ -62,9 +85,9 @@ driftwatch:
       payload-window: PT5M
     late:
       threshold: PT5M
+      # GitHub's events API can lag by hours; the source-specific threshold is larger.
+      github-threshold: PT8H
     null-spike:
-      # 0.6/3 rather than 0.2/5 so the null-spike demo fires: it needs prevRate <= threshold
-      # while the current window is still short of min-samples (see plan, Flaw #5).
       threshold: 0.6
       min-samples: 3
     anomaly-spike:
@@ -79,22 +102,25 @@ driftwatch:
           max: 1000
     field-format:
       patterns: 'code=^SKU-[0-9]{6}$'
+  metrics:
+    window-size: PT1M
+    grace: PT10M
+    future-tolerance: PT2M
+    # Must be >= grace + (baseline-windows + 1) * window-size; checked at startup.
+    state-retention: PT15M
   source-health:
     default-stale-after: PT5M
     rss-stale-after: PT30M
     pipeline-stale-after: PT24H
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,prometheus,metrics
-  metrics:
-    export:
-      prometheus:
-        enabled: true
-    tags:
-      application: driftwatch-tower
-  endpoint:
-    health:
-      show-details: always
+    # Collector lost after max(this, 2x its legal poll interval).
+    collector-lost-after: PT15M
+  security:
+    admin:
+      username: driftwatch
+      # No default: dev/test profiles and the self-host env file provide the value.
+      password: ""
+    ingest-tokens: []
+    require-strong-credentials: false
+  source:
+    github:
+      enabled: false
