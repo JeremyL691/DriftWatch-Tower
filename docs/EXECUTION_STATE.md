@@ -326,6 +326,18 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 
 按指南重跑受影响门禁：G02（`.execution/verify/p61-compose4/`）、G12（`.execution/verify/p61-browser4/`）、G13（`.execution/verify/p61-g13e/`）、G14（`.execution/verify/p61-load4/`）、G15（`.execution/verify/p61-package4/`），随后以全新 24 小时 run 重开。作废的 20261001T093737Z-soak24 已标记 FAILED 并留 FAILURE-NOTES.txt。
 
+### 2026-10-01 P6.2 受控故障预演（在等待期内完成）
+
+24 小时 run 进行到约 5 分钟时，用一个独立的临时栈（dwt-faulttest，18088，同一冻结镜像）把三个计划故障各真实执行一次，走的是 `acceptance.py execute_fault` 的生产代码路径，避免在 run 的第 2/8/16 小时才发现时序或恢复问题：
+
+| 故障 | outage | readiness 恢复 | 限值 |
+|---|---|---|---|
+| app-restart | 32.3s | 5.1s | ≤60s / ≤300s |
+| kafka-stop | 31.3s | 8.5s | ≤60s / ≤300s |
+| db-stop | 31.2s | 14.1s | ≤60s / ≤300s |
+
+三者全部在门槛内，`.execution/plans/g16-faults.json` 的排程可用；证据 `.execution/runs/p62-faultpretest/fault-pretest.json`。故障期间的数据安全已由 P3.2 现场演练覆盖（60s 停机被重试吸收且无死信；200s 停机产生一条可恢复死信，重放后只有一次副作用）。临时栈与其卷已清理，未触碰 run 的 dwt-soak 栈。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
