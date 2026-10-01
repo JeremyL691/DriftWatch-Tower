@@ -53,8 +53,11 @@ def main():
     path=directory/name;path.write_text(json.dumps(observation,indent=2))
     evidence=str(path.relative_to(ROOT))
     if evidence not in context['evidence_files']:context['evidence_files'].append(evidence)
-    context_path.write_text(json.dumps(context,indent=2))
-    print(json.dumps(observation,indent=2))
+    temporary=context_path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(context,indent=2));temporary.replace(context_path)
+    summary={**observation,"poller":{k:v for k,v in poller.items() if k!="event_identities"}}
+    summary["snapshot"]=str(path.relative_to(ROOT))
+    print(json.dumps(summary,indent=2))
     return 1 if bootstrap_after!=bootstrap_before else 0
 
 if __name__=='__main__':raise SystemExit(main())

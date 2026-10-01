@@ -17,6 +17,16 @@ def file_path(value):
         raise ValueError(f'missing or unsafe evidence file: {value}')
     return path
 
+def atomic_json(path, data):
+    path = Path(path)
+    import os
+    temporary = path.with_name(path.name + f'.tmp-{os.getpid()}')
+    try:
+        temporary.write_text(json.dumps(data, indent=2))
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
 def read(value):
     data = json.loads(file_path(value).read_text())
     if not isinstance(data, dict):
