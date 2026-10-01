@@ -720,7 +720,7 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 结论：应用重启后轮询器**没有重新 bootstrap**、etag 保留、LIVE 轮询继续、inbox 连续、无失败计数——重启恢复路径成立；`scripts/poller-state.sh` 的对比方法也得到验证。
 
 
-**待办（下一个人工轮次）**：每小时自动化 `automation-82c729b4` 的提示词仍引用旧 run id `20261001T145553Z-soak24`、旧制品目录 `p61-package-final3` 与旧 content identity `e574ffcf…`；本次是在自动化自身运行中，工具不允许自我更新。下一次非自动化轮次必须把它改为：动态发现 RUNNING 的 run、制品目录 `.execution/verify/p7-package`、content identity `e2029fc2…`、候选 `e8315ac9`。
+**待办（下一个人工轮次）**：每小时自动化 `automation-82c729b4` 的提示词仍引用旧 run id `20261001T145553Z-soak24`、旧制品目录 `p61-package-final3` 与旧 content identity `e574ffcf…`；本次是在自动化自身运行中，工具不允许自我更新。下一次非自动化轮次必须把它改为：动态发现 RUNNING 的 run（当前为 `20261001T182403Z-soak24`，预计 2026-10-02T18:24:03Z 结束）、制品目录 `.execution/verify/p7-package2`、content identity `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`、候选 `573154b9`（HEAD `20f948be`）。
 
 ### 2026-10-01 P6.2 等待期：320px 布局的真实溢出（确定性 91px）与修复
 
@@ -753,7 +753,15 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 
 对 P3/P4 的判定：**重复文件只出现在 `target/classes`，不在 `src`**（`src/main/resources/db/migration/` 只有 12 个正确版本、`git ls-files` 一致；若 `src` 里有未跟踪文件，`assert_clean_git` 会先失败而不会跑测试），且**同一套件在其前后的 P2/P5/UNIT 三次运行都 174/0/0/0 通过**，之后 `target` 重建（17:39Z）再未复现。仓库内没有任何脚本或测试会写迁移文件，compose 也没有把仓库挂进容器。因此判定为**构建产物层面的瞬时重复**（同一 `target` 目录在两轮 `mvnw clean test` 交接时的拷贝竞态），非代码缺陷；仍按「失败不掩盖」原则记录在此，并在门禁链结束后**单独重跑 P3 与 P4** 以取得干净记录。防御性改进（若再复现）：在门禁里加一条 preflight，断言迁移目录每个版本只有一个文件，让这类产物问题以明确信息快速失败，而不是 15 条 context 错误。
 
-后续每条保留：
+### 2026-10-01 P6.2 门禁链收口：P3/P4 干净复跑、packaging 顺序缺陷修复、第九个 run 启动
+
+单跑 P3 与 P4（`./scripts/phases/phase-P3.sh` / `phase-P4.sh`，候选 `573154b9`）：**均 PASSED**，174/0/0/0、`git_sha 20f948be`、`GithubPollerIntegrationTest` 12 用例，瞬时重复未再现；证据 `.execution/verify/p7-P3`、`.execution/verify/p7-P4`（旧失败目录已改名保留，不覆盖）。
+
+随后 `verify.sh package` 一次 **FAILED**：`checksums do not match the shipped artifacts`（18 行，其中 1 行是 bundle 条目）。根因在**我自己本轮新加的脚本** `scripts/phases/package-release.sh`：它先对 `OUT_DIR` 算 checksums、之后才用 `tar -czf` 生成 bundle，于是 `checksums.txt` 里记录的 bundle sha256 与最终落盘的 bundle 不同（内容相同、mtime 不同）。修复：把 bundle 的生成移到 checksums 之前（先 `tar`、后 `find ... > checksums.txt`）。重跑进入全新目录：`./scripts/verify.sh package --out .execution/verify/p7-package2 --image driftwatch-tower:local --version v1.0.0 --manifest .execution/runs/p7-freeze/manifest.json` → **PASSED**（`gate.json: status PASSED, git_sha 20f948be`），镜像身份一致、匿名 health 200、API 200、ingest 202、重启恢复 true、`problems []`。即：上一轮暴露的打包缺陷已修好并用干净证据覆盖，本轮的 load 门禁（180000@100.0/s、ack p95 4.9ms、commit p95 111.8ms、drain 30.1s）与 package 门禁都是新候选上的最终记录。
+
+**第九个 24 小时 run `20261001T182403Z-soak24`**：2026-10-01T18:24:03Z 启动（PID 5002，`caffeinate -i -w 5002` 防休眠），86400s，预计 **2026-10-02T18:24:03Z** 结束；`state.json` 记录 `git_sha=20f948be`、`image.image_id=sha256:2901be88…`（与冻结候选一致），app 容器实测同一镜像且 healthy，fault plan 为 2h app-restart / 8h kafka-stop / 16h db-stop。启动即开始真实事件轮询（bootstrap 轮），此前每个窗口启动后约 1 分钟即可见数百条真实事件。本窗口是**第一个用加固后 runner 启动的窗口**（含 live-runner 拒绝与镜像归属校验），且启动前已确认全局只有这一个 runner。
+
+### 后续记录要求
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
 - 失败原因和下一动作；旧失败不覆盖成新通过。
