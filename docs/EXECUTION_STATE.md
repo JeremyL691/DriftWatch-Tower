@@ -621,6 +621,16 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 - **两条路径互相矛盾**：告警路径（按基线比较字段是否由有变无）**一条 NULL_SPIKE 都没发**（本窗口告警只有 DUPLICATE_EVENT×3 与 STALE_SOURCE×6），说明检测器判定「没有退化」；而健康分数却据此扣满 25 分，且是「一个字段-窗口的 max 决定全源分数」，于是该源即使一切正常也长期被压到 60 以下（非 stale 时会被判定为 `UNHEALTHY`）。
 - **影响与处置**：不影响数据完整性、不影响任何 gate（门禁不读 health_score/null_rate），但会误导自托管者（把正常的 GitHub 源看成「不健康」）。修复需改 `src/main/java`（冻结面内），因此本轮不改；已在 README/RELEASE_NOTES 的已知限制中写明含义，并把「null 率只在基线确认存在的字段上聚合（或只用已确认字段的 max）」列入发布后跟进项，与 gap 分类器、STALE 阈值并列。
 
+### 2026-10-01 P6.2 等待期：9 条 OPEN 告警但 0 个 incident 的核查（符合契约，不是缺陷）
+
+窗口里出现「9 条 OPEN 告警 / 0 个 incident」，先按可疑处理，逐项查证后确认**符合规范**：
+
+- 告警构成：`DUPLICATE_EVENT sev=INFO`×3、`STALE_SOURCE sev=WARN`×6，全部 `incident_id=NULL`。
+- 契约（指南 §7.2 第 346 行）：「**非INFO的检测告警**按 source/event_type 关联到最近 5 分钟的 OPEN incident；其余 INFO 告警留在 alerts，避免重复提示产生 incident 洪水」。关键限定词是「检测告警」——指检测流水线（sink）产生的告警。
+- 接线核对：`AlertIncidentService.correlate()` 的唯一生产调用点在 `SinkPersistenceService` 第 123 行（检测流水线），而 `STALE_SOURCE` 由定时健康检查（`SourceHealthService`）直接写库产生，属健康/运维信号，不在该规则范围内。指南 §2 第 43 行把「incident 关联服务没有接到 sink」列为**旧版缺陷**，本版已修（sink 确实调用了 correlate），说明「关联挂在 sink 上」正是设计要求。
+- 数据自洽：本窗口检测流水线**没有产生任何非 INFO 告警**（只有 INFO 的重复事件提示），因此按规则 incident 数应为 0 ✓；6 条 WARN 是健康路径的转换告警，按 §7.2 不建 incident。
+- 结论：不是缺陷、不需要改；`IncidentLifecycleIntegrationTest` 已覆盖关联/并发/解决语义（G10 门禁要求「incident 与告警状态一致」）。此项与前述三项不同——**它是被契约明确排除的**，因此在文档中不改写任何行为，仅在状态里留证。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
