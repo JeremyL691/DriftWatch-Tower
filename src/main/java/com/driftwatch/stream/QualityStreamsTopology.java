@@ -90,10 +90,10 @@ public class QualityStreamsTopology {
         this.settings = settings;
     }
 
+    /** Live path: the ingest API publishes {@link RawEnvelope} records to {@code raw-events-v1}. */
     public KStream<String, ProcessedEvent> apply(StreamsBuilder builder) {
-        KStream<String, RawEnvelope> envelopes = builder
-                .stream(KafkaTopics.RAW_EVENTS, Consumed.with(Serdes.String(), serdes.dataEventSerde()))
-                .process(EnvelopeAdapter::new, Named.as("adapter"));
+        KStream<String, RawEnvelope> envelopes = builder.stream(KafkaTopics.RAW_EVENTS_V1,
+                Consumed.with(Serdes.String(), serdes.rawEnvelopeSerde()));
         return buildPipeline(builder, envelopes);
     }
 
@@ -130,7 +130,7 @@ public class QualityStreamsTopology {
                         Named.as("anomaly"), ANOMALY_WINDOW_STORE, ANOMALY_SCOPE_STORE, SCOPE_WATERMARK_STORE)
                 .process(FinalizeProcessor::new, Named.as("finalize"));
 
-        processed.to(KafkaTopics.QUALITY_EVENTS,
+        processed.to(KafkaTopics.QUALITY_EVENTS_V1,
                 Produced.with(Serdes.String(), serdes.processedEventSerde()));
         return processed;
     }
@@ -156,29 +156,6 @@ public class QualityStreamsTopology {
         deserializer.addTrustedPackages("com.driftwatch.stream");
         Serde<T> serde = Serdes.serdeFrom(new JsonSerializer<T>(objectMapper).noTypeInfo(), deserializer);
         return Stores.keyValueStoreBuilder(Stores.persistentKeyValueStore(name), Serdes.String(), serde);
-    }
-
-    /**
-     * Temporary bridge while {@code raw-events} still carries bare {@link DataEvent} values: the
-     * envelope is created here. P3.1 moves envelope creation into the ingest API and the new
-     * {@code raw-events-v1} topic.
-     */
-    static class EnvelopeAdapter implements Processor<String, DataEvent, String, RawEnvelope> {
-        private ProcessorContext<String, RawEnvelope> context;
-
-        @Override
-        public void init(ProcessorContext<String, RawEnvelope> context) {
-            this.context = context;
-        }
-
-        @Override
-        public void process(Record<String, DataEvent> record) {
-            RawEnvelope envelope = RawEnvelope.forRest(record.value(), Instant.now());
-            context.forward(record.withValue(envelope));
-        }
-
-        @Override
-        public void close() {}
     }
 
     /** Attaches the payload hash and normalises stream time to the event timestamp. */
