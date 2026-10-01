@@ -1,6 +1,7 @@
 package com.driftwatch.stream;
 
 import com.driftwatch.event.DataEvent;
+import com.driftwatch.event.RawEnvelope;
 import com.driftwatch.quality.AlertType;
 
 import java.time.Instant;
@@ -15,15 +16,29 @@ import java.util.List;
  */
 final class PendingEvent {
 
-    final DataEvent event;
+    final RawEnvelope envelope;
     final String payloadHash;
-    final Instant receivedAt;
     final List<ProcessedEvent.ProcessedAlert> alerts = new ArrayList<>();
+    WindowEvaluation evaluation;
+    /** APPLIED when an active schema baseline governed the null checks, PENDING when none exists. */
+    String baselineStatus;
+    /**
+     * Set when the delivery identity was already processed (redelivery, or a reused ingestion id
+     * with different content). Detection must not run again, so business counters stay stable.
+     */
+    boolean skipDetection;
 
-    PendingEvent(DataEvent event, String payloadHash, Instant receivedAt) {
-        this.event = event;
+    PendingEvent(RawEnvelope envelope, String payloadHash) {
+        this.envelope = envelope;
         this.payloadHash = payloadHash;
-        this.receivedAt = receivedAt;
+    }
+
+    DataEvent event() {
+        return envelope.event();
+    }
+
+    Instant receivedAt() {
+        return envelope.receivedAt();
     }
 
     /** Status precedence mirrors the legacy {@code QualityProcessor.qualityStatusFor}. */
@@ -35,6 +50,17 @@ final class PendingEvent {
     }
 
     ProcessedEvent toProcessed() {
-        return new ProcessedEvent(event, payloadHash, receivedAt, qualityStatus(), List.copyOf(alerts));
+        return new ProcessedEvent(
+                envelope.event(),
+                envelope.ingestionId(),
+                envelope.receivedAt(),
+                envelope.origin().name(),
+                envelope.mode().name(),
+                payloadHash,
+                qualityStatus(),
+                RuleVersions.RULES_VERSION,
+                baselineStatus,
+                evaluation,
+                List.copyOf(alerts));
     }
 }

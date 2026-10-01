@@ -42,9 +42,16 @@ class QualityEventSinkTest {
         );
         ProcessedEvent processed = new ProcessedEvent(
                 event,
-                "hash",
+                java.util.UUID.randomUUID(),
                 receivedAt,
+                "REST",
+                "LIVE",
+                "hash",
                 "PASSED",
+                "rules-test",
+                "APPLIED",
+                new WindowEvaluation("[]", receivedAt, receivedAt.plusSeconds(60),
+                        WindowEvaluation.Outcome.INCLUDED, receivedAt, null),
                 List.of()
         );
 
