@@ -18,7 +18,7 @@
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 6bf026de（P5.2 完成；P5.3-P7 未完成，仍不能作为发布候选） |
+| candidate_sha | 7d36c61（P5.3 进行中；P5.3 实现/P6/P7 未完成，仍不能作为发布候选） |
 | source_tree_hash | 8c8797ad9fe505c8e12d0f797264e4cb15de7fc5c00ffddce25c61cdd023570c（src+pom+Dockerfile+compose） |
 | candidate_image_id / public_digest | 本地镜像 sha256:1a419f6a…（仅本地验证，未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
@@ -64,7 +64,7 @@
 | P4.2 | 官方真实数据全链路 | PASSED | G09 PASSED；官方源无 token，bootstrap 199 事件 + 启动后新增 LIVE 事件 + 重启检查点保持；`.execution/runs/p42-smoke/` |
 | P5.1 | incident / scheduler | PASSED | G10 PASSED（163/0/0/0；IncidentLifecycle 6、Scheduler 2、CollectorStatus 3）；`.execution/verify/p5-gate3/` |
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
-| P5.3 | Dashboard 操作与响应式 | RUNNING | 设计 3/2/8 已确认 |
+| P5.3 | Dashboard 操作与响应式 | RUNNING | before 截图与缺陷清单已产出（`.execution/runs/p53-before/`）；实现与 after 截图待做 |
 | P6.1 | 冻结候选、短门槛、负载 | NOT_STARTED | - |
 | P6.2 | 24 小时真实验收 | NOT_STARTED | - |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
@@ -267,6 +267,13 @@ P3.1 之后仍需完成（下一动作）：
 - 备份/恢复演练（`.execution/runs/p52-drill/`）：真实数据（4 raw、1 alert、1 schema、4 receipts）→ `pg_dump -Fc`（57KB）→ 恢复到**全新专用卷**（独立项目与卷）→ 计数完全一致 `counts_match=YES`、关系校验 `receipts_without_raw=0`；随后在源库运行 retention（API + CSRF），`open_alerts_before=1 after=1` 证明受保护证据未被清理；Prometheus scrape 中 7 个必需指标全部存在且无身份标签。演练卷与网络已清理，未触碰用户卷。
 - 测试：`OperationsIntegrationTest`（保留规则：受保护证据、orphan receipt、batch 设置、指标注册与标签基数）；`phase-P5b.sh` 门禁（165 tests / 0 fail / 0 err / 0 skip，OperationsIntegrationTest 2 + IncidentLifecycleIntegrationTest 6 + DeadLetterIntegrationTest 5 均实际运行）。
 - 说明：Micrometer 的 Prometheus 注册表会去掉 gauge 名的 `_total` 后缀，指标名已按实际导出名统一为 `driftwatch_retention_rows_pruned`。
+
+### 2026-10-01 P5.3 起步：真实 before 截图与缺陷清单（RUNNING）
+
+- 工具：`package.json` 固定 `playwright-core`（浏览器来自本机 Playwright 缓存，无下载、无外部 CDN 依赖）；`scripts/p53-capture.mjs` 用显式 Basic 头驱动 headless Chromium，逐断点（320/768/1024/1440）截图并记录 console 错误、页面级横向溢出与键盘 focus 探针，保证 before/after 来自同一真实场景。
+- 场景：compose `dwt-p53`（selfhost，18080）经摄取 API 与 mixed-incident 演示产生 227 events / 339 alerts；证据 `.execution/runs/p53-before/`（4 张 dark 截图 + `before-report.json` + `findings.md`）。
+- 实测缺陷（after 必须修复，写入 `findings.md`）：① Dashboard 的 WebSocket 因无法携带 Basic 凭据而连接失败（浏览器不会为 WS 握手重放凭据）；② 字体来自 fonts.gstatic.com 外部 CDN；③ 页面内一次调用返回 403（CSRF 流程未走通）；④ 320/768 出现整页横向溢出；⑤ focus 仅浏览器默认 1px auto；⑥ 尚无浅色主题。
+- 下一步：实现第 7.5 节页面与操作状态（loading/禁用重复提交/成功失败反馈/retry、401 可理解认证态、WS 退避重连并重新查询）、本地图标（Lucide 本地打包）与本地字体/系统 fallback、浅色 token、窄屏表格横向滚动容器、可见 focus，然后跑 `scripts/p53-capture.mjs --label after`（含 light）并对照 before 出 G12 证据。
 
 后续每条保留：
 
