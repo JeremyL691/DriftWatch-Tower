@@ -164,8 +164,9 @@ and the resumable 24-hour runner (`acceptance.py`).
 - Retention deletes raw payloads after 30 days; the deduplication identity is kept longer than
   the payload so replays remain correct, but old payload contents are not recoverable.
 - Browser support is verified on Chromium at 320/768/1024/1440 px in dark and light themes, on
-  macOS. The 320 px layout fits there with no margin, so Chromium on Linux with fallback fonts can
-  overflow by about 11 px in the light theme; a follow-up release makes that layout font-robust.
+  macOS, and the same overflow check runs in CI on Linux. Long unbreakable tokens in the timeline
+  and tables wrap (`overflow-wrap: anywhere`), so the 320 px layout fits with real event text; the
+  capture gate asserts `scrollWidth == clientWidth` on every capture.
 
 ## License
 

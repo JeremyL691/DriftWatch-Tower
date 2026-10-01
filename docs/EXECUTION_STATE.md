@@ -774,6 +774,20 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 5. **pre-fault 基线已就位**：本窗口（`20261001T182403Z-soak24`）的 2h 故障前状态已写入 `.execution/verify/p61-soak-prefault-baseline.json`（自动化读的路径）并另存 `.execution/verify/p7-soak-prefault-baseline.json`；第七窗口的旧基线保留为 `p61-soak-prefault-baseline-run7.json`。当前值：BOOTSTRAP 1 轮、真实事件 96、LIVE 0、inbox 96、outbox 0、gaps 0、failures 0（2h 故障在 20:24:03Z，届时按 `scripts/poller-state.sh` 对比）。
 6. **PR #1 状态**：OPEN、head `cb838e3c`（分支 `codex/release-v1`）、base main、`MERGEABLE`（`mergeStateStatus=UNSTABLE`，因新 head 的 CI 正在跑）；合并前置条件（head 为 `573154b9` 的后代、五 job 全绿）在 G16 通过后逐条复核。
 
+### 2026-10-01 第九窗口运行期观测：告警画像（全部为规格内的真实检测，非缺陷）
+
+19:01Z（elapsed 2182s，samples 69，max_gap 32.3s，readiness 200）时的真实数据：distinct 真实事件 **112**（bootstrap 96 / live 16）、poll 轮 8、`source_gaps` 3 条（全部 NO_OVERLAP，属已知的保守分类器，RELEASE_NOTES 已披露）、**alerts 13**、**incident 1**、dead letter 0、未确认 receipt 0、outbox 0、lag 未判（窗口结束才判）。逐条核对了 13 条告警的构成与真实性：
+
+| 类型/严重度 | 条数 | 内容与证据 |
+|---|---|---|
+| STALE_SOURCE WARN | 4 | 源在 5 分钟新鲜度窗口内没有新事件（例：18:24:47 报「最后事件 18:18:57Z」，health_score 65.0）；指南 7.2「STALE_SOURCE 按 source 转换生成一次」，3+1 条即 4 次状态转换，与公共 API 的突发式发布一致（已披露） |
+| LATE_EVENT INFO | 4 | 真实投递延迟：如「arrived 310s / 789s after event_timestamp（阈值 PT5M）」，证据保存了 received_at、event_timestamp 与阈值，符合指南 5.2 |
+| LATE_EVENT WARN | 1 | 29 小时：事件创建于 `2026-09-30T13:29:32Z`、首次收到 `2026-10-01T18:45:32Z`（lateness 105360s）。独立核验：该事件确在 `raw_events`（mode=LIVE）；本窗口 LIVE 集合的 event_timestamp 跨度 `2026-09-30T13:29:32Z..2026-10-01T18:55:01Z`、received_at 集中在 18:29:42..18:55:50 —— 即 LIVE 响应**确实**带回了创建于很久之前的、此前从未见过的条目，规则按 received_at−event_timestamp 如实判定 |
+| DUPLICATE_EVENT INFO | 4 | 同 id 在 5 分钟内被再次看到（轮询页重叠），INFO 且不建 incident——正是去重路径生效的证据 |
+| incident | 1 | 由上述 WARN LATE_EVENT 按指南 7.2「非 INFO 告警按 source/event_type 关联 incident」自动开启（alert id 9 → incident 1，PushEvent，OPEN） |
+
+结论：没有一条告警是字段路径缺陷那样的假阳性——每条都有真实数字支撑、且与指南 5.2/7.2 的判定与升级规则一致。但它暴露了一个**默认调参/分类**问题（与既已披露的 gaps 分类器、health 分数同类）：公共事件 API 会把「首次可见的旧事件」交给 LATE_EVENT，规则无法区分「投递延迟」与「首次可见」，非 INFO 升级因此会产生一条 incident。G16 判据不涉及告警条数（判据是 distinct≥20、LIVE≥1、三次故障完成且 outage≤60s/readiness≤300s、账本一致、lag=0、连续性、内存、末尾 readiness），因此不影响判定；但已如实写进 `docs/RELEASE_NOTES.md` 与 `README.md` 的已知限制（含本条实测数字），并把「区分首次可见与延迟投递」列为发布后修复项。两处均为**文档**改动（不在冻结应用面内，content identity 是 jar），因此 `p7-package2` 的 bundle 不再包含最新文档：发布时的 package 门禁会重新生成 bundle 与 checksums（收尾程序第 10 步），发布制品以那次为准。
+
 ### 后续记录要求
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
