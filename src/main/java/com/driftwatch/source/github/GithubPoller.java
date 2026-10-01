@@ -14,6 +14,7 @@ import com.driftwatch.persistence.SourceOutboxEntity;
 import com.driftwatch.persistence.SourceOutboxRepository;
 import com.driftwatch.persistence.SourcePollRunEntity;
 import com.driftwatch.persistence.SourcePollRunRepository;
+import com.driftwatch.operations.DriftwatchMetrics;
 import com.driftwatch.quality.ScopeKey;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
@@ -68,6 +69,7 @@ public class GithubPoller {
     private final com.driftwatch.persistence.ProcessedReceiptRepository receiptRepository;
     private final com.driftwatch.persistence.DeadLetterRecordRepository deadLetterRepository;
     private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
+    private final DriftwatchMetrics metrics;
 
     public GithubPoller(DriftwatchProperties properties,
                         GithubEventsClient client,
@@ -80,7 +82,8 @@ public class GithubPoller {
                         KafkaTemplate<String, RawEnvelope> rawTemplate,
                         com.driftwatch.persistence.ProcessedReceiptRepository receiptRepository,
                         com.driftwatch.persistence.DeadLetterRecordRepository deadLetterRepository,
-                        org.springframework.transaction.PlatformTransactionManager transactionManager) {
+                        org.springframework.transaction.PlatformTransactionManager transactionManager,
+                        DriftwatchMetrics metrics) {
         this.properties = properties;
         this.client = client;
         this.converter = converter;
@@ -93,6 +96,7 @@ public class GithubPoller {
         this.receiptRepository = receiptRepository;
         this.deadLetterRepository = deadLetterRepository;
         this.transactionTemplate = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        this.metrics = metrics;
     }
 
     /**
@@ -166,6 +170,7 @@ public class GithubPoller {
         state.setUpdatedAt(now);
         stateRepository.save(state);
 
+        metrics.recordCollectorPoll("started");
         SourcePollRunEntity run = new SourcePollRunEntity();
         run.setSource(source);
         run.setStatus(SourcePollRunEntity.STATUS_RUNNING);
@@ -381,6 +386,7 @@ public class GithubPoller {
         }
         state.setLastEventAt(staged.stream().map(SourceInboxEntity::getCreatedAt)
                 .max(Comparator.naturalOrder()).orElse(state.getLastEventAt()));
+        metrics.recordCollectorUpstreamLag(state.getLastEventAt());
         state.setNextPollAt(now.plus(nextInterval(state, null)));
         state.setUpdatedAt(now);
         stateRepository.save(state);
@@ -395,6 +401,7 @@ public class GithubPoller {
 
     private void finishQuiet(CollectorStateEntity state, SourcePollRunEntity run,
                              GithubFetchResult result, Instant now) {
+        metrics.recordCollectorPoll("quiet");
         run.setStatus(SourcePollRunEntity.STATUS_QUIET);
         run.setEtagCandidate(state.getEtagApplied());
         run.setXPollInterval(result.pollIntervalSeconds());
@@ -411,6 +418,8 @@ public class GithubPoller {
 
     private void handleFailure(CollectorStateEntity state, SourcePollRunEntity run,
                                GithubFetchResult result, Instant now) {
+        metrics.recordCollectorPoll("failed");
+        metrics.recordCollectorFailure(result.status().name());
         run.setStatus(SourcePollRunEntity.STATUS_FAILED);
         run.setFailureReason(result.failureReason());
         run.setFinishedAt(now);

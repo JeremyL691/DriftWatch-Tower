@@ -80,6 +80,9 @@ class SourceHealthServiceTest {
                 new ObjectMapper()
         );
 
+        // Reads are pure: the refresh happens on the scheduled path.
+        assertThat(service.list()).isEmpty();
+        service.refreshAllAndPersist(now);
         List<SourceHealthEntity> rows = service.list();
 
         assertThat(savedHealth.get()).isNotNull();

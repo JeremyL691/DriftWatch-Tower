@@ -47,7 +47,8 @@ class SinkRetryTest {
 
     private QualityEventSink sink(SinkPersistenceService persistence, DltPublisher publisher) {
         return new QualityEventSink(persistence, mock(DashboardWebSocketHandler.class), publisher,
-                objectMapper, new SimpleMeterRegistry(), new long[]{0L, 0L, 0L, 0L});
+                objectMapper, new SimpleMeterRegistry(), new long[]{0L, 0L, 0L, 0L},
+                mock(com.driftwatch.operations.DriftwatchMetrics.class));
     }
 
     @Test

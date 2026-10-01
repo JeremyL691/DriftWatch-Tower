@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -47,13 +48,15 @@ public class IncidentController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /** Resolves the incident and every unresolved alert it owns, in one transaction. */
     @PostMapping("/{id}/resolve")
-    public ResponseEntity<IncidentResponse> resolve(@PathVariable Long id) {
-        return incidentRepository.findById(id).map(incident -> {
-            incident.setStatus("RESOLVED");
-            incident.setResolvedAt(Instant.now());
-            return ResponseEntity.ok(IncidentResponse.from(incidentRepository.save(incident)));
-        }).orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<IncidentResponse> resolve(@PathVariable Long id,
+                                                    @RequestBody(required = false) Map<String, String> body) {
+        if (!incidentRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        String rootCause = body == null ? null : body.get("rootCause");
+        return ResponseEntity.ok(IncidentResponse.from(incidentService.resolveIncident(id, rootCause)));
     }
 
     @GetMapping("/stats")

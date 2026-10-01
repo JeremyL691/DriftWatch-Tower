@@ -2,6 +2,7 @@ package com.driftwatch.api;
 
 import com.driftwatch.persistence.QualityAlertEntity;
 import com.driftwatch.persistence.QualityAlertRepository;
+import com.driftwatch.source.AlertIncidentService;
 import com.driftwatch.quality.AlertType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -23,9 +24,11 @@ import java.util.Map;
 public class AlertController {
 
     private final QualityAlertRepository repository;
+    private final AlertIncidentService incidentService;
 
-    public AlertController(QualityAlertRepository repository) {
+    public AlertController(QualityAlertRepository repository, AlertIncidentService incidentService) {
         this.repository = repository;
+        this.incidentService = incidentService;
     }
 
     @GetMapping
@@ -61,26 +64,30 @@ public class AlertController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /** Idempotent: repeating the same acknowledge keeps the original timestamp. */
     @PostMapping("/{id}/acknowledge")
     public ResponseEntity<AlertResponse> acknowledge(@PathVariable Long id,
-                                                     @RequestBody Map<String, String> body) {
-        return repository.findById(id).map(alert -> {
-            alert.setStatus("ACKNOWLEDGED");
-            alert.setAcknowledgedBy(body.getOrDefault("acknowledgedBy", "anonymous"));
-            alert.setAcknowledgedAt(Instant.now());
-            return ResponseEntity.ok(AlertResponse.from(repository.save(alert)));
-        }).orElse(ResponseEntity.notFound().build());
+                                                     @RequestBody(required = false) Map<String, String> body) {
+        if (!repository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        try {
+            String by = body == null ? null : body.get("acknowledgedBy");
+            return ResponseEntity.ok(AlertResponse.from(incidentService.acknowledgeAlert(id, by)));
+        } catch (IllegalStateException illegalTransition) {
+            return ResponseEntity.status(409).build();
+        }
     }
 
+    /** Resolving the last unresolved alert of an incident also resolves the incident. */
     @PostMapping("/{id}/resolve")
     public ResponseEntity<AlertResponse> resolve(@PathVariable Long id,
-                                                 @RequestBody Map<String, String> body) {
-        return repository.findById(id).map(alert -> {
-            alert.setStatus("RESOLVED");
-            alert.setRootCause(body.getOrDefault("rootCause", ""));
-            alert.setResolvedAt(Instant.now());
-            return ResponseEntity.ok(AlertResponse.from(repository.save(alert)));
-        }).orElse(ResponseEntity.notFound().build());
+                                                 @RequestBody(required = false) Map<String, String> body) {
+        if (!repository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        String rootCause = body == null ? null : body.get("rootCause");
+        return ResponseEntity.ok(AlertResponse.from(incidentService.resolveAlert(id, rootCause)));
     }
 
     @GetMapping("/stats")

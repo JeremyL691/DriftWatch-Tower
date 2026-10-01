@@ -26,4 +26,8 @@ public interface QualityAlertRepository extends JpaRepository<QualityAlertEntity
     long countByStatus(String status);
 
     java.util.List<QualityAlertEntity> findByIngestionIdOrderByCreatedAtAsc(String ingestionId);
+
+    java.util.List<QualityAlertEntity> findByIncidentIdAndStatusNot(Long incidentId, String status);
+
+    long countByIncidentIdAndStatusNot(Long incidentId, String status);
 }

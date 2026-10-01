@@ -2,6 +2,7 @@ package com.driftwatch.event;
 
 import com.driftwatch.persistence.IngestionReceiptEntity;
 import com.driftwatch.persistence.IngestionReceiptRepository;
+import com.driftwatch.operations.DriftwatchMetrics;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -50,6 +51,7 @@ public class IngestionService {
     private final RequestDigests digests;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
+    private final DriftwatchMetrics metrics;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -58,12 +60,14 @@ public class IngestionService {
                             IngestionReceiptRepository receiptRepository,
                             RequestDigests digests,
                             ObjectMapper objectMapper,
-                            PlatformTransactionManager transactionManager) {
+                            PlatformTransactionManager transactionManager,
+                            DriftwatchMetrics metrics) {
         this.producer = producer;
         this.receiptRepository = receiptRepository;
         this.digests = digests;
         this.objectMapper = objectMapper;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.metrics = metrics;
     }
 
     /** Outcome of one accepted (or already known) ingestion. */
@@ -77,8 +81,10 @@ public class IngestionService {
     public Acceptance ingest(DataEvent event, String idempotencyKey) {
         rejectOversized(event);
         RawEnvelope envelope = envelope(event, null);
+        Instant startedAt = Instant.now();
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             boolean confirmed = producer.publishAndAwait(envelope);
+            metrics.recordIngest(Duration.between(startedAt, Instant.now()), confirmed);
             if (!confirmed) {
                 throw new ResponseStatusException(SERVICE_UNAVAILABLE,
                         "broker acknowledgement timed out; retry with an Idempotency-Key to keep the same identity");
@@ -97,6 +103,7 @@ public class IngestionService {
                 UUID.fromString(reservation.ingestionId()), event, envelope.receivedAt(),
                 RawEnvelope.Origin.REST, RawEnvelope.Mode.LIVE, null, null);
         boolean confirmed = producer.publishAndAwait(reserved);
+        metrics.recordIngest(Duration.between(startedAt, Instant.now()), confirmed);
         markState(event, idempotencyKey, confirmed
                 ? IngestionReceiptEntity.STATE_CONFIRMED
                 : IngestionReceiptEntity.STATE_FAILED);

@@ -21,6 +21,10 @@ import java.time.Instant;
 @Table(name = "quality_alerts")
 public class QualityAlertEntity {
 
+    public static final String STATUS_OPEN = "OPEN";
+    public static final String STATUS_ACKNOWLEDGED = "ACKNOWLEDGED";
+    public static final String STATUS_RESOLVED = "RESOLVED";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

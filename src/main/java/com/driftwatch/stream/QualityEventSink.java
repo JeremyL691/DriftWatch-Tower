@@ -5,6 +5,7 @@ import com.driftwatch.dashboard.DashboardWebSocketHandler;
 import com.driftwatch.dlt.DltMessage;
 import com.driftwatch.dlt.DltPublisher;
 import com.driftwatch.dlt.DltStage;
+import com.driftwatch.operations.DriftwatchMetrics;
 import com.driftwatch.persistence.QualityAlertEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
@@ -45,14 +46,16 @@ public class QualityEventSink {
     private final Counter eventCounter;
     private final Counter alertCounter;
     private final Counter deadLetterCounter;
+    private final DriftwatchMetrics metrics;
 
     @Autowired
     public QualityEventSink(SinkPersistenceService persistence,
                             DashboardWebSocketHandler ws,
                             DltPublisher dltPublisher,
                             ObjectMapper objectMapper,
-                            MeterRegistry meterRegistry) {
-        this(persistence, ws, dltPublisher, objectMapper, meterRegistry, RETRY_DELAYS_MS);
+                            MeterRegistry meterRegistry,
+                            DriftwatchMetrics metrics) {
+        this(persistence, ws, dltPublisher, objectMapper, meterRegistry, RETRY_DELAYS_MS, metrics);
     }
 
     /** Test-friendly constructor: the retry schedule is the only thing that changes. */
@@ -61,7 +64,9 @@ public class QualityEventSink {
                      DltPublisher dltPublisher,
                      ObjectMapper objectMapper,
                      MeterRegistry meterRegistry,
-                     long[] retryDelaysMs) {
+                     long[] retryDelaysMs,
+                     DriftwatchMetrics metrics) {
+        this.metrics = metrics;
         this.retryDelaysMs = retryDelaysMs;
         this.persistence = persistence;
         this.ws = ws;
@@ -98,11 +103,15 @@ public class QualityEventSink {
                 }
                 eventCounter.increment();
                 alertCounter.increment(result.alerts().size());
+                metrics.recordProcessing(java.time.Duration.between(p.receivedAt(), java.time.Instant.now()));
+                result.alerts().forEach(alert -> metrics.recordAlert(alert.getAlertType(),
+                        String.valueOf(alert.getSeverity())));
                 ws.broadcastEvent(result.raw());
                 result.alerts().forEach(ws::broadcastAlert);
                 return;
             } catch (Exception e) {
                 lastFailure = e;
+                metrics.recordProcessingFailure();
                 log.warn("sink attempt {}/{} failed for ingestion {}: {}",
                         attempt + 1, retryDelaysMs.length, SinkPersistenceService.ingestionIdOf(p),
                         e.getClass().getSimpleName());
