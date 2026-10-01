@@ -497,6 +497,15 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 - 修正后用本窗口复验：输出恰好只有「未结束」应有的四条（`measured 0.0s`、`samples cover 2179s of the 86400s window`、`only 69 samples ... need at least 720`、`0 of 3 planned faults`），连续性与 `max_gap 32.6s` 正常；按 24 小时外推则 span≈86400、样本≈2650≥720，不会再因节奏问题失败。
 - 该判据属工具层（`scripts/acceptance.py`），不影响冻结应用面与正在运行的窗口；正在运行的 runner 进程不受影响（它只写样本，不做判定）。
 
+### 2026-10-01 P6.2 等待期：把判定器其余判据按同一标准复查（无误杀）
+
+刚发现采样节奏判据会误杀后，用同一标准把 G16 判定器其余判据逐条复查，并对本窗口实测：
+
+- **故障判据**：三个计划故障此前已在独立临时栈（`dwt-faulttest`，同冻结镜像）用生产 `execute_fault` 路径演练过，含本窗口尚未执行过的 kafka-stop 与 db-stop：outage 32.3/31.3/31.2s（限 60s）、readiness 恢复 5.1/8.5/14.1s（限 300s），证据 `.execution/runs/p62-faultpretest/fault-pretest.json`。即第 8/16 小时不会因时序或恢复慢而失败。
+- **账本判据**：现在实测 `raw = processed = 308`、`accepted = 0`（本窗口无 API 摄取，只有轮询器直写 Kafka，属预期）、`unconfirmed = 0`、`accepted_without_processed = 0`、`processed_without_raw = 0`、`dlt_open = 0`、`outbox_pending = 0`——两条反连接不变量在轮询器路径上现在就成立，不是等 24 小时后才知道。
+- **lag 判据**：`consumer_lag_total` 逐组 `--describe`，按 `len(parts) >= 6` 且首列非 `GROUP` 过滤，`int(parts[5])` 失败即 `continue`——Kafka 对未分配分区输出的 `-` 会被跳过而不是当异常；组读不到时返回 -1 并如实报「lag -1 is not zero」。复查未发现同类误杀风险。
+- **span/样本判据**（本轮新修）：24 小时外推 span≈86400s（≥0.99×86400）且样本≈2650（≥720 下限），通过。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
