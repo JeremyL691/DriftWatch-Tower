@@ -62,6 +62,23 @@ curl -u "$DWT_ADMIN_USERNAME:$DWT_ADMIN_PASSWORD" http://127.0.0.1:18080/api/v1/
 pending outbox rows, open gaps and any backoff. A source that stops appearing is reported as
 `LOST` rather than silently stale; a successful poll with no new events is `QUIET`.
 
+### Synthetic detector demos
+
+An admin-only endpoint exercises the detectors with generated events, which is useful for
+confirming that alerting works before real traffic arrives:
+
+```bash
+curl -u "$DWT_ADMIN_USERNAME:$DWT_ADMIN_PASSWORD" -X POST \
+  http://127.0.0.1:18080/api/v1/demo/run-scenario/duplicate
+```
+
+Scenarios: `duplicate`, `normal`, `schema-drift`, `late`, `null-spike`, `anomaly-spike`,
+`stale-source`, `field-range`. Their events carry `source` values starting with `demo` (for
+example `demo-api`), so they stay distinguishable from real source data everywhere. Nothing
+collected from the GitHub source is ever synthesised, and the acceptance evidence counts only
+rows whose origin is `GITHUB`. Treat those rows as test data: ignore them when reading the
+dashboard, and filter them out before archiving an environment.
+
 ## Dead letters
 
 ```bash
