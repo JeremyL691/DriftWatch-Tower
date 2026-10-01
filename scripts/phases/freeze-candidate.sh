@@ -61,7 +61,11 @@ def tree_hash(roots):
     return digest.hexdigest(), len(entries)
 
 source_hash, source_files = tree_hash(
-    ["src", "pom.xml", "Dockerfile", "docker-compose.yml", "docker-compose.dev.yml", ".mvn", "scripts"])
+    ["src", "pom.xml", "Dockerfile", "docker-compose.yml", "docker-compose.dev.yml", ".mvn"])
+# Gate tooling is versioned separately: the guide freezes application, dependencies, config,
+# migrations, rules and image content, and a change to a check script must not masquerade as a
+# new application version (nor a new application version hide behind an unchanged script).
+tooling_hash, tooling_files = tree_hash(["scripts"])
 config_paths = sorted(
     os.path.relpath(os.path.join(base, name), repo)
     for base, _, files in os.walk(os.path.join(repo, "src/main/resources"))
@@ -83,6 +87,8 @@ manifest = {
     "git_dirty_paths": dirty.splitlines(),
     "source_tree_hash": source_hash,
     "source_tree_files": source_files,
+    "tooling_tree_hash": tooling_hash,
+    "tooling_tree_files": tooling_files,
     "config_hash": config_hash,
     "config_files": config_paths,
     "dependency_lock_hash": lock_hash,
