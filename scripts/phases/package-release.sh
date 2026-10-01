@@ -68,9 +68,13 @@ cp "$DWT_REPO_ROOT/scripts/lib/common.sh" "$OUT_DIR/bundle/scripts/lib/"
 cp "$DWT_REPO_ROOT/docs/PROJECT_EXECUTION_GUIDE.md" "$OUT_DIR/bundle/docs/"
 # The runbook and the version notes carry the install, upgrade, backup/restore and limit
 # statements the guide requires a release to publish; an installer who downloads only the
-# bundle must get them.
-for extra in docs/RUNBOOK.md docs/RELEASE_NOTES.md; do
-  [ -f "$DWT_REPO_ROOT/$extra" ] && cp "$DWT_REPO_ROOT/$extra" "$OUT_DIR/bundle/docs/"
+# bundle must get them. Everything the bundled README links locally ships with it, so no
+# link resolves only inside the repository, and the licence travels with the artifacts.
+for extra in docs/RUNBOOK.md docs/RELEASE_NOTES.md docs/EXECUTION_STATE.md docs/versions.md \
+             docs/assets/driftwatch-architecture.svg LICENSE; do
+  [ -f "$DWT_REPO_ROOT/$extra" ] || continue
+  mkdir -p "$OUT_DIR/bundle/$(dirname "$extra")"
+  cp "$DWT_REPO_ROOT/$extra" "$OUT_DIR/bundle/$extra"
 done
 [ -f "$DWT_REPO_ROOT/README.md" ] && cp "$DWT_REPO_ROOT/README.md" "$OUT_DIR/bundle/"
 

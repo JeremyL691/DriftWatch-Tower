@@ -70,6 +70,26 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build application image
         run: docker build --tag driftwatch-tower:ci .
+      - name: Report the application content identity
+        # The release pipeline refuses to publish an image whose rebuilt application bytes differ
+        # from the accepted candidate. Printing the value here makes that comparison checkable on
+        # the native amd64 runner, before a release is attempted.
+        run: |
+          container=$(docker create driftwatch-tower:ci)
+          docker cp "$container:/app/app.jar" /tmp/app.jar
+          docker rm -f "$container" >/dev/null
+          python3 - <<'PY' | tee content-identity.txt
+          import hashlib, zipfile
+          digest = hashlib.sha256()
+          with zipfile.ZipFile('/tmp/app.jar') as archive:
+              for info in sorted(archive.infolist(), key=lambda entry: entry.filename):
+                  digest.update(f"{info.filename}\0{info.file_size}\0{info.CRC}\n".encode())
+          print(digest.hexdigest())
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: content-identity
+          path: content-identity.txt
       - name: Scan dependencies and image (HIGH, CRITICAL)
         run: |
           docker run --rm -v "$PWD":/repo:ro aquasec/trivy:0.58.1 fs \

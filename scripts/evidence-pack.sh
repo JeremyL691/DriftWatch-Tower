@@ -54,35 +54,88 @@ PY2
 newest() { # glob
   ls -1dt $1 2>/dev/null | head -1
 }
-collect "freeze-manifest.json" .execution/runs/p61-freeze/manifest.json
-load_dir="$(dirname "$(newest '.execution/verify/*-load4/load-report.json' || echo .execution/verify/p61-load3/load-report.json)")"
-collect "load/load-report.json" "$load_dir/load-report.json"
-collect "load/FAILURE-NOTES.txt" .execution/verify/p61-load/FAILURE-NOTES.txt
-security_dir="$(dirname "$(newest '.execution/verify/*-g13e/g13-summary.json' || echo .execution/verify/p61-g13d/g13-summary.json)")"
-collect "security/g13-summary.json" "$security_dir/g13-summary.json"
-collect "security/trivy-version.txt" "$security_dir/trivy-version.txt"
-package_dir="$(dirname "$(newest '.execution/verify/*-package4/install-summary.json' || echo .execution/verify/p61-package3/install-summary.json)")"
-collect "package/install-summary.json" "$package_dir/install-summary.json"
-collect "package/release-manifest.json" "$package_dir/artifacts/release-manifest.json"
-browser_dir="$(dirname "$(newest '.execution/verify/*-browser4/after-report.json' || echo .execution/verify/p61-browser3/after-report.json)")"
-collect "browser/report.json" "$browser_dir/after-report.json"
 
-# The most recent soak run (report, faults and a bounded sample window).
-latest_soak="$(ls -1dt .execution/soak/*/ 2>/dev/null | head -1)"
-if [ -n "$latest_soak" ]; then
-  soak_name="$(basename "$latest_soak")"
-  collect "soak/$soak_name/soak-report.json" "$latest_soak/soak-report.json"
-  collect "soak/$soak_name/result.json" "$latest_soak/result.json"
-  collect "soak/$soak_name/state.json" "$latest_soak/state.json"
-  collect "soak/$soak_name/faults.jsonl" "$latest_soak/faults.jsonl"
-  collect "soak/$soak_name/FAILURE-NOTES.txt" "$latest_soak/FAILURE-NOTES.txt"
+# Evidence directories are taken from the accepted gate record, never from a guessed directory
+# name: a gate re-run under a new --out name (p61-browser4 -> p61-browser10, p61-g13e -> p61-g13h,
+# p61-package4 -> p61-package-final3) must not leave the pack shipping the superseded run.
+gate_dir() { # gate-id evidence-file
+  python3 - "$DWT_REPO_ROOT" "$1" "$2" <<'PY'
+import glob, json, os, sys
+repo, gate_id, evidence = sys.argv[1], sys.argv[2], sys.argv[3]
+best = None
+for path in glob.glob(os.path.join(repo, ".execution", "**", "gate.json"), recursive=True):
+    try:
+        gate = json.load(open(path))
+    except Exception:
+        continue
+    if gate.get("id") != gate_id:
+        continue
+    if best is None or os.path.getmtime(path) > os.path.getmtime(best):
+        best = path
+if best is None:
+    sys.exit(0)
+directory = os.path.dirname(best)
+if os.path.exists(os.path.join(directory, evidence)):
+    print(directory)
+PY
+}
+
+pick_dir() { # gate-id evidence-file; falls back to the newest match anywhere
+  local dir
+  dir="$(gate_dir "$1" "$2")"
+  if [ -z "$dir" ]; then
+    local hit
+    hit="$(newest ".execution/verify/*/$2")"
+    [ -n "$hit" ] && dir="$(dirname "$hit")"
+  fi
+  printf '%s' "$dir"
+}
+
+collect "freeze-manifest.json" .execution/runs/p61-freeze/manifest.json
+
+load_dir="$(pick_dir LOAD load-report.json)"
+[ -n "$load_dir" ] && collect "load/load-report.json" "$load_dir/load-report.json"
+collect "load/FAILURE-NOTES.txt" .execution/verify/p61-load/FAILURE-NOTES.txt
+
+security_dir="$(pick_dir PHASE-P6 g13-summary.json)"
+if [ -n "$security_dir" ]; then
+  collect "security/g13-summary.json" "$security_dir/g13-summary.json"
+  collect "security/trivy-version.txt" "$security_dir/trivy-version.txt"
+fi
+
+package_dir="$(pick_dir PACKAGE install-summary.json)"
+if [ -n "$package_dir" ]; then
+  collect "package/install-summary.json" "$package_dir/install-summary.json"
+  collect "package/release-manifest.json" "$package_dir/artifacts/release-manifest.json"
+fi
+
+browser_dir="$(pick_dir PHASE-P5c after-report.json)"
+[ -n "$browser_dir" ] && collect "browser/report.json" "$browser_dir/after-report.json"
+
+# The soak run the accepted report describes. Its run id comes from the report itself, so the
+# pack cannot drift to a neighbouring run (for example a failed one kept as history) because of
+# directory timestamps.
+soak_dir="$(pick_dir SOAK soak-report.json)"
+soak_name=""
+if [ -n "$soak_dir" ] && [ -f "$soak_dir/soak-report.json" ]; then
+  soak_name="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("run_id") or "")' "$soak_dir/soak-report.json" 2>/dev/null)"
+fi
+[ -n "$soak_name" ] || soak_name="$(basename "$(newest '.execution/soak/*/')")"
+if [ -n "$soak_name" ] && [ -d ".execution/soak/$soak_name" ]; then
+  collect "soak/$soak_name/soak-report.json" "$soak_dir/soak-report.json"
+  collect "soak/$soak_name/result.json" ".execution/soak/$soak_name/result.json"
+  collect "soak/$soak_name/state.json" ".execution/soak/$soak_name/state.json"
+  collect "soak/$soak_name/faults.jsonl" ".execution/soak/$soak_name/faults.jsonl"
+  collect "soak/$soak_name/FAILURE-NOTES.txt" ".execution/soak/$soak_name/FAILURE-NOTES.txt"
 fi
 
 # Browser screenshots: the four viewports in both themes.
-for image in "$browser_dir"/*.png; do
-  [ -f "$image" ] || continue
-  collect "browser/$(basename "$image")" "$image"
-done
+if [ -n "$browser_dir" ]; then
+  for image in "$browser_dir"/*.png; do
+    [ -f "$image" ] || continue
+    collect "browser/$(basename "$image")" "$image"
+  done
+fi
 
 # Redact every credential value that appears in the collected text.
 python3 - "$stage" "$DWT_REPO_ROOT" <<'PY'
