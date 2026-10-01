@@ -86,6 +86,11 @@ for (const theme of themes) {
       if (message.type() === 'error') consoleErrors.push(message.text());
     });
     page.on('pageerror', error => consoleErrors.push(String(error)));
+    // A denied subresource is a defect, and its URL is the only thing that makes it diagnosable.
+    const failedResponses = [];
+    page.on('response', response => {
+      if (response.status() >= 400) failedResponses.push(`${response.status()} ${response.url()}`);
+    });
 
     const response = await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     const status = response ? response.status() : 0;
@@ -151,7 +156,7 @@ for (const theme of themes) {
     report.pages.push({
       viewport: viewport.name, theme, file, status, wsStatus,
       horizontalOverflow: overflow.scrollWidth > overflow.clientWidth,
-      overflow, consoleErrors, keyboard,
+      overflow, consoleErrors, failedResponses, keyboard,
     });
     await context.close();
   }
