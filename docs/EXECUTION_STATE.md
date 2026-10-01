@@ -8,17 +8,17 @@
 |---|---|
 | document_revision | 1.0 |
 | handoff_date | 2026-09-30，America/Los_Angeles |
-| product_goal_status | RUNNING，P0-P2 完成，P3 进行中 |
-| current_phase | P5 |
-| current_task | P5.3 |
-| next_action | P5.3：Dashboard 完整操作状态、四断点、暗/亮、键盘与真实 before/after 截图（G12） |
+| product_goal_status | RUNNING，P0-P5 完成，P6 进行中 |
+| current_phase | P6 |
+| current_task | P6.1 |
+| next_action | P6.1：冻结候选（source/config/image 身份），重跑 G00/G02/G03/G04 入口门禁与 SCA，然后跑 100 events/s × 30 分钟负载（G13/G14/G15） |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（本地；尚未推送） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 7d36c61（P5.3 进行中；P5.3 实现/P6/P7 未完成，仍不能作为发布候选） |
+| candidate_sha | e36bb3b（P5.3 完成；P6/P7 未完成，仍不能作为发布候选） |
 | source_tree_hash | 8c8797ad9fe505c8e12d0f797264e4cb15de7fc5c00ffddce25c61cdd023570c（src+pom+Dockerfile+compose） |
 | candidate_image_id / public_digest | 本地镜像 sha256:1a419f6a…（仅本地验证，未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
@@ -64,7 +64,7 @@
 | P4.2 | 官方真实数据全链路 | PASSED | G09 PASSED；官方源无 token，bootstrap 199 事件 + 启动后新增 LIVE 事件 + 重启检查点保持；`.execution/runs/p42-smoke/` |
 | P5.1 | incident / scheduler | PASSED | G10 PASSED（163/0/0/0；IncidentLifecycle 6、Scheduler 2、CollectorStatus 3）；`.execution/verify/p5-gate3/` |
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
-| P5.3 | Dashboard 操作与响应式 | RUNNING | before 截图与缺陷清单已产出（`.execution/runs/p53-before/`）；实现与 after 截图待做 |
+| P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
 | P6.1 | 冻结候选、短门槛、负载 | NOT_STARTED | - |
 | P6.2 | 24 小时真实验收 | NOT_STARTED | - |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
@@ -89,7 +89,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G09 官方真实源 | PASSED | 官方 api.github.com 无 token；bootstrap 199 条真实事件（mode=BOOTSTRAP、SKIPPED_MODE）、启动后新增 16162901734（mode=LIVE）经 inbox→outbox→Kafka→receipt→raw→API 全链路、重启后检查点保持不重摄；`.execution/runs/p42-smoke/` |
 | G10 操作闭环 | PASSED | SHA 4b111417；PHASE-P5 gate 163 tests / 0 fail / 0 skip；incident 关联并发唯一、resolve 语义与自动解决、ack 幂等/409、静默 scheduler 单次转换、GET 无副作用；`.execution/verify/p5-gate3/` |
 | G11 保留与恢复 | PASSED | SHA 6bf026de；PHASE-P5b gate 165 tests / 0 fail / 0 skip；pg_dump → 全新专用卷恢复计数一致（raw=4/alerts=1/schema=1/receipts=4）、保留策略保护未解决证据、指标面无身份标签；`.execution/runs/p52-drill/` |
-| G12 浏览器与四断点 | NOT_RUN | - |
+| G12 浏览器与四断点 | PASSED | SHA e36bb3b；PHASE-P5c gate：320/768/1024/1440 × dark/light 共 8 张真实截图全部 200、0 console 错误、无页面级横向溢出、focus outline 2px、WebSocket state=connected（ticket 握手）；`.execution/verify/p5c-gate6/`（含 after-report.json、g12-summary.json），before 对照 `.execution/runs/p53-before/` |
 | G13 安全与漏洞 | NOT_RUN | - |
 | G14 100/s、30分钟 | NOT_RUN | - |
 | G15 候选包安装 | NOT_RUN | - |
@@ -268,12 +268,13 @@ P3.1 之后仍需完成（下一动作）：
 - 测试：`OperationsIntegrationTest`（保留规则：受保护证据、orphan receipt、batch 设置、指标注册与标签基数）；`phase-P5b.sh` 门禁（165 tests / 0 fail / 0 err / 0 skip，OperationsIntegrationTest 2 + IncidentLifecycleIntegrationTest 6 + DeadLetterIntegrationTest 5 均实际运行）。
 - 说明：Micrometer 的 Prometheus 注册表会去掉 gauge 名的 `_total` 后缀，指标名已按实际导出名统一为 `driftwatch_retention_rows_pruned`。
 
-### 2026-10-01 P5.3 起步：真实 before 截图与缺陷清单（RUNNING）
+### 2026-10-01 P5.3 Dashboard 操作状态与响应式（PASSED，G12）
 
-- 工具：`package.json` 固定 `playwright-core`（浏览器来自本机 Playwright 缓存，无下载、无外部 CDN 依赖）；`scripts/p53-capture.mjs` 用显式 Basic 头驱动 headless Chromium，逐断点（320/768/1024/1440）截图并记录 console 错误、页面级横向溢出与键盘 focus 探针，保证 before/after 来自同一真实场景。
-- 场景：compose `dwt-p53`（selfhost，18080）经摄取 API 与 mixed-incident 演示产生 227 events / 339 alerts；证据 `.execution/runs/p53-before/`（4 张 dark 截图 + `before-report.json` + `findings.md`）。
-- 实测缺陷（after 必须修复，写入 `findings.md`）：① Dashboard 的 WebSocket 因无法携带 Basic 凭据而连接失败（浏览器不会为 WS 握手重放凭据）；② 字体来自 fonts.gstatic.com 外部 CDN；③ 页面内一次调用返回 403（CSRF 流程未走通）；④ 320/768 出现整页横向溢出；⑤ focus 仅浏览器默认 1px auto；⑥ 尚无浅色主题。
-- 下一步：实现第 7.5 节页面与操作状态（loading/禁用重复提交/成功失败反馈/retry、401 可理解认证态、WS 退避重连并重新查询）、本地图标（Lucide 本地打包）与本地字体/系统 fallback、浅色 token、窄屏表格横向滚动容器、可见 focus，然后跑 `scripts/p53-capture.mjs --label after`（含 light）并对照 before 出 G12 证据。
+- 起步（SHA 7d36c61）：`scripts/p53-capture.mjs` 用显式 Basic 头驱动本机 Playwright 缓存的 headless Chromium（`playwright-core`，无下载、无外部 CDN 依赖），逐断点截图并记录 console 错误、页面级横向溢出与键盘 focus 探针。before 场景：compose `dwt-p53`（selfhost，18080）经摄取 API 与 mixed-incident 演示产生 227 events / 339 alerts；证据 `.execution/runs/p53-before/`（4 张 dark 截图 + `before-report.json` + `findings.md`），实测缺陷 6 项：WS 无法携带 Basic 凭据连接失败、字体来自 fonts.gstatic.com、页面内一次 403（CSRF 未走通）、320/768 整页横向溢出、focus 仅浏览器默认 1px auto、无浅色主题。
+- 实现（SHA 4eab1da）：① WS 改走短期 HMAC ticket —— `GET /dashboard/api/ws-ticket` 签发 60s 一次性 ticket，`TicketHandshakeInterceptor` 在握手时校验，客户端按 1s→30s 指数退避重连且重连后重新查询数据；② 全部外部资源本地化 —— Lucide 图标集与 SockJS/STOMP 客户端 vendor 到 `/dashboard/vendor/`，字体改系统栈；③ 页面内 403 消除 —— `DashboardDataController.summary()` 不再有副作用式 `refreshAllAndPersist`，CSRF cookie 由 `CsrfCookieFilter` 确定性下发；④ 窄屏溢出 —— 表格包进 `.table-shell{overflow-x:auto}` 并对 shell/panel 设 `min-width:0`；⑤ 可见 focus —— `:focus,:focus-visible{outline:2px solid var(--gold-bright)}`；⑥ 浅色主题 —— `prefers-color-scheme` 与 `html[data-theme]` 双通道 token，切换按钮持久化到 cookie（只存偏好，不存凭据）。GSAP 动画依赖一并移除，改为等价的内建补间封装（保持 MOTION_INTENSITY=2，不引入 React）。
+- G12（SHA e36bb3b，`.execution/verify/p5c-gate6/`）：`./scripts/verify.sh phase P5c --out … --base http://127.0.0.1:18080 --env-file .execution/p13.env` → PHASE-P5c PASSED。8/8 页面（320/768/1024/1440 × dark/light）status 200、console 错误 0、页面级横向溢出无、focus outline 2px、`#wsStatus` state=connected（label=Live）。
+- 门禁工具修复：`verify.sh` 增加 `--base` 透传与 `P5b|P5c` 阶段别名（此前的编辑曾让脚本语法损坏，已重写并 `bash -n` 验证）；`check-dashboard.py` 原先用 label 子串匹配「connected」，而 UI 在断开时显示 "Disconnected"（同样含 connect）——改为读取 `#wsStatus` 的语义 class（connected/disconnected），capture 同步记录 `{label,state}`。
+- 验收栈 `dwt-p53` 已在记录后按 `down -v` 清理；用户容器与 8080/5432/9092 未受影响。
 
 后续每条保留：
 
