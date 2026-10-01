@@ -52,13 +52,21 @@ public class DriftwatchMetrics {
         this.ingestionAckDuration = Timer.builder("driftwatch_ingestion_ack_duration_seconds")
                 .description("HTTP request to broker acknowledgement for one ingest")
                 .publishPercentiles(0.5, 0.95, 0.99)
+                .publishPercentileHistogram(true)
+                .minimumExpectedValue(Duration.ofMillis(1))
+                .maximumExpectedValue(Duration.ofSeconds(30))
                 .register(registry);
         this.ingestionFailures = Counter.builder("driftwatch_ingestion_failures_total")
                 .description("Ingest attempts that ended unconfirmed")
                 .register(registry);
+        // Percentile histograms, not only live quantiles, so a load run can difference bucket
+        // counts across its own window and report a p95 that belongs to that window alone.
         this.processingDuration = Timer.builder("driftwatch_processing_duration_seconds")
                 .description("received_at to database commit for one processed event")
                 .publishPercentiles(0.5, 0.95, 0.99)
+                .publishPercentileHistogram(true)
+                .minimumExpectedValue(Duration.ofMillis(1))
+                .maximumExpectedValue(Duration.ofSeconds(30))
                 .register(registry);
         this.processingFailures = Counter.builder("driftwatch_processing_failures_total")
                 .description("Persistence attempts that failed (including retries)")

@@ -59,8 +59,17 @@ for (const theme of themes) {
     });
     page.on('pageerror', error => consoleErrors.push(String(error)));
 
-    const response = await page.goto(`${base}/dashboard`, { waitUntil: 'networkidle', timeout: 30000 });
+    const response = await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     const status = response ? response.status() : 0;
+
+    // Readiness is a named condition, not a heuristic: the page has rendered its shell and the
+    // dashboard has finished its initial load (the loading placeholders are gone). A quiet-network
+    // heuristic would either race a slow first paint or hang on a long-poll fallback transport.
+    await page.waitForSelector('#wsStatus', { timeout: 20000 }).catch(() => {});
+    await page
+      .waitForFunction(() => !document.querySelector('.is-loading, [data-loading="true"]'), { timeout: 20000 })
+      .catch(() => {});
+    await page.waitForTimeout(1200);
 
     if (theme === 'light') {
       // Use the dashboard's own switch when it exists; the CSS token set is what matters here.
