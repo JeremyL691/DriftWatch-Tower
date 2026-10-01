@@ -464,6 +464,10 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 
 含义：本会话对 `scripts/`、`docs/`、`.github/`、`README.md` 的所有改动都没有改变应用字节；发布工作流在合并后按合并提交重建时，`Assert the application content identity` 这一步会通过，跨架构可复现性再次得到验证。该断言此前只在更早的 head（a53fcd36）上验证过。
 
+### 2026-10-01 P6.2 等待期：G16 判定器对本窗口实况预演
+
+在窗口进行中用 `./scripts/verify.sh soak-report --run-id 20261001T145553Z-soak24 --out .execution/verify/p61-soak-dryrun2` 预演了一次判定器（不是判定结果，窗口未结束），目的是确认它对**本窗口的新库**不会崩：所有 SQL（真实源计数、账本、三组 consumer lag）、容器健康与内存曲线都正常执行，输出的 `problems` 恰好只有「未结束」应有的三条：`measured 0.0s of a planned 86400.0s`、`only 57 samples`、`0 of 3 planned faults executed`；容器 `RestartCount` 全 0、磁盘 44GiB、内存均值 730.8MiB、增长 0.0MiB（上限 146.2MiB）。即：判定器与库结构、与冻结镜像的指标名完全对得上，G16 不会因为查询或字段名错误而在 24 小时后才失败。该 dry-run 的 FAILED `gate.json` 保留（若真判定因故未写出，发布门禁会选到它并如实失败，不会误判为通过）。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
