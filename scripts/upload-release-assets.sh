@@ -63,7 +63,10 @@ if [ -n "$EVIDENCE_DIR" ] && [ -d "$EVIDENCE_DIR" ]; then
 fi
 
 rm -f "$ARTIFACTS/checksums.txt"
-tar -czf "$ARTIFACTS/driftwatch-tower-${VERSION}-bundle.tar.gz" -C "$ARTIFACTS/bundle" .
+# The bundle is uploaded exactly as package-release.sh built it and package-check.sh (G15)
+# verified it: re-tarring here would publish different bytes than the accepted artifact.
+bundle_tar="$ARTIFACTS/driftwatch-tower-${VERSION}-bundle.tar.gz"
+[ -f "$bundle_tar" ] || die "bundle tarball missing for $VERSION; run verify.sh package first"
 ( cd "$ARTIFACTS" && find . -type f ! -name checksums.txt ! -name '*.log' ! -name '*.err' -print0 \
     | sort -z | xargs -0 shasum -a 256 > checksums.txt )
 ( cd "$ARTIFACTS" && shasum -a 256 -c checksums.txt >/dev/null ) || fail "regenerated checksums do not verify"
