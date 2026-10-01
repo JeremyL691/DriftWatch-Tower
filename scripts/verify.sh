@@ -12,6 +12,7 @@
 #   scripts/verify.sh soak-start --duration SECONDS --run-id ID --project NAME --env-file FILE --out DIR
 #   scripts/verify.sh soak-status --run-id ID
 #   scripts/verify.sh soak-resume --run-id ID
+#   scripts/verify.sh soak-report --run-id ID [--out DIR]
 #   scripts/verify.sh release --project NAME --env-file FILE --out DIR
 #
 # Exit codes: 0 pass, 1 verification failure, 2 external prerequisite missing or not implemented.
@@ -457,7 +458,7 @@ case "$COMMAND" in
   freeze)    cmd_freeze ;;
   load)      cmd_load ;;
   package)   cmd_package ;;
-  soak-start|soak-status|soak-resume) cmd_soak "$COMMAND" ;;
+  soak-start|soak-status|soak-resume|soak-report) cmd_soak "$COMMAND" ;;
   release)   cmd_release ;;
   *)         usage ;;
 esac
