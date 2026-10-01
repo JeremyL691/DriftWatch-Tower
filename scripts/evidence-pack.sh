@@ -31,21 +31,41 @@ collect() { # destination-relative-path source
   cp -R "$2" "$stage/$1"
 }
 
-# Gate results and run manifests.
-for gate in .execution/verify/*/gate.json; do
-  [ -f "$gate" ] || continue
-  name="$(basename "$(dirname "$gate")")"
-  collect "gates/$name.json" "$gate"
-done
+# Gate results and run manifests. For each gate id the newest gate.json wins, so re-running a
+# gate after a fix never leaves the pack pointing at superseded evidence.
+python3 - "$DWT_REPO_ROOT" "$stage" <<'PY2'
+import glob, json, os, shutil, sys
+repo, stage = sys.argv[1], sys.argv[2]
+latest = {}
+for path in glob.glob(os.path.join(repo, ".execution", "**", "gate.json"), recursive=True):
+    try:
+        gate = json.load(open(path))
+    except Exception:
+        continue
+    gate_id = gate.get("id")
+    if gate_id and (gate_id not in latest or os.path.getmtime(path) > os.path.getmtime(latest[gate_id])):
+        latest[gate_id] = path
+os.makedirs(os.path.join(stage, "gates"), exist_ok=True)
+for gate_id, path in sorted(latest.items()):
+    shutil.copy(path, os.path.join(stage, "gates", f"{gate_id}.json"))
+    print(f"gate {gate_id}: {os.path.relpath(path, repo)}")
+PY2
+
+newest() { # glob
+  ls -1dt $1 2>/dev/null | head -1
+}
 collect "freeze-manifest.json" .execution/runs/p61-freeze/manifest.json
-collect "load/load-report.json" .execution/verify/p61-load3/load-report.json
-collect "load/load-report-failed-attempt.json" .execution/verify/p61-load/load-report.json
+load_dir="$(dirname "$(newest '.execution/verify/*-load4/load-report.json' || echo .execution/verify/p61-load3/load-report.json)")"
+collect "load/load-report.json" "$load_dir/load-report.json"
 collect "load/FAILURE-NOTES.txt" .execution/verify/p61-load/FAILURE-NOTES.txt
-collect "security/g13-summary.json" .execution/verify/p61-g13d/g13-summary.json
-collect "security/trivy-version.txt" .execution/verify/p61-g13d/trivy-version.txt
-collect "package/install-summary.json" .execution/verify/p61-package3/install-summary.json
-collect "package/release-manifest.json" .execution/verify/p61-package3/artifacts/release-manifest.json
-collect "browser/report.json" .execution/verify/p61-browser3/after-report.json
+security_dir="$(dirname "$(newest '.execution/verify/*-g13e/g13-summary.json' || echo .execution/verify/p61-g13d/g13-summary.json)")"
+collect "security/g13-summary.json" "$security_dir/g13-summary.json"
+collect "security/trivy-version.txt" "$security_dir/trivy-version.txt"
+package_dir="$(dirname "$(newest '.execution/verify/*-package4/install-summary.json' || echo .execution/verify/p61-package3/install-summary.json)")"
+collect "package/install-summary.json" "$package_dir/install-summary.json"
+collect "package/release-manifest.json" "$package_dir/artifacts/release-manifest.json"
+browser_dir="$(dirname "$(newest '.execution/verify/*-browser4/after-report.json' || echo .execution/verify/p61-browser3/after-report.json)")"
+collect "browser/report.json" "$browser_dir/after-report.json"
 
 # The most recent soak run (report, faults and a bounded sample window).
 latest_soak="$(ls -1dt .execution/soak/*/ 2>/dev/null | head -1)"
@@ -59,7 +79,7 @@ if [ -n "$latest_soak" ]; then
 fi
 
 # Browser screenshots: the four viewports in both themes.
-for image in .execution/verify/p61-browser3/*.png; do
+for image in "$browser_dir"/*.png; do
   [ -f "$image" ] || continue
   collect "browser/$(basename "$image")" "$image"
 done
