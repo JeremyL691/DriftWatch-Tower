@@ -33,11 +33,19 @@
 
 ## 收尾程序（G16 之后，按序执行，勿跳步）
 
-1. `./scripts/verify.sh soak-report --run-id 20261001T103023Z-soak24 --out .execution/verify/p61-soak` → 判定 G16，并写出 `gate.json`(SOAK)。有问题就记录并修复后重开完整 24 小时，不拼接。
-2. 通过后更新本文件：G16 PASSED、P6.2 PASSED，写入实测数字与证据路径；提交并推送 `codex/release-v1`。
-3. 合并 PR：先 `gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 75e6a10（或其后代）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`；合并后确认 main 含该候选树。
-4. 发布：`release.yml` 只有在默认分支上才会注册，所以合并后再 `gh workflow run release.yml --ref main -f version=v1.0.0 -f candidate_sha=75e6a10 -f content_identity=7340276fb267104260cc516283b634fe211cc36ef44088b01667af8d6e944d0e`，然后 `gh run watch`。该 job 会用同一锁定输入重建并比对 content identity（不一致就拒绝推送）、推送 v1.0.0 与 sha-75e6a10、尝试把 package 设为 public、在干净 Docker config 里匿名拉取 digest、创建 Release。匿名拉取失败即 package 非 public：记录确切错误与恢复动作（GitHub UI 或具 write:packages 的 token），不得当作成功。
-5. 附件：先用最终打包脚本重跑一次 `./scripts/verify.sh package --out .execution/verify/p61-package-final --image driftwatch-tower:local --version v1.0.0 --manifest .execution/runs/p61-freeze/manifest.json`（打包脚本此后已修：bundle 现在同时包含 `docs/RUNBOOK.md` 与 `docs/RELEASE_NOTES.md`，即指南第 12 节要求的安装/升级/备份恢复说明与版本说明；G15 证据与制品一起更新）。再 `./scripts/evidence-pack.sh --out .execution/evidence --run-id p7-release` 生成证据包，然后 `./scripts/upload-release-assets.sh --version v1.0.0 --artifacts .execution/verify/p61-package-final/artifacts --evidence .execution/evidence --digest sha256:...`（digest 取自 Release 正文）。注意：重跑 package 会起自己的 compose 项目，必须等 soak 栈结束、不再有验收栈运行时再做。
+以下值取自 `.execution/runs/p61-freeze/manifest.json` 与当前 run，勿手抄：
+
+- candidate（应用面）: `8a798a6e7396f2a267cc26e1519bf987c7f13ff3`
+- 镜像（本地，未发布）: `sha256:aeb1c9f9ccd68ca352bd2a6cb93751203e3cbd9f78c14db15e175b87c178ce83`
+- `content_identity.jar_content_hash`: `e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a`
+- 当前 24 小时 run: `20261001T134438Z-soak24`（2026-10-01T13:44:38Z 起，预计 2026-10-02T13:44:38Z 结束）
+- 最终制品目录: `.execution/verify/p61-package-final3/artifacts`
+
+1. `./scripts/verify.sh soak-report --run-id 20261001T134438Z-soak24 --out .execution/verify/p61-soak` → 判定 G16 并写出 `gate.json`(SOAK)。有问题就记录并修复后重开完整 24 小时，不拼接。
+2. 通过后更新本文件（G16/P6.2 PASSED、实测数字与证据路径），提交并推送 `codex/release-v1`。
+3. 合并 PR：`gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 `8a798a6e`（或其后代）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`（不绕过必需检查）；合并后确认 main 含该候选树。
+4. 发布：`release.yml` 只有在默认分支上才会注册，所以合并后再 `gh workflow run release.yml --ref main -f version=v1.0.0 -f candidate_sha=8a798a6e -f content_identity=e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a`，然后 `gh run watch`。该 job 用同一锁定输入重建并比对 content identity（不一致即拒绝推送；已在原生 amd64 CI 上核验与冻结值逐字节一致）、推送 `v1.0.0` 与 `sha-8a798a6e`、尝试把 package 设为 public、在干净 Docker config 中匿名拉取 digest、创建 Release。匿名拉取失败即 package 非 public：记录确切错误与恢复动作（GitHub UI 或具 `write:packages` 的 token），不得当作成功。
+5. 附件：先 `./scripts/verify.sh package --out .execution/verify/p61-package-final3 --image driftwatch-tower:local --version v1.0.0 --manifest .execution/runs/p61-freeze/manifest.json`（必须等 soak 栈结束、无验收栈运行时再做，打包会起自己的 compose 项目）；再 `./scripts/evidence-pack.sh --out .execution/evidence --run-id p7-release`；然后 `./scripts/upload-release-assets.sh --version v1.0.0 --artifacts .execution/verify/p61-package-final3/artifacts --evidence .execution/evidence --digest sha256:...`（digest 取自 Release 正文）。
 6. 匿名核验：`./scripts/verify.sh release --out .execution/verify/p7-release --version v1.0.0 --pr 1`。
 7. 最终报告写回本文件：Release URL、image@digest、源码 SHA、证据路径、性能条件与已知限制；同步 `docs/RELEASE_NOTES.md` 的 digest 行。
 
@@ -77,7 +85,7 @@
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
 | P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
 | P6.1 | 冻结候选、短门槛、负载 | PASSED | G13/G14/G15 PASSED；冻结 SHA 791c75f、镜像 sha256:4f064add…；100/s×1800s 全部指标达标；见 `.execution/runs/p61-freeze/`、`.execution/verify/p61-load2/`、`.execution/verify/p61-package2/` |
-| P6.2 | 24 小时真实验收 | RUNNING | run 20261001T103023Z-soak24（PID 85137，镜像 sha256:1f915abc…，2026-10-01T10:30:23Z 起，预计 2026-10-02T10:30:23Z 结束）；2h/8h/16h 受控故障已排程；G16 待结束后用 `soak-report` 判定 |
+| P6.2 | 24 小时真实验收 | RUNNING | run 20261001T134438Z-soak24（PID 18174，镜像 sha256:aeb1c9f9…，2026-10-01T13:44:38Z 起，预计 2026-10-02T13:44:38Z 结束）；2h/8h/16h 受控故障已排程；G16 待结束后用 `soak-report` 判定 |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
 | P7.2 | 公共 Release / GHCR | NOT_STARTED | - |
 | P7.3 | 匿名安装及最终报告 | NOT_STARTED | - |
@@ -104,7 +112,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G13 安全与漏洞 | PASSED | SHA 791c75f；Trivy 0.58.1，DB UpdatedAt 2026-10-01T01:24:14Z；依赖树与运行时镜像 0 HIGH/CRITICAL，镜像与 tracked 树 0 secret，镜像内无凭证文件；`.execution/verify/p61-g13c/` |
 | G14 100/s、30分钟 | PASSED | SHA 791c75f（镜像 sha256:4f064add…）；180000/180000 offer 于 1800.0s 内发出（100.0/s），accepted 180000、failed 0；ack p95 12.4ms（≤1s，p99 43ms）、commit p95 134ms（≤5s，180000 样本，直方图差分）；账本 180100 accepted = 180100 processed = 180100 raw、0 未确认、0 DLT、0 孤儿；三组 consumer lag 归零用时 31.3s；资源曲线 263 点/容器（app 峰值 864MiB、pg 280MiB、kafka 1015MiB）；`.execution/verify/p61-load2/` |
 | G15 候选包安装 | PASSED | SHA 791c75f；从制品安装（不构建）：镜像导出 tar sha256 校验一致、docker load 后 id 与冻结 id 相同、SBOM CycloneDX、checksums 覆盖全部制品；全新 project/volume/env（18082）启动后匿名 health 200、管理员 API 200、Bearer 摄取 202 且落库、重启后 readiness 恢复；`.execution/verify/p61-package2/` |
-| G16 连续24小时 | RUNNING | run 20261001T103023Z-soak24 进行中；启动后 300 条真实 GitHub 事件（299 bootstrap + 1 live）、告警 1（来自 LIVE 事件）、incident 0、DLT 0、gap 0；判定脚本 `soak-report` 已按指南 11.1 实现并预演通过 |
+| G16 连续24小时 | RUNNING | run 20261001T134438Z-soak24 进行中（第 6 个 run；前 5 个因规格审计发现的应用变更作废并留 FAILURE-NOTES）；启动后 299 条真实 GitHub 事件、告警 1（来自 LIVE 事件）、incident 0、DLT 0、gap 0；`soak-report` 已按指南 11.1 实现，且内存判据已与指南口径（第 1-2 小时 vs 最后 1 小时）对齐 |
 | G17 公开发布/匿名安装 | NOT_RUN | - |
 
 ## 长任务与恢复字段
