@@ -31,9 +31,10 @@
     --glow-gold: 0 0 0 1px var(--gold-line), 0 0 24px rgba(184,134,11,0.12);
 
     /* 字体 */
-    --font-serif: "Fraunces", Georgia, serif;
-    --font-sans: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
-    --font-mono: "IBM Plex Mono", "SFMono-Regular", monospace;
+    /* System stacks only: the dashboard must work without any external font CDN. */
+    --font-serif: ui-serif, Georgia, "Times New Roman", serif;
+    --font-sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 * {
@@ -46,7 +47,7 @@ html {
 
 body {
     margin: 0;
-    font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+    font-family: var(--font-sans);
     color: var(--ink);
     background:
         radial-gradient(circle at top right, rgba(184, 134, 11, 0.08), transparent 40%),
@@ -877,4 +878,89 @@ details pre {
         min-width: 0;
         width: 100%;
     }
+}
+
+
+/* ---------------------------------------------------------------- P5.3 additions */
+
+/* Narrow screens: tables scroll inside their own labelled container, never the page. */
+.table-shell {
+    overflow-x: auto;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+}
+
+.panel, .content, .main-area, .shell {
+    min-width: 0;
+}
+
+/* Visible focus on every interactive control (mouse and keyboard alike). */
+:focus,
+:focus-visible,
+a:focus,
+button:focus,
+input:focus,
+select:focus,
+[tabindex]:focus {
+    outline: 2px solid var(--gold-bright);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* Lucide icons inherit the surrounding colour and size. */
+.rail-link i, .ghost-button i {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Usable light tokens; dark stays the brand default. */
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg-0: #F7F5F0;
+        --bg-1: #FFFFFF;
+        --bg-2: #F1EEE6;
+        --bg-3: #E9E4D8;
+        --bg-elev: #FFFFFF;
+        --ink: #1B1A17;
+        --ink-soft: #3A3833;
+        --muted: #6B675E;
+        --gold: #8B6914;
+        --gold-deep: #6F530F;
+        --gold-bright: #A67C10;
+        --gold-line: rgba(139, 105, 20, 0.28);
+        --gold-fill: rgba(139, 105, 20, 0.08);
+        --shadow-panel: 0 1px 0 rgba(139,105,20,0.10) inset, 0 18px 40px rgba(0,0,0,0.10);
+        --glow-gold: 0 0 0 1px var(--gold-line), 0 0 18px rgba(139,105,20,0.10);
+    }
+}
+
+/* Explicit override wins over the media query when the user picked a theme. */
+html[data-theme="light"] {
+    --bg-0: #F7F5F0;
+    --bg-1: #FFFFFF;
+    --bg-2: #F1EEE6;
+    --bg-3: #E9E4D8;
+    --bg-elev: #FFFFFF;
+    --ink: #1B1A17;
+    --ink-soft: #3A3833;
+    --muted: #6B675E;
+    --gold: #8B6914;
+    --gold-deep: #6F530F;
+    --gold-bright: #A67C10;
+    --gold-line: rgba(139, 105, 20, 0.28);
+    --gold-fill: rgba(139, 105, 20, 0.08);
+}
+
+html[data-theme="dark"] {
+    --bg-0: #0A0A0B;
+    --bg-1: #101012;
+    --bg-2: #16161A;
+    --bg-3: #1C1C22;
+    --bg-elev: #20202A;
+    --ink: #E8E4D9;
+    --ink-soft: #B8B2A4;
+    --muted: #8B8576;
 }
