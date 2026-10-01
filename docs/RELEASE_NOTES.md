@@ -98,6 +98,10 @@ new database.
   threshold for delayed polled sources.
 - Retention removes raw payloads after 30 days while keeping the deduplication identity longer.
 - The dashboard is verified on Chromium at four widths in two themes; other engines are not part
-  of the acceptance matrix.
+  of the acceptance matrix. That verification ran on macOS, where the 320 px layout fits with no
+  margin at all — Chromium on Linux with fallback fonts can therefore overflow horizontally by
+  about 11 px in the light theme (measured in CI: scrollWidth 331 against clientWidth 320). No
+  console errors and no accessibility violations accompany it; the follow-up release makes the
+  narrow layout robust to font metrics.
 - Kafka Streams state is single-instance; a future multi-instance deployment would need
   repartitioning decisions that this release deliberately does not make.
