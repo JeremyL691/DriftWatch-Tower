@@ -338,6 +338,12 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 
 三者全部在门槛内，`.execution/plans/g16-faults.json` 的排程可用；证据 `.execution/runs/p62-faultpretest/fault-pretest.json`。故障期间的数据安全已由 P3.2 现场演练覆盖（60s 停机被重试吸收且无死信；200s 停机产生一条可恢复死信，重放后只有一次副作用）。临时栈与其卷已清理，未触碰 run 的 dwt-soak 栈。
 
+### 2026-10-01 P6.2 等待期风险核对（保留期、内存、真实源）
+
+- 保留期是否会打断账本：`RetentionService` 的 cron 是每天 03:30（`0 30 3 * * *`），落在 24 小时窗口内。逐条核对删除条件后确认它在本 run 中不会删任何行——raw_events 与 processed_receipts 的截止是 `received_at/processed_at < now-30d`（本 run 的行都是刚写入），metric_windows 是 `window_end < now-30d`，quality_alerts/alert_incidents 只删已解决且超过 90 天的（本 run 的告警都是 OPEN），source_inbox 是 35 天。因此 `processed_without_raw=0` 的账本判定不会被保留期破坏。03:30 之后可用 `GET /api/v1/operations/retention` 复核实际删除行数为 0。
+- 内存曲线：`soak-report` 现在同时给出严格窗口（前 2 小时均值 vs 最后 1 小时）与 1–2 小时平台均值，以及冷启动值，避免把 JVM 预热误判为泄漏；当前冷启动 592MiB、前 10 分钟均值 679MiB。
+- 真实源：3 次轮询，300 条不同事件（299 bootstrap + 1 条 bootstrap 之后新发现），0 缺口；告警 2 条均来自 LIVE 事件，incident 0、DLT 0、lag 0。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
