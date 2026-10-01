@@ -8,19 +8,32 @@ import org.springframework.kafka.config.TopicBuilder;
 @Configuration
 public class KafkaTopics {
 
-    public static final String RAW_EVENTS = "raw-events";
-    public static final String QUALITY_EVENTS = "quality-events";
+    /** Versioned topics carrying the RawEnvelope/ProcessedEvent contract. */
+    public static final String RAW_EVENTS_V1 = "raw-events-v1";
+    public static final String QUALITY_EVENTS_V1 = "quality-events-v1";
+
+    /** Legacy topics: kept for the one-off upgrade bridge (P3.3), not written by the live path. */
+    public static final String RAW_EVENTS_LEGACY = "raw-events";
+    public static final String QUALITY_EVENTS_LEGACY = "quality-events";
+    /** Durable dead-letter topic: the recovery source when the database is unavailable. */
+    public static final String DEAD_LETTER_EVENTS = "dead-letter-events-v1";
+
     /** Compacted topic carrying the active schema baseline per event type. */
     public static final String SCHEMA_BASELINES = "schema-baselines-v1";
 
     @Bean
     NewTopic rawEvents() {
-        return TopicBuilder.name(RAW_EVENTS).partitions(3).replicas(1).build();
+        return TopicBuilder.name(RAW_EVENTS_V1).partitions(3).replicas(1).build();
     }
 
     @Bean
     NewTopic qualityEvents() {
-        return TopicBuilder.name(QUALITY_EVENTS).partitions(3).replicas(1).build();
+        return TopicBuilder.name(QUALITY_EVENTS_V1).partitions(3).replicas(1).build();
+    }
+
+    @Bean
+    NewTopic deadLetterEvents() {
+        return TopicBuilder.name(DEAD_LETTER_EVENTS).partitions(3).replicas(1).build();
     }
 
     @Bean

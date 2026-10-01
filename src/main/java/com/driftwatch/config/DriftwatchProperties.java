@@ -33,7 +33,8 @@ public record DriftwatchProperties(
         @Valid @DefaultValue Streams streams,
         @Valid @DefaultValue SourceHealth sourceHealth,
         @Valid @DefaultValue Security security,
-        @Valid @DefaultValue Source source
+        @Valid @DefaultValue Source source,
+        @Valid @DefaultValue Bridge bridge
 ) {
 
     public record Detector(
@@ -114,6 +115,20 @@ public record DriftwatchProperties(
     public record Source(@Valid @DefaultValue Github github) {
         public record Github(@DefaultValue("false") boolean enabled) {}
     }
+
+    /**
+     * One-off legacy bridge (guide 4.6): reads the recorded unprocessed offsets of the legacy raw
+     * topic and republishes those records as envelopes with stable identities. Disabled by
+     * default and never a long-running second pipeline.
+     */
+    public record Bridge(
+            @DefaultValue("false") boolean enabled,
+            @DefaultValue("raw-events") String legacyTopic,
+            /** Recorded start offsets as {@code partition:offset,partition:offset}. */
+            @DefaultValue("") String offsets,
+            @DefaultValue("10000") int maxRecords,
+            @DefaultValue("") String reportPath
+    ) {}
 
     @PostConstruct
     void validateRelations() {

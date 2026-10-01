@@ -68,6 +68,9 @@ public class SecurityConfig {
                         .ignoringRequestMatchers("/api/v1/events", "/api/v1/events/batch"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Error dispatches carry the original failure; they must not be turned
+                        // into 401/403 by the authorization rules.
+                        .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness")
                         .permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/events", "/api/v1/events/batch")

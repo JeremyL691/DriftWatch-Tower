@@ -206,12 +206,15 @@ class QualityStreamsTopologyTest {
     /** Wraps a TopologyTestDriver wired to a fully-built topology. */
     private class Driver implements AutoCloseable {
         private final TopologyTestDriver driver;
-        private final TestInputTopic<String, DataEvent> input;
+        private final TestInputTopic<String, com.driftwatch.event.RawEnvelope> input;
         private final TestOutputTopic<String, ProcessedEvent> output;
 
         Driver(QualityStreamsTopology topology, Map<String, Map<String, String>> baselines) {
             StreamsBuilder builder = new StreamsBuilder();
-            topology.apply(builder);
+            var envelopes = builder.stream(KafkaTopics.RAW_EVENTS_V1,
+                    org.apache.kafka.streams.kstream.Consumed.with(
+                            org.apache.kafka.common.serialization.Serdes.String(), serdes.rawEnvelopeSerde()));
+            topology.buildPipeline(builder, envelopes);
 
             Properties props = new Properties();
             props.put(StreamsConfig.APPLICATION_ID_CONFIG, "test-topology");
@@ -219,9 +222,9 @@ class QualityStreamsTopologyTest {
 
             this.driver = new TopologyTestDriver(builder.build(), props);
             this.input = driver.createInputTopic(
-                    KafkaTopics.RAW_EVENTS, new StringSerializer(), serdes.dataEventSerde().serializer());
+                    KafkaTopics.RAW_EVENTS_V1, new StringSerializer(), serdes.rawEnvelopeSerde().serializer());
             this.output = driver.createOutputTopic(
-                    KafkaTopics.QUALITY_EVENTS, new StringDeserializer(), serdes.processedEventSerde().deserializer());
+                    KafkaTopics.QUALITY_EVENTS_V1, new StringDeserializer(), serdes.processedEventSerde().deserializer());
             TestInputTopic<String, BaselineMessage> baselineInput = driver.createInputTopic(
                     KafkaTopics.SCHEMA_BASELINES, new StringSerializer(), serdes.baselineMessageSerde().serializer());
             baselines.forEach((eventType, leaves) ->
@@ -229,7 +232,9 @@ class QualityStreamsTopologyTest {
         }
 
         void pipe(DataEvent event) {
-            input.pipeInput(event.source() + "|" + event.eventType(), event, event.eventTimestamp().toEpochMilli());
+            var envelope = com.driftwatch.event.RawEnvelope.forRest(event, java.time.Instant.now());
+            input.pipeInput(com.driftwatch.quality.ScopeKey.of(event.source(), event.eventType()),
+                    envelope, event.eventTimestamp().toEpochMilli());
         }
 
         List<KeyValue<String, ProcessedEvent>> output() {

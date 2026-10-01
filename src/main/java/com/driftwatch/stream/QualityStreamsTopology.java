@@ -90,11 +90,99 @@ public class QualityStreamsTopology {
         this.settings = settings;
     }
 
+    /**
+     * Live path: {@code raw-events-v1} is consumed as bytes and parsed explicitly, so a malformed
+     * or unsupported record becomes a dead letter instead of killing the task and blocking every
+     * later record (guide 7.1). The original topic/partition/offset travel with the dead letter.
+     */
     public KStream<String, ProcessedEvent> apply(StreamsBuilder builder) {
-        KStream<String, RawEnvelope> envelopes = builder
-                .stream(KafkaTopics.RAW_EVENTS, Consumed.with(Serdes.String(), serdes.dataEventSerde()))
-                .process(EnvelopeAdapter::new, Named.as("adapter"));
+        KStream<String, byte[]> rawBytes = builder.stream(KafkaTopics.RAW_EVENTS_V1,
+                Consumed.with(Serdes.String(), Serdes.ByteArray()));
+
+        KStream<String, ParsedRecord> parsed = rawBytes
+                .process(() -> new EnvelopeParser(objectMapper), Named.as("parse-envelope"));
+
+        parsed.filter((key, value) -> value.envelope() == null, Named.as("dead-letter-filter"))
+                .mapValues(ParsedRecord::dltMessage, Named.as("dead-letter-map"))
+                .to(KafkaTopics.DEAD_LETTER_EVENTS,
+                        Produced.with(Serdes.String(), serdes.dltMessageSerde()));
+
+        KStream<String, RawEnvelope> envelopes = parsed
+                .filter((key, value) -> value.envelope() != null, Named.as("valid-filter"))
+                .mapValues(ParsedRecord::envelope, Named.as("valid-map"));
         return buildPipeline(builder, envelopes);
+    }
+
+    /** Either a parsed envelope or the dead letter describing why it could not be parsed. */
+    record ParsedRecord(RawEnvelope envelope, com.driftwatch.dlt.DltMessage dltMessage) {}
+
+    /**
+     * Parses one record explicitly. {@code contract_version} is validated: an unknown version is
+     * an explicit failure path, not a silent default.
+     */
+    static class EnvelopeParser implements Processor<String, byte[], String, ParsedRecord> {
+        private final ObjectMapper objectMapper;
+        private ProcessorContext<String, ParsedRecord> context;
+
+        EnvelopeParser(ObjectMapper objectMapper) {
+            this.objectMapper = objectMapper;
+        }
+
+        @Override
+        public void init(ProcessorContext<String, ParsedRecord> context) {
+            this.context = context;
+        }
+
+        @Override
+        public void process(Record<String, byte[]> record) {
+            var metadata = context.recordMetadata().orElse(null);
+            String topic = metadata == null ? KafkaTopics.RAW_EVENTS_V1 : metadata.topic();
+            Integer partition = metadata == null ? null : metadata.partition();
+            Long offset = metadata == null ? null : metadata.offset();
+            try {
+                RawEnvelope envelope = objectMapper.readValue(record.value(), RawEnvelope.class);
+                if (envelope.contractVersion() != RawEnvelope.CONTRACT_VERSION) {
+                    forward(record, deadLetter(envelope.ingestionId() == null
+                                    ? null : envelope.ingestionId().toString(),
+                            "UNSUPPORTED_CONTRACT_VERSION:" + envelope.contractVersion(),
+                            topic, partition, offset, record.value()));
+                    return;
+                }
+                forward(record, new ParsedRecord(envelope, null));
+            } catch (Exception e) {
+                forward(record, deadLetter(null,
+                        "MALFORMED_RECORD:" + e.getClass().getSimpleName() + ": " + e.getMessage(),
+                        topic, partition, offset, record.value()));
+            }
+        }
+
+        /**
+         * Forwards with fresh headers: the raw record's headers (for example a {@code __TypeId__}
+         * from a JSON producer) must not travel into the typed pipeline or the dead-letter topic.
+         */
+        private void forward(Record<String, byte[]> record, ParsedRecord value) {
+            context.forward(new Record<>(record.key(), value, record.timestamp(),
+                    new org.apache.kafka.common.header.internals.RecordHeaders()));
+        }
+
+        private ParsedRecord deadLetter(String ingestionId, String reason, String topic,
+                                        Integer partition, Long offset, byte[] payload) {
+            return new ParsedRecord(null, new com.driftwatch.dlt.DltMessage(
+                    com.driftwatch.dlt.DltMessage.diagnosticIdFor(ingestionId, topic, partition, offset),
+                    com.driftwatch.dlt.DltStage.STREAM,
+                    ingestionId,
+                    null, null,
+                    com.driftwatch.dlt.DltMessage.truncate(reason, com.driftwatch.dlt.DltMessage.MAX_REASON_LENGTH),
+                    1,
+                    topic, partition, offset,
+                    com.driftwatch.dlt.DltMessage.truncate(payload == null ? null
+                            : new String(payload, java.nio.charset.StandardCharsets.UTF_8),
+                            com.driftwatch.dlt.DltMessage.MAX_PAYLOAD_LENGTH),
+                    Instant.now()));
+        }
+
+        @Override
+        public void close() {}
     }
 
     /**
@@ -130,7 +218,7 @@ public class QualityStreamsTopology {
                         Named.as("anomaly"), ANOMALY_WINDOW_STORE, ANOMALY_SCOPE_STORE, SCOPE_WATERMARK_STORE)
                 .process(FinalizeProcessor::new, Named.as("finalize"));
 
-        processed.to(KafkaTopics.QUALITY_EVENTS,
+        processed.to(KafkaTopics.QUALITY_EVENTS_V1,
                 Produced.with(Serdes.String(), serdes.processedEventSerde()));
         return processed;
     }
@@ -156,29 +244,6 @@ public class QualityStreamsTopology {
         deserializer.addTrustedPackages("com.driftwatch.stream");
         Serde<T> serde = Serdes.serdeFrom(new JsonSerializer<T>(objectMapper).noTypeInfo(), deserializer);
         return Stores.keyValueStoreBuilder(Stores.persistentKeyValueStore(name), Serdes.String(), serde);
-    }
-
-    /**
-     * Temporary bridge while {@code raw-events} still carries bare {@link DataEvent} values: the
-     * envelope is created here. P3.1 moves envelope creation into the ingest API and the new
-     * {@code raw-events-v1} topic.
-     */
-    static class EnvelopeAdapter implements Processor<String, DataEvent, String, RawEnvelope> {
-        private ProcessorContext<String, RawEnvelope> context;
-
-        @Override
-        public void init(ProcessorContext<String, RawEnvelope> context) {
-            this.context = context;
-        }
-
-        @Override
-        public void process(Record<String, DataEvent> record) {
-            RawEnvelope envelope = RawEnvelope.forRest(record.value(), Instant.now());
-            context.forward(record.withValue(envelope));
-        }
-
-        @Override
-        public void close() {}
     }
 
     /** Attaches the payload hash and normalises stream time to the event timestamp. */

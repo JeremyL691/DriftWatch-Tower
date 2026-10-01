@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -26,6 +27,19 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of(
                 "error", "validation_failed",
                 "message", message,
+                "timestamp", Instant.now().toString()
+        ));
+    }
+
+    /**
+     * Explicit status codes raised by the ingest contract (409 idempotency conflict, 503
+     * unconfirmed publish) must reach the caller instead of being flattened into 500.
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleResponseStatus(ResponseStatusException ex) {
+        return ResponseEntity.status(ex.getStatusCode()).body(Map.of(
+                "error", ex.getStatusCode().value() == 409 ? "idempotency_conflict" : "unconfirmed",
+                "message", ex.getReason() == null ? "request rejected" : ex.getReason(),
                 "timestamp", Instant.now().toString()
         ));
     }

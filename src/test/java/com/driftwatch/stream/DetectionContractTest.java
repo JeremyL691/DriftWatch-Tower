@@ -524,7 +524,7 @@ class DetectionContractTest {
             this.input = driver.createInputTopic("envelope-input",
                     new StringSerializer(), envelopeSerde().serializer());
             this.output = driver.createOutputTopic(
-                    KafkaTopics.QUALITY_EVENTS, new StringDeserializer(), serdes.processedEventSerde().deserializer());
+                    KafkaTopics.QUALITY_EVENTS_V1, new StringDeserializer(), serdes.processedEventSerde().deserializer());
             TestInputTopic<String, BaselineMessage> baselineInput = driver.createInputTopic(
                     KafkaTopics.SCHEMA_BASELINES, new StringSerializer(), serdes.baselineMessageSerde().serializer());
             baselines.forEach((eventType, leaves) ->
