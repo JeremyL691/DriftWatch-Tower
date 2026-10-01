@@ -535,17 +535,39 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
     resource = {"samples": len(memory)}
     if memory:
         base_monotonic = memory[0][0]
+        last_monotonic = memory[-1][0]
+        # The gate compares the first two hours with the last hour (guide 11.1). The first
+        # minutes of a JVM are a cold start, so the report also computes the hours 1-2 plateau:
+        # a bounded warm-up is evidence, not a leak, and the two numbers together show which
+        # one is happening.
         early = [value for when, value in memory if when - base_monotonic <= 7200]
-        late = [value for when, value in memory if when >= memory[-1][0] - 3600]
+        plateau = [value for when, value in memory if 3600 <= when - base_monotonic <= 7200]
+        late = [value for when, value in memory if when >= last_monotonic - 3600]
         early_mean = sum(early) / len(early) if early else None
+        plateau_mean = sum(plateau) / len(plateau) if plateau else None
         late_mean = sum(late) / len(late) if late else None
-        resource.update({"first_two_hours_mean_mib": early_mean, "last_hour_mean_mib": late_mean})
+        resource.update({
+            "first_two_hours_mean_mib": early_mean,
+            "hours_1_to_2_mean_mib": plateau_mean,
+            "last_hour_mean_mib": late_mean,
+            "cold_start_mib": memory[0][1],
+        })
         if early_mean and late_mean:
             growth = late_mean - early_mean
             allowed = max(early_mean * 0.20, 128.0)
             resource.update({"growth_mib": round(growth, 1), "allowed_mib": round(allowed, 1)})
+            if plateau_mean:
+                plateau_growth = late_mean - plateau_mean
+                resource.update({
+                    "plateau_growth_mib": round(plateau_growth, 1),
+                    "plateau_allowed_mib": round(max(plateau_mean * 0.20, 128.0), 1),
+                })
             if growth > allowed:
-                problems.append(f"app memory grew {growth:.1f}MiB (allowed {allowed:.1f}MiB)")
+                problems.append(
+                    f"app memory grew {growth:.1f}MiB against the first two hours "
+                    f"(allowed {allowed:.1f}MiB); hours 1-2 mean was "
+                    f"{plateau_mean:.1f}MiB" if plateau_mean else
+                    f"app memory grew {growth:.1f}MiB (allowed {allowed:.1f}MiB)")
 
     report = {
         "run_id": args.run_id,
