@@ -149,6 +149,12 @@ and the resumable 24-hour runner (`acceptance.py`).
   `open_gaps` on `GET /api/v1/sources/collectors`.
 - Without a GitHub token the collector is limited to 60 requests/hour, which is why the default
   poll interval is five minutes.
+- The source health score is harsher than the alerting path. Its null-rate input is the highest
+  `NULL_RATE` window of the last hour, and event types legitimately omit fields — `action` does not
+  exist on a `PushEvent` — so a field that is absent by design costs the source 25 of 100 points
+  even though no `NULL_SPIKE` alert is raised. Expect the GitHub source to score low while nothing
+  is wrong; the raw values are on `GET /api/v1/sources/health`, and a later release aggregates the
+  null rate only over fields the schema baseline confirms for each event type.
 - `STALE_SOURCE` alerts on the GitHub source are expected and do not mean the collector is broken:
   the freshness threshold is five minutes while the public API publishes in bursts that can lag by
   minutes to hours, so a quiet window moves the source healthy → STALE and raises one `WARN` per

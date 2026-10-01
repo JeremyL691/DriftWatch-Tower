@@ -83,6 +83,13 @@ new database.
   as "the public API can no longer serve that range for re-reading", not as "these events were
   lost" — the ingestion ledger, deduplication and replay are unaffected, and the follow-up release
   corrects the classifier. This is visible as `open_gaps` on `GET /api/v1/sources/collectors`.
+- The source health score penalises fields that the event type does not carry. The null-rate input
+  takes the maximum `NULL_RATE` metric window of the last hour, and for example `action` is absent
+  from every `PushEvent`, so that window is 1.0 and costs the source 25 of its 100 points even
+  though the alerting path correctly raises no `NULL_SPIKE`. A self-hoster may therefore see the
+  GitHub source scored as unhealthy while nothing is wrong; the raw values are visible on
+  `GET /api/v1/sources/health`. A follow-up release aggregates the null rate only over fields the
+  schema baseline confirms for that event type.
 - `STALE_SOURCE` alerts are frequent for the GitHub source by design of its threshold, not because
   the collector is failing. Freshness defaults to five minutes, and the public events API publishes
   in bursts that can lag by minutes to hours, so the source legitimately moves healthy → STALE
