@@ -18,6 +18,7 @@ import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.ValueAndTimestamp;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -109,7 +110,18 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
         BaselineMessage baseline = stamped == null ? null : stamped.value();
         Map<String, String> expectedFields = baseline == null || baseline.leafTypes() == null
                 ? Map.of() : baseline.leafTypes();
-        if (expectedFields.isEmpty()) {
+        // Only leaf paths the baseline recorded with a value type are confirmed fields of this
+        // event type (guide 5.4: nullish means a *baseline-confirmed* leaf path is missing or
+        // null). A path the baseline recorded as NULL is a column this type has never populated -
+        // the GitHub adapter emits a fixed envelope whose inapplicable columns are null - so
+        // evaluating it would fire NULL_SPIKE on every event of that type.
+        Map<String, String> confirmedFields = new LinkedHashMap<>();
+        expectedFields.forEach((path, type) -> {
+            if (!"NULL".equals(type)) {
+                confirmedFields.put(path, type);
+            }
+        });
+        if (confirmedFields.isEmpty()) {
             // Only baseline-dependent checks are skipped; the event is never reported as fully checked.
             pending.baselineStatus = "PENDING";
             if (pending.evaluation == null) {
@@ -130,7 +142,7 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
         // changes, the new field set starts its own windows instead of adding its counts to the
         // previous version's, and the evidence can name the version that governed the check.
         String baselineVersion = baseline.versionId() == null ? "none" : baseline.versionId().toString();
-        for (String field : expectedFields.keySet()) {
+        for (String field : confirmedFields.keySet()) {
             String key = ScopeKey.of(source, eventType, field, Long.toString(windowStartMs), baselineVersion);
             NullWindowState state = windowStore.get(key);
             if (state == null) {
