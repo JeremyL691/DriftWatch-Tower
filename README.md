@@ -141,6 +141,12 @@ and the resumable 24-hour runner (`acceptance.py`).
 - The GitHub source depends on a public API that can be delayed, rate-limited or unavailable;
   when that happens the collector records a gap and the dashboard shows the collector as lost
   rather than reporting success.
+- Gap recording currently over-reports: the collector flags a `NO_OVERLAP` gap whenever a live
+  poll finds an event newer than the start of its initial backfill, which for a busy repository
+  happens on every poll that finds new events. Those rows stay open and mean "the API can no
+  longer serve that range for re-reading", not "events were lost" — ingestion, deduplication and
+  replay are unaffected, and a follow-up release corrects the classifier. The count appears as
+  `open_gaps` on `GET /api/v1/sources/collectors`.
 - Without a GitHub token the collector is limited to 60 requests/hour, which is why the default
   poll interval is five minutes.
 - Retention deletes raw payloads after 30 days; the deduplication identity is kept longer than
