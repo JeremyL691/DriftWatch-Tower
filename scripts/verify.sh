@@ -447,7 +447,10 @@ cmd_release() {
     finish_gate RELEASE NOT_IMPLEMENTED "$started" 2 >/dev/null
     die "release verification lands with P7 ($check_script)"
   fi
-  "$check_script" --project "$PROJECT" --env-file "$ENV_FILE" --out "$OUT_DIR" \
+  # Only forward --project when it was given: the release check has its own default project and
+  # forwarding an empty value would override it with nothing.
+  "$check_script" --env-file "$ENV_FILE" --out "$OUT_DIR" \
+    ${PROJECT:+--project "$PROJECT"} \
     --version "${VERSION:-v1.0.0}" ${PR_NUMBER:+--pr "$PR_NUMBER"}
   local exit_code=$?
   [ "$exit_code" -eq 0 ] && finish_gate RELEASE PASSED "$started" 0 >/dev/null \

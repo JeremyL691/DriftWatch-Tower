@@ -28,7 +28,7 @@ while [ $# -gt 0 ]; do
     --image) REGISTRY_IMAGE="$2"; shift 2 ;;
     --pr) PR_NUMBER="$2"; shift 2 ;;
     --port) PORT="$2"; shift 2 ;;
-    --project) PROJECT="$2"; shift 2 ;;
+    --project) [ -n "$2" ] && PROJECT="$2"; shift 2 ;;
     --env-file|--keep|--no-build) shift 2 2>/dev/null || shift ;;
     *) die "unknown argument: $1" ;;
   esac
