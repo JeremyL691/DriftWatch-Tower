@@ -27,10 +27,10 @@ import java.util.stream.Stream;
 public abstract class ContainerIntegrationTest {
 
     static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>(DockerImageName.parse("postgres:16"));
+            new PostgreSQLContainer<>(DockerImageName.parse("postgres:16.15"));
 
     static final KafkaContainer KAFKA =
-            new KafkaContainer(DockerImageName.parse("apache/kafka:3.8.0"));
+            new KafkaContainer(DockerImageName.parse("apache/kafka:3.9.2"));
 
     private static final boolean DOCKER_AVAILABLE = DockerClientFactory.instance().isDockerAvailable();
 
@@ -46,11 +46,25 @@ public abstract class ContainerIntegrationTest {
     @Autowired protected MetricWindowRepository metricWindowRepository;
     @Autowired protected SourceHealthRepository sourceHealthRepository;
 
+    /**
+     * Acceptance runs set {@code dwt.requireDocker=true} (or {@code DWT_REQUIRE_DOCKER=true}) so a
+     * missing Docker daemon fails the gate instead of silently skipping every container test.
+     */
+    private static final boolean REQUIRE_DOCKER = Boolean.parseBoolean(
+            System.getProperty("dwt.requireDocker",
+                    System.getenv().getOrDefault("DWT_REQUIRE_DOCKER", "false")));
+
     @BeforeAll
     static void ensureDockerIsAvailable() {
-        org.junit.jupiter.api.Assumptions.assumeTrue(
-                DOCKER_AVAILABLE,
-                "Docker is required for container-backed integration tests");
+        if (REQUIRE_DOCKER) {
+            org.junit.jupiter.api.Assertions.assertTrue(
+                    DOCKER_AVAILABLE,
+                    "Docker is required for container-backed integration tests (dwt.requireDocker=true)");
+        } else {
+            org.junit.jupiter.api.Assumptions.assumeTrue(
+                    DOCKER_AVAILABLE,
+                    "Docker is required for container-backed integration tests");
+        }
     }
 
     @DynamicPropertySource

@@ -8,24 +8,24 @@
 |---|---|
 | document_revision | 1.0 |
 | handoff_date | 2026-09-30，America/Los_Angeles |
-| product_goal_status | RUNNING，P0 完成，P1 进行中 |
+| product_goal_status | RUNNING，P0 与 P1.1 完成，P1.2 进行中 |
 | current_phase | P1 |
-| current_task | P1.1 |
-| next_action | 替换不可获取的 Kafka 镜像、修正 listener/健康检查、锁定依赖并加入 SCA |
+| current_task | P1.2 |
+| next_action | 集中 @ConfigurationProperties、凭据/访问保护（Spring Security 基础）、生产与测试 profile |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验，即为 execution_base_sha |
 | execution_branch | codex/release-v1（本地；尚未推送） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha / source_tree_hash | 未确定（P0.2 代码变更尚未提交；见运行记录） |
-| candidate_image_id / public_digest | 未确定 |
+| candidate_sha / source_tree_hash | 未冻结；开发分支推进中（P0.2/P1.1 已提交） |
+| candidate_image_id / public_digest | 未冻结；P1.1 本地镜像 sha256:1d84b418…（仅本地验证） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
 | active_soak_run | 无；24 小时验收尚未启动 |
-| external_blocker | 无（Java 21 已安装；Docker 29 兼容性已在测试配置中解决） |
+| external_blocker | 无 |
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
 
@@ -50,8 +50,8 @@
 |---|---|---|---|
 | P0.1 | 保护交接、对齐远端 | PASSED | codex/release-v1 @ 0a2bb07，base 082fd84；见 2026-09-30 运行记录 |
 | P0.2 | 基线与红色回归 | PASSED | 60/0/0/0 真实容器；G01 三例 EXPECTED_FAILURE 已绑定 SHA |
-| P1.1 | 可重复部署、固定依赖 | RUNNING | - |
-| P1.2 | 配置和认证基础 | NOT_STARTED | - |
+| P1.1 | 可重复部署、固定依赖 | PASSED | G02 通过；apache/kafka:3.9.2、postgres:16.15、摘要锁定、SCA 应用镜像 0 High/Critical |
+| P1.2 | 配置和认证基础 | RUNNING | - |
 | P1.3 | 验证脚本及后台 runner | NOT_STARTED | 指南命令目前待实现 |
 | P2.1 | scope / 窗口 / 漏报修复 | NOT_STARTED | - |
 | P2.2 | 规则与配置覆盖 | NOT_STARTED | - |
@@ -78,7 +78,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 |---|---|---|
 | G00 基线 | PASSED | Java 21.0.12.1 + Docker 29.5.3；60 tests / 0 fail / 0 err / 0 skip；`.execution/runs/20261001T020542Z-p02-baseline/` |
 | G01 红色回归复现 | EXPECTED_FAILURE | 3 个 5.4 用例在旧实现复现（null 全缺失 / 单事件基线突增 / 乱序覆盖窗口）；`g01-red-regression.log`、`g01-cases.json` |
-| G02 全新 Compose | NOT_RUN | - |
+| G02 全新 Compose | PASSED | 无缓存拉取+构建；容器启动后 6–19s 内全部 healthy（≤120s）；3 分区 topic、Streams changelog、状态卷、仅回环暴露；`runs/20261001T022637Z-p11-g02/` |
 | G03 检测正确性 | NOT_RUN | - |
 | G04 schema 反馈 | NOT_RUN | - |
 | G05 摄取与幂等 | NOT_RUN | - |
@@ -144,6 +144,20 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 - 真实 GitHub 只读核验（2026-10-01T02:05Z）：HTTP 200、5 条真实事件（如 IssueCommentEvent 16151737466）、ETag、`x-poll-interval: 60`、`x-ratelimit-limit: 60`（remaining 52）；证据 `github-headers.txt`、`github-events-sample.json`。
 - 已核验远端修复：`SourceHealthService` 的 healthy→STALE 单次转换告警已存在并有测试锁定，不重写。
 - 未推送、未发布。
+
+### 2026-10-01 P1.1 可重复部署与固定依赖（PASSED）
+
+运行目录：`.execution/runs/20261001T022637Z-p11-g02/`。
+
+- 镜像：`bitnami/kafka:3.7` 确认不存在（`no such manifest`），改用官方 `apache/kafka:3.9.2`（与 Boot BOM 的 kafka-clients 3.9.2 一致）；`postgres:16.15`；全部按 manifest-list digest 锁定（compose、Dockerfile、Testcontainers 同步）。Kafka listener 使用 `PLAINTEXT://kafka:29092`（容器内）+ `EXTERNAL://localhost:9092`（开发覆盖），健康检查用镜像自带 `kafka-broker-api-versions.sh`（该镜像无 curl）。
+- 端口：postgres/kafka 不发布到宿主机；app 仅 `127.0.0.1:${DWT_APP_PORT}`；`docker-compose.dev.yml` 提供本地开发端口覆盖；Streams state 挂载 `streams-state` 卷并设 `driftwatch-streams-v1`。
+- 依赖升级（仅漏洞修复）：Spring Boot 3.3.5 → 3.5.16（CVE-2026-22733 / CVE-2026-41731），PostgreSQL 驱动 42.7.13（CVE-2026-54291），jackson-bom 2.21.7（CVE-2026-68497/91776/91777），tomcat 10.1.59（CVE-2026-65182/65905/68525），springdoc 2.8.17。运行时镜像额外安装 Ubuntu 已发布的 openssl 修复（CVE-2026-84782）。
+- SCA：Trivy 0.58.1（容器）扫描依赖树与应用镜像 → 0 HIGH/CRITICAL；postgres/kafka 上游镜像内的发现已保存（`sca/trivy-stack-images.txt`），在 docs/versions.md 声明为上游镜像、本项目不重新发布。
+- 守护：maven-enforcer 强制 Java [21,22) 与 Maven ≥3.9；`docs/versions.md` 为版本 manifest；`ContainerIntegrationTest` 支持 `dwt.requireDocker=true`（验收时 Docker 缺失即失败而非跳过）。
+- G02 两轮：全新拉取+构建后全部服务在 233s（含拉取与 Maven 构建）内 healthy；容器启动到 healthy 18–19s（第一轮）、13s（第二轮，app 6s）；均 ≤120s。topic `raw-events`/`quality-events` 3 分区；Streams changelog 4 个；POST 事件 HTTP 202 并落库。
+- 观察记录（供后续任务）：应用重启后 Streams 重新开始处理前约有 24s 空窗，而当前 readiness 只反映 DB；P1.2/P3 必须让 readiness 反映 Kafka/Streams。
+- 依赖变更后完整套件重跑：60 tests / 0 fail / 0 err / 0 skip，broker 3.9.2（`mvn-final-p11.log`）。
+- 验收资源已清理：`docker compose -p dwt-g02 down -v`，无残留卷/网络。
 
 后续每条保留：
 
