@@ -343,6 +343,7 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 - 保留期是否会打断账本：`RetentionService` 的 cron 是每天 03:30（`0 30 3 * * *`），落在 24 小时窗口内。逐条核对删除条件后确认它在本 run 中不会删任何行——raw_events 与 processed_receipts 的截止是 `received_at/processed_at < now-30d`（本 run 的行都是刚写入），metric_windows 是 `window_end < now-30d`，quality_alerts/alert_incidents 只删已解决且超过 90 天的（本 run 的告警都是 OPEN），source_inbox 是 35 天。因此 `processed_without_raw=0` 的账本判定不会被保留期破坏。03:30 之后可用 `GET /api/v1/operations/retention` 复核实际删除行数为 0。
 - 内存曲线：`soak-report` 现在同时给出严格窗口（前 2 小时均值 vs 最后 1 小时）与 1–2 小时平台均值，以及冷启动值，避免把 JVM 预热误判为泄漏；当前冷启动 592MiB、前 10 分钟均值 679MiB。
 - 真实源：3 次轮询，300 条不同事件（299 bootstrap + 1 条 bootstrap 之后新发现），0 缺口；告警 2 条均来自 LIVE 事件，incident 0、DLT 0、lag 0。轮询证据逐轮可查：poll1 BOOTSTRAP 299/299 APPLIED、poll2 LIVE 200/1 APPLIED（ETag 前进）、poll3 LIVE QUIET（304，游标不动），每轮都记录 `x_poll_interval=60`；间隔约 5.4 分钟，即 12 次/小时，低于未认证 60 次/小时预算。
+- 宿主电源：`pmset -g` 显示系统 `sleep 1`（空闲 1 分钟即休眠），当时仅靠第三方应用（ChatGPT、Amphetamine、UURemote）持有断言才没睡——它们一旦退出，24 小时 run 会因监控空洞而失效。已用 `caffeinate -i -w 85137` 绑定 runner 进程持有 `PreventUserIdleSystemSleep`（PID 11469，runner 退出即自动释放，不改任何持久设置）。残余风险：显式休眠（合盖或菜单休眠）不受该断言保护，需要人在 24 小时内不要主动休眠。
 - 容器与磁盘：G16 要求「无计划容器重启、磁盘未耗尽」，`soak-report` 现在读取三个容器的 `RestartCount` 与剩余磁盘（当前均为 0 次重启、50GiB 空闲）。已实测 `docker stop/start`（计划故障使用的路径）不会增加 `RestartCount`，因此该检查只会抓到真正的崩溃重启。
 
 后续每条保留：
