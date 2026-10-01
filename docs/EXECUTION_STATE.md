@@ -43,11 +43,12 @@
 
 1. `./scripts/verify.sh soak-report --run-id 20261001T134438Z-soak24 --out .execution/verify/p61-soak` → 判定 G16 并写出 `gate.json`(SOAK)。有问题就记录并修复后重开完整 24 小时，不拼接。
 2. 通过后更新本文件（G16/P6.2 PASSED、实测数字与证据路径），提交并推送 `codex/release-v1`。
-3. 合并 PR：`gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 `8a798a6e`（或其后代）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`（不绕过必需检查）；合并后确认 main 含该候选树。
-4. 发布：`release.yml` 只有在默认分支上才会注册，所以合并后再 `gh workflow run release.yml --ref main -f version=v1.0.0 -f candidate_sha=8a798a6e -f content_identity=e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a`，然后 `gh run watch`。该 job 用同一锁定输入重建并比对 content identity（不一致即拒绝推送；已在原生 amd64 CI 上核验与冻结值逐字节一致）、推送 `v1.0.0` 与 `sha-8a798a6e`、尝试把 package 设为 public、在干净 Docker config 中匿名拉取 digest、创建 Release。匿名拉取失败即 package 非 public：记录确切错误与恢复动作（GitHub UI 或具 `write:packages` 的 token），不得当作成功。
-5. 附件：先 `./scripts/verify.sh package --out .execution/verify/p61-package-final3 --image driftwatch-tower:local --version v1.0.0 --manifest .execution/runs/p61-freeze/manifest.json`（必须等 soak 栈结束、无验收栈运行时再做，打包会起自己的 compose 项目）；再 `./scripts/evidence-pack.sh --out .execution/evidence --run-id p7-release`；然后 `./scripts/upload-release-assets.sh --version v1.0.0 --artifacts .execution/verify/p61-package-final3/artifacts --evidence .execution/evidence --digest sha256:...`（digest 取自 Release 正文）。
-6. 匿名核验：`./scripts/verify.sh release --out .execution/verify/p7-release --version v1.0.0 --pr 1`。
-7. 最终报告写回本文件：Release URL、image@digest、源码 SHA、证据路径、性能条件与已知限制；同步 `docs/RELEASE_NOTES.md` 的 digest 行。
+3. 把阶段门禁重新绑定到冻结候选：`for ph in P2 P3 P4 P5 P5b; do ./scripts/verify.sh phase $ph --project dwt-soak --env-file .execution/soak.env --out .execution/verify/p7-$ph; done`（每个脚本跑一次完整套件，约 35 分钟；只依赖 Docker，不需要运行中的栈）。理由：指南 §11.2 要求发布验证「同一候选的 manifest/gate 证据」并拒绝「过期于代码变更」的报告，而这五个门禁的记录仍绑定在更早的 SHA 上；`verify.sh release` 会检查每个 gate id 的最新记录，重跑后整套证据都绑定到冻结候选。
+4. 合并 PR：`gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 `8a798a6e`（或其后代）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`（不绕过必需检查）；合并后确认 main 含该候选树。
+5. 发布：`release.yml` 只有在默认分支上才会注册，所以合并后再 `gh workflow run release.yml --ref main -f version=v1.0.0 -f candidate_sha=8a798a6e -f content_identity=e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a`，然后 `gh run watch`。该 job 用同一锁定输入重建并比对 content identity（不一致即拒绝推送；已在原生 amd64 CI 上核验与冻结值逐字节一致）、推送 `v1.0.0` 与 `sha-8a798a6e`、尝试把 package 设为 public、在干净 Docker config 中匿名拉取 digest、创建 Release。匿名拉取失败即 package 非 public：记录确切错误与恢复动作（GitHub UI 或具 `write:packages` 的 token），不得当作成功。
+6. 附件：先 `./scripts/verify.sh package --out .execution/verify/p61-package-final3 --image driftwatch-tower:local --version v1.0.0 --manifest .execution/runs/p61-freeze/manifest.json`（必须等 soak 栈结束、无验收栈运行时再做，打包会起自己的 compose 项目）；再 `./scripts/evidence-pack.sh --out .execution/evidence --run-id p7-release`；然后 `./scripts/upload-release-assets.sh --version v1.0.0 --artifacts .execution/verify/p61-package-final3/artifacts --evidence .execution/evidence --digest sha256:...`（digest 取自 Release 正文）。
+7. 匿名核验：`./scripts/verify.sh release --out .execution/verify/p7-release --version v1.0.0 --pr 1`。
+8. 最终报告写回本文件：Release URL、image@digest、源码 SHA、证据路径、性能条件与已知限制；同步 `docs/RELEASE_NOTES.md` 的 digest 行。
 
 ## 历史审核快照
 
