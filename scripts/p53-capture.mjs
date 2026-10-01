@@ -76,6 +76,10 @@ for (const theme of themes) {
     const file = join(outDir, `${label}-${viewport.name}-${theme}.png`);
     await page.screenshot({ path: file, fullPage: true });
 
+    // The live-update path must actually connect (ticket handshake), not stay disconnected.
+    await page.waitForTimeout(1500);
+    const wsStatus = await page.locator('#wsStatus .ws-label').first().textContent().catch(() => null);
+
     const overflow = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
@@ -98,7 +102,7 @@ for (const theme of themes) {
     });
 
     report.pages.push({
-      viewport: viewport.name, theme, file, status,
+      viewport: viewport.name, theme, file, status, wsStatus,
       horizontalOverflow: overflow.scrollWidth > overflow.clientWidth,
       overflow, consoleErrors, keyboard,
     });

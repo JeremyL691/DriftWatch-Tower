@@ -7,12 +7,18 @@ const state = {
 
 // ponytail: respects user OS-level reduce-motion; single source of truth for the whole file.
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const GSAP_OK = typeof gsap !== "undefined";
+// Motion is CSS-only: GSAP is not loaded and every animation call becomes a safe no-op.
+const fx = typeof gsap !== "undefined" ? gsap : {
+  from: () => {}, to: () => {}, fromTo: () => {}, set: () => {}, killTweensOf: () => {},
+  registerPlugin: () => {}, utils: { toArray: () => [] },
+};
 
 // All REST controllers live under /api/v1 (WebSocket /ws is registered separately, unversioned).
 const API = "/api/v1";
 
 document.addEventListener("DOMContentLoaded", () => {
+  renderIcons();
+  initTheme();
   document.getElementById("refreshAll").addEventListener("click", () => refreshDashboard());
   document.getElementById("applyAlertFilters").addEventListener("click", () => loadAlerts());
   document.querySelectorAll(".scenario-button").forEach((button) => {
@@ -23,13 +29,35 @@ document.addEventListener("DOMContentLoaded", () => {
   initMotion();
 });
 
-function connectWebSocket() {
-  const socket = new SockJS("/ws");
+// Backoff reconnect: the socket re-authenticates with a fresh ticket and the dashboard
+// re-queries the data, so a reconnect never leaves a stale LIVE label on screen.
+let wsAttempt = 0;
+
+async function wsTicket() {
+  const response = await fetch(`${API}/dashboard/api/ws-ticket`);
+  if (!response.ok) {
+    throw new Error(`ticket request failed with ${response.status}`);
+  }
+  return (await response.json()).ticket;
+}
+
+async function connectWebSocket() {
+  let ticket;
+  try {
+    ticket = await wsTicket();
+  } catch (error) {
+    updateWsStatus(false);
+    scheduleReconnect();
+    return;
+  }
+  const socket = new SockJS(`/ws?ticket=${encodeURIComponent(ticket)}`);
   state.stompClient = Stomp.over(socket);
   state.stompClient.debug = null;
 
   state.stompClient.connect({}, () => {
+    wsAttempt = 0;
     updateWsStatus(true);
+    refreshDashboard();
     state.stompClient.subscribe("/topic/alerts", (message) => {
       const alert = JSON.parse(message.body);
       prependLiveAlert(alert);
@@ -43,8 +71,60 @@ function connectWebSocket() {
     });
   }, () => {
     updateWsStatus(false);
-    setTimeout(connectWebSocket, 3000);
+    scheduleReconnect();
   });
+}
+
+function scheduleReconnect() {
+  wsAttempt = Math.min(wsAttempt + 1, 6);
+  const delay = Math.min(1000 * Math.pow(2, wsAttempt - 1), 30000);
+  setTimeout(() => {
+    connectWebSocket();
+    // Re-query after reconnecting instead of trusting whatever is on screen.
+    refreshDashboard();
+  }, delay);
+}
+
+// Locally bundled Lucide icon set; no external icon CDN.
+function renderIcons() {
+  if (window.lucide && typeof window.lucide.createIcons === "function") {
+    window.lucide.createIcons();
+  }
+}
+
+// Dark stays the brand default; the toggle stores only the preference, never a credential.
+function initTheme() {
+  const stored = readCookie("dwt-theme");
+  if (stored === "light" || stored === "dark") {
+    document.documentElement.dataset.theme = stored;
+  }
+  updateThemeToggle();
+  const toggle = document.getElementById("themeToggle");
+  if (toggle) {
+    toggle.addEventListener("click", () => {
+      const current = document.documentElement.dataset.theme
+        || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      const next = current === "light" ? "dark" : "light";
+      document.documentElement.dataset.theme = next;
+      document.cookie = `dwt-theme=${next};path=/;max-age=31536000;samesite=lax`;
+      updateThemeToggle();
+    });
+  }
+}
+
+function updateThemeToggle() {
+  const label = document.getElementById("themeToggleLabel");
+  const toggle = document.getElementById("themeToggle");
+  if (!label || !toggle) return;
+  const current = document.documentElement.dataset.theme
+    || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  label.textContent = current === "light" ? "Dark" : "Light";
+  toggle.setAttribute("aria-pressed", current === "light" ? "true" : "false");
+}
+
+function readCookie(name) {
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 function updateWsStatus(connected) {
@@ -415,12 +495,12 @@ function wait(ms) {
 // ---------------------------------------------------------------------------
 
 function initMotion() {
-  if (GSAP_OK) gsap.registerPlugin(ScrollTrigger);
+  if (typeof gsap !== "undefined") fx.registerPlugin(ScrollTrigger);
 
   // #1 Entrance stagger — panels fade up as they scroll into view.
-  if (!REDUCED_MOTION && GSAP_OK) {
-    gsap.utils.toArray(".panel").forEach((panel) => {
-      gsap.from(panel, {
+  if (!REDUCED_MOTION && typeof gsap !== "undefined") {
+    fx.utils.toArray(".panel").forEach((panel) => {
+      fx.from(panel, {
         opacity: 0,
         y: 24,
         duration: 0.55,
@@ -432,7 +512,7 @@ function initMotion() {
 
   // #3 Gold scan line on .stat-card hover.
   // ponytail: per-card overlay element, swept via gsap x; uses existing --gold token (no color edit).
-  if (!REDUCED_MOTION && GSAP_OK) {
+  if (!REDUCED_MOTION && typeof gsap !== "undefined") {
     document.querySelectorAll(".stat-card").forEach((card) => {
       const overlay = document.createElement("div");
       overlay.style.cssText =
@@ -443,8 +523,8 @@ function initMotion() {
       card.style.overflow = "hidden";
       card.appendChild(overlay);
       card.addEventListener("mouseenter", () => {
-        gsap.killTweensOf(overlay);
-        gsap.fromTo(overlay, { xPercent: -120 }, { xPercent: 220, duration: 0.85, ease: "power2.inOut" });
+        fx.killTweensOf(overlay);
+        fx.fromTo(overlay, { xPercent: -120 }, { xPercent: 220, duration: 0.85, ease: "power2.inOut" });
       });
     });
   }
@@ -508,14 +588,14 @@ function initMotion() {
 function animateCount(el, target) {
   if (!el) return;
   const value = Number(target) || 0;
-  if (REDUCED_MOTION || !GSAP_OK) {
+  if (REDUCED_MOTION || typeof gsap === "undefined") {
     el.textContent = formatNumber(value);
     return;
   }
   if (el._countTween) el._countTween.kill();
   const start = parseInt(String(el.textContent || "0").replace(/[^\d-]/g, ""), 10) || 0;
   const state = { v: start };
-  el._countTween = gsap.to(state, {
+  el._countTween = fx.to(state, {
     v: value,
     duration: 0.9,
     ease: "power2.out",
@@ -526,28 +606,28 @@ function animateCount(el, target) {
 
 // #4 Scenario status card crossfade.
 function crossfadeIn(el) {
-  if (!el || REDUCED_MOTION || !GSAP_OK) return;
-  gsap.from(el, { opacity: 0, y: -6, duration: 0.3, ease: "power2.out" });
+  if (!el || REDUCED_MOTION || typeof gsap === "undefined") return;
+  fx.from(el, { opacity: 0, y: -6, duration: 0.3, ease: "power2.out" });
 }
 
 // #5 Status badge (pill) color crossfade — pills in freshly-rendered tables fade in.
 function crossfadePills(container) {
-  if (!container || REDUCED_MOTION || !GSAP_OK) return;
+  if (!container || REDUCED_MOTION || typeof gsap === "undefined") return;
   const pills = container.querySelectorAll(".pill");
   if (!pills.length) return;
-  gsap.from(pills, { opacity: 0, scale: 0.85, duration: 0.35, ease: "power2.out", stagger: 0.015 });
+  fx.from(pills, { opacity: 0, scale: 0.85, duration: 0.35, ease: "power2.out", stagger: 0.015 });
 }
 
 // #6 Alert/event slide-in from left + bounce.
 function slideInTimeline(item) {
-  if (!item || REDUCED_MOTION || !GSAP_OK) return;
-  gsap.from(item, { x: -40, opacity: 0, duration: 0.5, ease: "back.out(1.4)" });
+  if (!item || REDUCED_MOTION || typeof gsap === "undefined") return;
+  fx.from(item, { x: -40, opacity: 0, duration: 0.5, ease: "back.out(1.4)" });
 }
 
 // #7 WebSocket data update pulse — ws-dot scale yoyo on incoming message.
 function pulseWsDot() {
-  if (REDUCED_MOTION || !GSAP_OK) return;
+  if (REDUCED_MOTION || typeof gsap === "undefined") return;
   const dot = document.querySelector("#wsStatus .ws-dot");
   if (!dot) return;
-  gsap.fromTo(dot, { scale: 1 }, { scale: 1.6, duration: 0.18, ease: "power2.out", yoyo: true, repeat: 1 });
+  fx.fromTo(dot, { scale: 1 }, { scale: 1.6, duration: 0.18, ease: "power2.out", yoyo: true, repeat: 1 });
 }

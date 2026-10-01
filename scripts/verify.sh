@@ -54,7 +54,7 @@ while [ $# -gt 0 ]; do
     --keep)      KEEP=1; shift ;;
     --no-build)  NO_BUILD=1; shift ;;
     --help|-h)   usage ;;
-    P1|P2|P3|P4|P5|P5b|P6|P7) PHASE_NAME="$1"; shift ;;
+    P1|P2|P3|P4|P5|P5b|P5c|P6|P7) PHASE_NAME="$1"; shift ;;
     *) die "unknown argument: $1" ;;
   esac
 done
