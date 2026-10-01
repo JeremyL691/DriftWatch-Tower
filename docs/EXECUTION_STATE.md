@@ -10,15 +10,15 @@
 | handoff_date | 2026-09-30，America/Los_Angeles |
 | product_goal_status | RUNNING，P0-P2 完成，P3 进行中 |
 | current_phase | P5 |
-| current_task | P5.2 |
-| next_action | P5.2：第7.3/7.4节指标与日志、retention 批处理、备份/新卷恢复与 G11 |
+| current_task | P5.3 |
+| next_action | P5.3：Dashboard 完整操作状态、四断点、暗/亮、键盘与真实 before/after 截图（G12） |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（本地；尚未推送） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 4b111417（P5.1 完成；P5.2-P7 未完成，仍不能作为发布候选） |
+| candidate_sha | 6bf026de（P5.2 完成；P5.3-P7 未完成，仍不能作为发布候选） |
 | source_tree_hash | 8c8797ad9fe505c8e12d0f797264e4cb15de7fc5c00ffddce25c61cdd023570c（src+pom+Dockerfile+compose） |
 | candidate_image_id / public_digest | 本地镜像 sha256:1a419f6a…（仅本地验证，未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
@@ -63,8 +63,8 @@
 | P4.1 | GitHub 持久 poller | PASSED | G08 PASSED（152/0/0/0，GithubPollerIntegrationTest 11 项）；`.execution/verify/p4-gate1/` |
 | P4.2 | 官方真实数据全链路 | PASSED | G09 PASSED；官方源无 token，bootstrap 199 事件 + 启动后新增 LIVE 事件 + 重启检查点保持；`.execution/runs/p42-smoke/` |
 | P5.1 | incident / scheduler | PASSED | G10 PASSED（163/0/0/0；IncidentLifecycle 6、Scheduler 2、CollectorStatus 3）；`.execution/verify/p5-gate3/` |
-| P5.2 | 指标、保留、备份恢复 | RUNNING | - |
-| P5.3 | Dashboard 操作与响应式 | NOT_STARTED | 设计 3/2/8 已确认 |
+| P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
+| P5.3 | Dashboard 操作与响应式 | RUNNING | 设计 3/2/8 已确认 |
 | P6.1 | 冻结候选、短门槛、负载 | NOT_STARTED | - |
 | P6.2 | 24 小时真实验收 | NOT_STARTED | - |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
@@ -88,7 +88,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G08 来源协议 | PASSED | SHA fbba4d05；PHASE-P4 gate 152 tests / 0 fail / 0 skip；GithubPollerIntegrationTest 11 项覆盖 304/403+Retry-After/429/401/404/500+恢复/超时/坏 JSON/跨页重叠/bootstrap 与 live 模式/重启恢复；`.execution/verify/p4-gate1/` |
 | G09 官方真实源 | PASSED | 官方 api.github.com 无 token；bootstrap 199 条真实事件（mode=BOOTSTRAP、SKIPPED_MODE）、启动后新增 16162901734（mode=LIVE）经 inbox→outbox→Kafka→receipt→raw→API 全链路、重启后检查点保持不重摄；`.execution/runs/p42-smoke/` |
 | G10 操作闭环 | PASSED | SHA 4b111417；PHASE-P5 gate 163 tests / 0 fail / 0 skip；incident 关联并发唯一、resolve 语义与自动解决、ack 幂等/409、静默 scheduler 单次转换、GET 无副作用；`.execution/verify/p5-gate3/` |
-| G11 保留与恢复 | NOT_RUN | - |
+| G11 保留与恢复 | PASSED | SHA 6bf026de；PHASE-P5b gate 165 tests / 0 fail / 0 skip；pg_dump → 全新专用卷恢复计数一致（raw=4/alerts=1/schema=1/receipts=4）、保留策略保护未解决证据、指标面无身份标签；`.execution/runs/p52-drill/` |
 | G12 浏览器与四断点 | NOT_RUN | - |
 | G13 安全与漏洞 | NOT_RUN | - |
 | G14 100/s、30分钟 | NOT_RUN | - |
@@ -259,6 +259,14 @@ P3.1 之后仍需完成（下一动作）：
 - 定时健康：`SourceHealthService.list()/get()` 恢复为纯读（GET 不再刷新、不再产生告警）；新增 30s `SourceHealthScheduler`（可注入 Clock）执行刷新，静默来源在没有 Dashboard 流量时仍产生 STALE 转换；sink 只刷新受影响来源（不再每次事件全表扫描）；转换告警每次失联仅一次、恢复后可再次告警（单元测试覆盖）。
 - 采集器状态：`GET /api/v1/sources/collectors` 返回 last_poll_at/last_success_at/next_poll_at/last_event_at/upstream_lag_seconds/lost/backoff_until/etag_applied/pending_outbox/open_gaps/last_error；`lost` 仅在 last_poll_success 超过 max(15 分钟, 2×poll interval) 时为真，成功但无新事件为 QUIET（依据 last_event_at 与 last_poll_success 关系），BACKOFF/ERROR 单独呈现。
 - 测试：`SourceHealthSchedulerTest`（每次失联一次告警、恢复后二次告警、读无副作用）、`IncidentLifecycleIntegrationTest`（关联、并发唯一、resolve/自动解决、ack 幂等与 409、health/dashboard/alerts 反复 GET 不新增行）、`CollectorStatusServiceTest`（QUIET/LOST 阈值/积压与缺口）；旧 `SourceHealthServiceTest` 更新为纯读契约。
+
+### 2026-10-01 P5.2 指标、保留与备份恢复（PASSED，G11）
+
+- 指标（§7.3，SHA 6bf026de）：`DriftwatchMetrics` 注册并接线到真实路径——摄取 ack 时长/失败、处理时长（received_at→commit）/失败、采集器 polls/failures/upstream lag、source outbox/dead-letter/baseline-outbox 积压、按 detector+severity 的告警计数、retention 清理行数与最后成功时间；标签只含 detector/severity/outcome/reason 等有界值，事件与摄取身份从不作为标签（集成测试与现场 scrape 双重断言 `event_id=`/`ingestion_id=` 不出现）。
+- 保留（§7.4）：`RetentionService` 每日执行、每批 ≤1000 行；raw/metric 30 天、已解决告警/incident 与已完成死信 90 天、inbox 身份 35 天；未解决告警/incident、未恢复死信、pending source/baseline outbox、collector 状态与 schema 版本永不清理；processed receipt 只在其 raw 行已不存在时才清理（不会先删 receipt 再重放 raw）；`GET /api/v1/operations/retention` 暴露设置与受保护状态计数，`POST .../retention/run` 供演练使用。
+- 备份/恢复演练（`.execution/runs/p52-drill/`）：真实数据（4 raw、1 alert、1 schema、4 receipts）→ `pg_dump -Fc`（57KB）→ 恢复到**全新专用卷**（独立项目与卷）→ 计数完全一致 `counts_match=YES`、关系校验 `receipts_without_raw=0`；随后在源库运行 retention（API + CSRF），`open_alerts_before=1 after=1` 证明受保护证据未被清理；Prometheus scrape 中 7 个必需指标全部存在且无身份标签。演练卷与网络已清理，未触碰用户卷。
+- 测试：`OperationsIntegrationTest`（保留规则：受保护证据、orphan receipt、batch 设置、指标注册与标签基数）；`phase-P5b.sh` 门禁（165 tests / 0 fail / 0 err / 0 skip，OperationsIntegrationTest 2 + IncidentLifecycleIntegrationTest 6 + DeadLetterIntegrationTest 5 均实际运行）。
+- 说明：Micrometer 的 Prometheus 注册表会去掉 gauge 名的 `_total` 后缀，指标名已按实际导出名统一为 `driftwatch_retention_rows_pruned`。
 
 后续每条保留：
 
