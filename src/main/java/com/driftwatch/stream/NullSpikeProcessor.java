@@ -2,6 +2,7 @@ package com.driftwatch.stream;
 
 import com.driftwatch.event.RawEnvelope;
 import com.driftwatch.quality.AlertType;
+import com.driftwatch.quality.RuleVersions;
 import com.driftwatch.quality.ScopeKey;
 import com.driftwatch.quality.Severity;
 import com.driftwatch.quality.schema.SchemaBaselineProvider;

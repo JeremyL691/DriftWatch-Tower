@@ -1,4 +1,4 @@
-package com.driftwatch.stream;
+package com.driftwatch.quality;
 
 /** Rule version recorded on every ProcessedEvent and in emitted evidence. */
 public final class RuleVersions {
