@@ -468,6 +468,15 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 
 在窗口进行中用 `./scripts/verify.sh soak-report --run-id 20261001T145553Z-soak24 --out .execution/verify/p61-soak-dryrun2` 预演了一次判定器（不是判定结果，窗口未结束），目的是确认它对**本窗口的新库**不会崩：所有 SQL（真实源计数、账本、三组 consumer lag）、容器健康与内存曲线都正常执行，输出的 `problems` 恰好只有「未结束」应有的三条：`measured 0.0s of a planned 86400.0s`、`only 57 samples`、`0 of 3 planned faults executed`；容器 `RestartCount` 全 0、磁盘 44GiB、内存均值 730.8MiB、增长 0.0MiB（上限 146.2MiB）。即：判定器与库结构、与冻结镜像的指标名完全对得上，G16 不会因为查询或字段名错误而在 24 小时后才失败。该 dry-run 的 FAILED `gate.json` 保留（若真判定因故未写出，发布门禁会选到它并如实失败，不会误判为通过）。
 
+### 2026-10-01 P6.2 等待期：为「重启恢复」留下可对比基线
+
+指南要求真实接入给出「bootstrap 后新增事件及**重启恢复**证据」。本窗口的 2h 受控故障就是一次真实的 app 重启，因此先在故障前把轮询器状态落盘为基线（`.execution/verify/p61-soak-prefault-baseline.json`，2026-10-01T15:28Z）：
+
+- `source_poll_runs` 7 次（BOOTSTRAP 1 + LIVE 6）；真实事件 300 bootstrap + 8 LIVE；`source_inbox` 308 行；`source_outbox` PENDING 0；`source_gaps` 4；`collector_state` 1 行。
+- 检查点：`etag_applied` = `W/"6d5ee8fd…"`（与 candidate 相同）、`last_poll_success` = 15:27:00Z、`next_poll_at` = 15:32:15Z、`consecutive_failures` = 0。
+
+重启后的判据（不新增 BOOTSTRAP 轮、`etag_applied` 保留、LIVE 轮询继续、inbox/outbox 连续），届时用同一条 SQL 对比即可，不靠叙述。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
