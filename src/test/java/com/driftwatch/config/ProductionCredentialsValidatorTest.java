@@ -89,7 +89,9 @@ class ProductionCredentialsValidatorTest {
                         Duration.ofHours(24), Duration.ofMinutes(15)),
                 new DriftwatchProperties.Security(
                         new DriftwatchProperties.Security.Admin(username, password), ingestTokens, requireStrong),
-                new DriftwatchProperties.Source(new DriftwatchProperties.Source.Github(false)),
+                new DriftwatchProperties.Source(new DriftwatchProperties.Source.Github(false, "apache/kafka", "https://api.github.com",
+                        Duration.ofMinutes(5), 3, 100, Duration.ofSeconds(5), Duration.ofSeconds(20),
+                        300, "", "1.0.0", false, true)),
                 new DriftwatchProperties.Bridge(false, "raw-events", "", 10000, ""));
         return defaults;
     }

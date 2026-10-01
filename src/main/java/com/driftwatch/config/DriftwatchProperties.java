@@ -113,7 +113,39 @@ public record DriftwatchProperties(
     }
 
     public record Source(@Valid @DefaultValue Github github) {
-        public record Github(@DefaultValue("false") boolean enabled) {}
+        public record Github(
+                @DefaultValue("false") boolean enabled,
+                @DefaultValue("apache/kafka") String repository,
+                @DefaultValue("https://api.github.com") String baseUrl,
+                @DefaultValue("PT5M") Duration pollInterval,
+                @DefaultValue("3") int maxPages,
+                @DefaultValue("100") int pageSize,
+                @DefaultValue("PT5S") Duration connectTimeout,
+                @DefaultValue("PT20S") Duration requestTimeout,
+                @DefaultValue("300") int maxFirstReadRecords,
+                /** Optional credential; empty means the unauthenticated public quota. */
+                @DefaultValue("") String token,
+                @DefaultValue("1.0.0") String userAgentVersion,
+                /**
+                 * A non-official base URL is a test-only stub. Production configuration must
+                 * point at the official API, so anything else fails startup unless this is set.
+                 */
+                @DefaultValue("false") boolean allowNonOfficialBaseUrl,
+                /** Operators (and tests) may disable the automatic loop and poll on demand. */
+                @DefaultValue("true") boolean schedulerEnabled
+        ) {
+            public String eventsUrl(int pageSize) {
+                return baseUrl.replaceAll("/$", "") + "/repos/" + repository + "/events?per_page=" + pageSize;
+            }
+
+            public String eventsUrlForPage(int page, int pageSize) {
+                return eventsUrl(pageSize) + "&page=" + page;
+            }
+
+            public String sourceId() {
+                return "github:" + repository;
+            }
+        }
     }
 
     /**
@@ -177,6 +209,21 @@ public record DriftwatchProperties(
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
                     "driftwatch.detector.field-format.patterns is invalid: " + e.getMessage());
+        }
+        String baseUrlHost = java.net.URI.create(source.github().baseUrl()).getHost();
+        if (!"api.github.com".equals(baseUrlHost) && !source.github().allowNonOfficialBaseUrl()) {
+            throw new IllegalStateException("driftwatch.source.github.base-url must point at api.github.com;"
+                    + " a stub URL requires driftwatch.source.github.allow-non-official-base-url=true"
+                    + " (test profiles only)");
+        }
+        requirePositive("driftwatch.source.github.poll-interval", source.github().pollInterval());
+        requirePositive("driftwatch.source.github.connect-timeout", source.github().connectTimeout());
+        requirePositive("driftwatch.source.github.request-timeout", source.github().requestTimeout());
+        if (source.github().maxPages() < 1 || source.github().maxPages() > 10) {
+            throw new IllegalStateException("driftwatch.source.github.max-pages must be between 1 and 10");
+        }
+        if (source.github().pageSize() < 1 || source.github().pageSize() > 100) {
+            throw new IllegalStateException("driftwatch.source.github.page-size must be between 1 and 100");
         }
         detector.fieldRange().fields().forEach((field, bounds) -> {
             if (bounds.getMin() != null && bounds.getMax() != null && bounds.getMin() > bounds.getMax()) {
