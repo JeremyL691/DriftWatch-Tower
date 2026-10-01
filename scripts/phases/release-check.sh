@@ -194,8 +194,9 @@ if python3 "$DWT_REPO_ROOT/scripts/public-assets.py" --context "$CONTEXT" --rele
     done
     [ "$ready" = "1" ] || problems+=("the anonymously installed stack did not become ready")
     if [ -n "$digest" ]; then
-      running="$(docker inspect --format '{{index .RepoDigests 0}}' "$(docker compose -p "$PROJECT" --env-file "$env_file" -f "$install_dir/docker-compose.yml" ps -q app)")"
-      case "$running" in *"$digest"*) ;; *) problems+=("running container digest $running is not the published digest");; esac
+      running="$(docker inspect --format '{{.Image}}' "$(docker compose -p "$PROJECT" --env-file "$env_file" -f "$install_dir/docker-compose.yml" ps -q app)")"
+      expected_running="$(docker image inspect --format '{{.Id}}' "$REGISTRY_IMAGE@$digest")"
+      [ "$running" = "$expected_running" ] || problems+=("running container image does not match the anonymously pulled digest")
     fi
     python3 "$SCRIPT_DIR/release-runtime.py" --project "$PROJECT" --env-file "$env_file" \
       --compose "$install_dir/docker-compose.yml" --base "http://127.0.0.1:$PORT" --out "$OUT_DIR" \

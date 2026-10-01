@@ -158,7 +158,7 @@ class ReleaseSafety(unittest.TestCase):
             total,detail=acceptance.consumer_lag_total('project','env')
             self.assertEqual(total,0);self.assertEqual(len(detail),3)
 
-    def run_formal_soak(self, ledger_override=None, result_status='PASSED', finished_age=30):
+    def run_formal_soak(self, ledger_override=None, result_status='PASSED', finished_age=30, current_container='accepted-container'):
         import contextlib,datetime,io,types
         from unittest.mock import patch
         end=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=finished_age)
@@ -174,7 +174,7 @@ class ReleaseSafety(unittest.TestCase):
         ledger={'accepted':0,'unconfirmed':0,'processed':20,'raw':20,'dlt_open':0,'pending_outbox':0,'accepted_without_processed':0,'processed_without_raw':0,'source_without_processed':0,'raw_without_processed':0}
         if ledger_override is not None:ledger=ledger_override
         source={'github_distinct_events':20,'github_live_events':1}
-        with patch.object(acceptance,'run_dir',return_value=str(directory)), patch.object(acceptance,'continuity_report',return_value={'continuity_valid':True,'samples':721,'max_gap_seconds':120}), patch.object(acceptance,'read_samples',return_value=samples), patch.object(acceptance,'identify_image',return_value={'image_id':'sha256:frozen','container':'accepted-container'}), patch.object(acceptance,'psql_json',side_effect=[source,ledger]), patch.object(acceptance,'consumer_lag_total',return_value=(0,[])), patch.object(acceptance,'container_health',return_value={'containers':{},'problems':[]}), contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(acceptance,'run_dir',return_value=str(directory)), patch.object(acceptance,'continuity_report',return_value={'continuity_valid':True,'samples':721,'max_gap_seconds':120}), patch.object(acceptance,'read_samples',return_value=samples), patch.object(acceptance,'identify_image',return_value={'image_id':'sha256:frozen','container':current_container}), patch.object(acceptance,'psql_json',side_effect=[source,ledger]), patch.object(acceptance,'consumer_lag_total',return_value=(0,[])), patch.object(acceptance,'container_health',return_value={'containers':{},'problems':[]}), contextlib.redirect_stdout(io.StringIO()):
             code=acceptance.cmd_soak_report(types.SimpleNamespace(run_id='formal',out=str(directory/'report')))
         return code,json.loads((directory/'report/soak-report.json').read_text())
     def test_formal_soak_pass_requires_deadline_evidence(self):
@@ -189,5 +189,9 @@ class ReleaseSafety(unittest.TestCase):
     def test_late_report_cannot_infer_timely_drain(self):
         code,report=self.run_formal_soak(finished_age=601)
         self.assertEqual(code,1);self.assertTrue(any('ten minutes' in p for p in report['problems']))
+
+    def test_replaced_container_does_not_prove_same_configuration(self):
+        code,report=self.run_formal_soak(current_container='replacement')
+        self.assertEqual(code,1);self.assertTrue(any('container was replaced' in p for p in report['problems']))
 
 if __name__ == '__main__': unittest.main()
