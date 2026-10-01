@@ -3,6 +3,7 @@ package com.driftwatch.event;
 import com.driftwatch.persistence.IngestionReceiptEntity;
 import com.driftwatch.persistence.IngestionReceiptRepository;
 import com.driftwatch.operations.DriftwatchMetrics;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -45,6 +46,7 @@ public class IngestionService {
     public static final Duration IDEMPOTENCY_WINDOW = Duration.ofHours(24);
     public static final int BATCH_MAX_ITEMS = 100;
     private static final int MAX_EVENT_BYTES = 256 * 1024;
+    private static final long MAX_BATCH_BYTES = 4L * 1024 * 1024;
 
     private final RawEventProducer producer;
     private final IngestionReceiptRepository receiptRepository;
@@ -123,6 +125,7 @@ public class IngestionService {
             throw new IllegalArgumentException("batch may contain at most " + BATCH_MAX_ITEMS + " events");
         }
         events.forEach(this::rejectOversized);
+        rejectOversizedBatch(events);
 
         String batchDigest = idempotencyKey == null || idempotencyKey.isBlank()
                 ? null
@@ -134,34 +137,60 @@ public class IngestionService {
         for (int index = 0; index < events.size(); index++) {
             DataEvent event = events.get(index);
             RawEnvelope envelope = envelope(event, batchDigest);
-            if (batchDigest != null) {
-                // Per-item receipts share the batch key through source/event_type/idempotency key.
-                Optional<IngestionReceiptEntity> existing =
-                        receiptRepository.findById(receiptKey(event, idempotencyKey));
-                if (existing.isPresent()) {
-                    IngestionReceiptEntity receipt = existing.get();
-                    if (!receipt.getRequestDigest().equals(digests.of(event))) {
-                        throw new ResponseStatusException(CONFLICT,
-                                "Idempotency-Key was already used for different content");
-                    }
-                    accepted.add(new Acceptance(receipt.getIngestionId(), event.eventId(),
-                            IngestionReceiptEntity.STATE_CONFIRMED.equals(receipt.getPublishState()), true));
+            if (batchDigest == null) {
+                if (!producer.publishAndAwait(envelope)) {
+                    failed.add(index);
                     continue;
                 }
-            }
-            if (!producer.publishAndAwait(envelope)) {
-                failed.add(index);
+                accepted.add(new Acceptance(envelope.ingestionId().toString(), event.eventId(), true, false));
                 continue;
             }
-            if (batchDigest != null) {
-                saveBatchItem(event, idempotencyKey, envelope, batchId);
-            }
-            accepted.add(new Acceptance(envelope.ingestionId().toString(), event.eventId(), true, false));
-        }
 
-        // A retried batch loses the failed indexes once everything is confirmed.
-        if (batchDigest != null) {
-            updateBatchReceipt(events, idempotencyKey, batchId, failed);
+            // The receipt key is (source, event_type, key) and one batch routinely carries many
+            // events of the same type, so a row represents every item of that type in the batch and
+            // holds their individual states in batch_items (guide 4.3). The digest compared for
+            // conflicts is the batch digest, because the key stands for the whole ordered batch
+            // (guide 4.2).
+            Optional<IngestionReceiptEntity> existing =
+                    receiptRepository.findById(receiptKey(event, idempotencyKey));
+            if (existing.isPresent()) {
+                IngestionReceiptEntity receipt = existing.get();
+                if (!batchDigest.equals(receipt.getRequestDigest())) {
+                    throw new ResponseStatusException(CONFLICT,
+                            "Idempotency-Key was already used for different content");
+                }
+                Optional<JsonNode> item = batchItem(receipt, index, event.eventId());
+                String identity = item.map(entry -> entry.path("ingestion_id").asText())
+                        .filter(value -> !value.isBlank())
+                        .orElseGet(() -> envelope.ingestionId().toString());
+                if (item.isPresent() && IngestionReceiptEntity.STATE_CONFIRMED
+                        .equals(item.get().path("status").asText())) {
+                    accepted.add(new Acceptance(identity, event.eventId(), true, true));
+                    continue;
+                }
+                // Guide 4.2: a retried batch re-sends only the items that are not confirmed, each
+                // with its reserved identity, so a partially accepted batch can complete.
+                RawEnvelope reservedItem = new RawEnvelope(RawEnvelope.CONTRACT_VERSION,
+                        UUID.fromString(identity), event, envelope.receivedAt(),
+                        RawEnvelope.Origin.REST, RawEnvelope.Mode.LIVE, null, null);
+                boolean confirmed = producer.publishAndAwait(reservedItem);
+                recordBatchItem(event, idempotencyKey, batchId, identity, index, confirmed, batchDigest);
+                if (confirmed) {
+                    accepted.add(new Acceptance(identity, event.eventId(), true, true));
+                } else {
+                    failed.add(index);
+                }
+                continue;
+            }
+
+            String identity = envelope.ingestionId().toString();
+            boolean confirmed = producer.publishAndAwait(envelope);
+            recordBatchItem(event, idempotencyKey, batchId, identity, index, confirmed, batchDigest);
+            if (confirmed) {
+                accepted.add(new Acceptance(identity, event.eventId(), true, false));
+            } else {
+                failed.add(index);
+            }
         }
         return new BatchOutcome(batchId, accepted, failed, accepted.isEmpty());
     }
@@ -235,46 +264,73 @@ public class IngestionService {
         });
     }
 
-    private void saveBatchItem(DataEvent event, String idempotencyKey, RawEnvelope envelope, String batchId) {
+    /**
+     * Records one item's state inside its (source, event_type, key) receipt. The row is created on
+     * first use and the item entry is replaced on every retry, so what is stored always matches
+     * what the broker last confirmed.
+     */
+    private void recordBatchItem(DataEvent event, String idempotencyKey, String batchId, String identity,
+                                 int index, boolean confirmed, String batchDigest) {
         IngestionReceiptEntity.Key key = receiptKey(event, idempotencyKey);
         IngestionReceiptEntity receipt = receiptRepository.findById(key).orElseGet(IngestionReceiptEntity::new);
+        ArrayNode items = objectMapper.createArrayNode();
+        JsonNode previous = receipt.getBatchItems();
+        if (previous != null && previous.isObject() && previous.path("items").isArray()) {
+            for (JsonNode entry : previous.path("items")) {
+                if (entry.path("index").asInt() != index) {
+                    items.add(entry);
+                }
+            }
+        }
+        ObjectNode item = objectMapper.createObjectNode();
+        item.put("index", index);
+        item.put("event_id", event.eventId());
+        item.put("ingestion_id", identity);
+        item.put("status", confirmed ? IngestionReceiptEntity.STATE_CONFIRMED
+                : IngestionReceiptEntity.STATE_FAILED);
+        items.add(item);
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("batch_id", batchId);
+        payload.set("items", items);
+
         receipt.setSource(event.source());
         receipt.setEventType(event.eventType());
         receipt.setIdempotencyKey(idempotencyKey);
-        receipt.setRequestDigest(digests.of(event));
-        receipt.setIngestionId(envelope.ingestionId().toString());
+        receipt.setRequestDigest(batchDigest);
+        receipt.setIngestionId(identity);
         receipt.setEventId(event.eventId());
-        receipt.setPublishState(IngestionReceiptEntity.STATE_CONFIRMED);
+        // A row can hold several items, so its state summarises them: confirmed only when every
+        // item is, failed as soon as one is. The per-item truth lives in batch_items.
+        boolean allConfirmed = true;
+        boolean anyFailed = false;
+        for (JsonNode entry : items) {
+            String status = entry.path("status").asText();
+            allConfirmed &= IngestionReceiptEntity.STATE_CONFIRMED.equals(status);
+            anyFailed |= IngestionReceiptEntity.STATE_FAILED.equals(status);
+        }
+        receipt.setPublishState(allConfirmed ? IngestionReceiptEntity.STATE_CONFIRMED
+                : anyFailed ? IngestionReceiptEntity.STATE_FAILED
+                : IngestionReceiptEntity.STATE_PENDING);
         receipt.setBatch(true);
-        ObjectNode item = objectMapper.createObjectNode();
-        item.put("batch_id", batchId);
-        item.put("event_id", event.eventId());
-        item.put("ingestion_id", envelope.ingestionId().toString());
-        receipt.setBatchItems(item);
-        receipt.setCreatedAt(Instant.now());
+        receipt.setBatchItems(payload);
+        receipt.setCreatedAt(receipt.getCreatedAt() == null ? Instant.now() : receipt.getCreatedAt());
         receipt.setExpiresAt(Instant.now().plus(IDEMPOTENCY_WINDOW));
         receiptRepository.save(receipt);
     }
 
-    private void updateBatchReceipt(List<DataEvent> events, String idempotencyKey, String batchId,
-                                    List<Integer> failedIndexes) {
-        ArrayNode items = objectMapper.createArrayNode();
-        for (int index = 0; index < events.size(); index++) {
-            ObjectNode item = objectMapper.createObjectNode();
-            item.put("index", index);
-            item.put("event_id", events.get(index).eventId());
-            item.put("status", failedIndexes.contains(index) ? "FAILED" : "CONFIRMED");
-            items.add(item);
+    /** The stored state of one batch item, matched by index and event id. */
+    private Optional<JsonNode> batchItem(IngestionReceiptEntity receipt, int index, String eventId) {
+        JsonNode items = receipt.getBatchItems();
+        if (items == null || !items.isObject() || !items.path("items").isArray()) {
+            return Optional.empty();
         }
-        DataEvent first = events.get(0);
-        receiptRepository.findById(receiptKey(first, idempotencyKey)).ifPresent(receipt -> {
-            ObjectNode payload = objectMapper.createObjectNode();
-            payload.put("batch_id", batchId);
-            payload.set("items", items);
-            receipt.setBatch(true);
-            receipt.setBatchItems(payload);
-            receiptRepository.save(receipt);
-        });
+        for (JsonNode entry : items.path("items")) {
+            if (entry.path("index").asInt() == index && eventId.equals(entry.path("event_id").asText())) {
+                return Optional.of(entry);
+            }
+        }
+        return Optional.empty();
     }
 
     private IngestionReceiptEntity.Key receiptKey(DataEvent event, String idempotencyKey) {
@@ -286,6 +342,21 @@ public class IngestionService {
     private RawEnvelope envelope(DataEvent event, String replayOf) {
         return new RawEnvelope(RawEnvelope.CONTRACT_VERSION, UUID.randomUUID(), event, Instant.now(),
                 RawEnvelope.Origin.REST, RawEnvelope.Mode.LIVE, null, replayOf);
+    }
+
+    /** The batch is bounded by item count and by the total request size (guide 4.2). */
+    private void rejectOversizedBatch(List<DataEvent> events) {
+        long total = 0;
+        for (DataEvent event : events) {
+            try {
+                total += objectMapper.writeValueAsBytes(event).length;
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new IllegalArgumentException("event could not be serialised", e);
+            }
+        }
+        if (total > MAX_BATCH_BYTES) {
+            throw new IllegalArgumentException("batch exceeds the 4 MiB total limit");
+        }
     }
 
     private void rejectOversized(DataEvent event) {
