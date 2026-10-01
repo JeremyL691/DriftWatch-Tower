@@ -5,7 +5,10 @@ import com.driftwatch.persistence.IngestionReceiptRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -44,15 +47,18 @@ public class IngestionService {
     private final IngestionReceiptRepository receiptRepository;
     private final RequestDigests digests;
     private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
 
     public IngestionService(RawEventProducer producer,
                             IngestionReceiptRepository receiptRepository,
                             RequestDigests digests,
-                            ObjectMapper objectMapper) {
+                            ObjectMapper objectMapper,
+                            PlatformTransactionManager transactionManager) {
         this.producer = producer;
         this.receiptRepository = receiptRepository;
         this.digests = digests;
         this.objectMapper = objectMapper;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     /** Outcome of one accepted (or already known) ingestion. */
@@ -77,11 +83,15 @@ public class IngestionService {
 
         String digest = digests.of(event);
         Reservation reservation = reserve(event, idempotencyKey, digest, envelope.ingestionId().toString());
-        if (reservation.replayed()) {
-            return new Acceptance(reservation.ingestionId(), event.eventId(),
-                    IngestionReceiptEntity.STATE_CONFIRMED.equals(reservation.state()), true);
+        if (reservation.replayed()
+                && IngestionReceiptEntity.STATE_CONFIRMED.equals(reservation.state())) {
+            return new Acceptance(reservation.ingestionId(), event.eventId(), true, true);
         }
-        boolean confirmed = producer.publishAndAwait(envelope);
+        // A replayed-but-unconfirmed receipt keeps its reserved identity and publishes again.
+        RawEnvelope reserved = new RawEnvelope(RawEnvelope.CONTRACT_VERSION,
+                UUID.fromString(reservation.ingestionId()), event, envelope.receivedAt(),
+                RawEnvelope.Origin.REST, RawEnvelope.Mode.LIVE, null, null);
+        boolean confirmed = producer.publishAndAwait(reserved);
         markState(event, idempotencyKey, confirmed
                 ? IngestionReceiptEntity.STATE_CONFIRMED
                 : IngestionReceiptEntity.STATE_FAILED);
@@ -90,7 +100,7 @@ public class IngestionService {
                     "broker acknowledgement timed out; retry with the same Idempotency-Key to keep identity "
                             + reservation.ingestionId());
         }
-        return new Acceptance(reservation.ingestionId(), event.eventId(), true, false);
+        return new Acceptance(reservation.ingestionId(), event.eventId(), true, reservation.replayed());
     }
 
     public BatchOutcome ingestBatch(List<DataEvent> events, String idempotencyKey) {
@@ -148,30 +158,43 @@ public class IngestionService {
 
     public record Reservation(String ingestionId, String state, boolean replayed) {}
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    /**
+     * Reserves the identity in its own transaction. Two concurrent requests with one key race on
+     * the primary key; the loser re-reads the winner's receipt and continues as a replay instead
+     * of failing, so both callers see the same identity.
+     */
     public Reservation reserve(DataEvent event, String idempotencyKey, String digest, String newIngestionId) {
         IngestionReceiptEntity.Key key = receiptKey(event, idempotencyKey);
         Optional<IngestionReceiptEntity> existing = receiptRepository.findById(key);
         if (existing.isPresent()) {
-            IngestionReceiptEntity receipt = existing.get();
-            if (!receipt.getRequestDigest().equals(digest)) {
-                throw new ResponseStatusException(CONFLICT,
-                        "Idempotency-Key was already used for different content");
-            }
-            return new Reservation(receipt.getIngestionId(), receipt.getPublishState(), true);
+            return replayOf(existing.get(), digest);
         }
-        IngestionReceiptEntity receipt = new IngestionReceiptEntity();
-        receipt.setSource(event.source());
-        receipt.setEventType(event.eventType());
-        receipt.setIdempotencyKey(idempotencyKey);
-        receipt.setRequestDigest(digest);
-        receipt.setIngestionId(newIngestionId);
-        receipt.setEventId(event.eventId());
-        receipt.setPublishState(IngestionReceiptEntity.STATE_PENDING);
-        receipt.setCreatedAt(Instant.now());
-        receipt.setExpiresAt(Instant.now().plus(IDEMPOTENCY_WINDOW));
-        receiptRepository.save(receipt);
-        return new Reservation(newIngestionId, IngestionReceiptEntity.STATE_PENDING, false);
+        try {
+            return transactionTemplate.execute(status -> {
+                IngestionReceiptEntity receipt = new IngestionReceiptEntity();
+                receipt.setSource(event.source());
+                receipt.setEventType(event.eventType());
+                receipt.setIdempotencyKey(idempotencyKey);
+                receipt.setRequestDigest(digest);
+                receipt.setIngestionId(newIngestionId);
+                receipt.setEventId(event.eventId());
+                receipt.setPublishState(IngestionReceiptEntity.STATE_PENDING);
+                receipt.setCreatedAt(Instant.now());
+                receipt.setExpiresAt(Instant.now().plus(IDEMPOTENCY_WINDOW));
+                receiptRepository.saveAndFlush(receipt);
+                return new Reservation(newIngestionId, IngestionReceiptEntity.STATE_PENDING, false);
+            });
+        } catch (DataIntegrityViolationException concurrentInsert) {
+            return replayOf(receiptRepository.findById(key).orElseThrow(), digest);
+        }
+    }
+
+    private Reservation replayOf(IngestionReceiptEntity receipt, String digest) {
+        if (!receipt.getRequestDigest().equals(digest)) {
+            throw new ResponseStatusException(CONFLICT,
+                    "Idempotency-Key was already used for different content");
+        }
+        return new Reservation(receipt.getIngestionId(), receipt.getPublishState(), true);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
