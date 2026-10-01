@@ -642,6 +642,15 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 - 判定：**产品行为正确，测试不稳定**；`src/test/java` 属冻结应用面，本轮不改（改动会作废窗口与门禁）。跟进项：让该用例的查询带上自己的唯一标记（例如按本次发送的 key/ingestion id 过滤，或插入带唯一前缀的探针），而不是依赖 `reason` 前缀 + `id DESC`。
 - 运营后果与恢复动作（已写入收尾程序）：CI 或 P3 阶段门禁**可能**因这条不稳定测试偶发失败；此时重跑该 job / 该门禁一次，并在记录中明确标注为「已知不稳定测试（测试隔离竞态）」，附上本次失败的确切断言——**不得**跳过或绕过检查，也不得把偶发失败当成产品缺陷。
 
+### 2026-10-01 P6.2 等待期：验收数据无合成输入的核查
+
+指南明确「模拟事件不能算真实输入」。项目里存在真实可用的合成入口（`DemoScenarioService` + `DemoController` 的 `POST /api/v1/demo/run-scenario/{scenario}`，8 个场景：duplicate/normal/schema-drift/late/null-spike/anomaly-spike/stale-source/field-range），因此专门核查了本窗口的实际数据：
+
+- 实测 `select origin, source, count(*) from raw_events group by origin, source` → **只有一行**：`GITHUB | github:apache/kafka | 311`。即本窗口的全部原始事件都来自官方 GitHub 源，**没有任何合成事件**。
+- 设计上也是可区分的：判定器统计真实源用的是 `origin='GITHUB'`（不是「所有 raw_events」），合成事件走 `source` 以 `demo` 开头（如 `demo-api`），两者在数据层就不会混为一谈。
+- 暴露面：demo 端点位于 `/api/**`，按既有安全规则**只对 `ROLE_ADMIN` 开放**，匿名不可调用。
+- 唯一缺口是**文档**：端点此前无任何说明，自托管者看到 `demo-api` 行会不明所以。已在 `docs/RUNBOOK.md` 的日常检查一节补上「合成检测演示」——列出 8 个场景、说明其 `source` 前缀、明确「GitHub 源的数据绝不合成」「验收证据只统计 origin=GITHUB」，并提示归档前过滤。属文档改动（非冻结面）。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
