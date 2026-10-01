@@ -10,8 +10,8 @@
 | handoff_date | 2026-09-30，America/Los_Angeles |
 | product_goal_status | RUNNING，P0 与 P1 完成，P2 进行中 |
 | current_phase | P2 |
-| current_task | P2.1 |
-| next_action | 实现 scope/规范 key、独立窗口与 watermark、fired 状态，使 G01 三个红色用例在 G03 转绿 |
+| current_task | P2.2 |
+| next_action | 规则与配置覆盖：hash 规范、数值边界、regex 启动校验、数组/嵌套 leaf、质量状态与 evaluation coverage |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（本地；尚未推送） |
@@ -54,8 +54,8 @@
 | P1.1 | 可重复部署、固定依赖 | PASSED | G02 通过；apache/kafka:3.9.2、postgres:16.15、摘要锁定、SCA 应用镜像 0 High/Critical |
 | P1.2 | 配置和认证基础 | PASSED | 86/0/0/0；live 19/19；弱/缺生产凭证 fail-fast；见 `.execution/runs/p12/` |
 | P1.3 | 验证脚本及后台 runner | PASSED | preflight/unit/sca/compose 入口全部 PASSED；selfhost init/up/status/down/backup/restore 实测；soak runner 采样/checkpoint/连续性/恢复实测 |
-| P2.1 | scope / 窗口 / 漏报修复 | RUNNING | - |
-| P2.2 | 规则与配置覆盖 | NOT_STARTED | - |
+| P2.1 | scope / 窗口 / 漏报修复 | PASSED | G03 PASSED（101/0/0/0，DetectionContractTest 18 项）；G01 三例已转绿 |
+| P2.2 | 规则与配置覆盖 | RUNNING | - |
 | P2.3 | schema 事务及基线反馈 | NOT_STARTED | - |
 | P3.1 | 摄取确认、envelope、幂等 | NOT_STARTED | - |
 | P3.2 | retry / DLT / replay | NOT_STARTED | - |
@@ -80,7 +80,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G00 基线 | PASSED | Java 21.0.12.1 + Docker 29.5.3；60 tests / 0 fail / 0 err / 0 skip；`.execution/runs/20261001T020542Z-p02-baseline/` |
 | G01 红色回归复现 | EXPECTED_FAILURE | 3 个 5.4 用例在旧实现复现（null 全缺失 / 单事件基线突增 / 乱序覆盖窗口）；`g01-red-regression.log`、`g01-cases.json` |
 | G02 全新 Compose | PASSED | 无缓存拉取+构建；容器启动后 6–19s 内全部 healthy（≤120s）；3 分区 topic、Streams changelog、状态卷、仅回环暴露；`runs/20261001T022637Z-p11-g02/` |
-| G03 检测正确性 | NOT_RUN | - |
+| G03 检测正确性 | PASSED | SHA 5c5a2ea；PHASE-P2 gate：101 tests / 0 fail / 0 skip，DetectionContractTest 18 + QualityStreamsTopologyTest 7；`.execution/verify/p2-gate2/` |
 | G04 schema 反馈 | NOT_RUN | - |
 | G05 摄取与幂等 | NOT_RUN | - |
 | G06 故障与死信 | NOT_RUN | - |
@@ -185,6 +185,16 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 - 资源隔离修复：compose 卷/网络改为按项目名作用域（`<project>_pgdata` 等），验收项目不再可能读写或删除自托管安装的数据卷。
 - `acceptance.py`：soak-start 异步（PID + 进程启动时间 + 锁文件），150s 验证 run 采样 5 点、连续性 max gap 32.2s（限 120s）、结果 PASSED 并写入镜像身份；重复 soak-start 返回既有状态且不启动第二个 runner；kill 掉 runner 后 `soak-resume` 将旧 run 标记 FAILED、给出原因并以原时长启动新 run（exit 1）。
 - 脚本只操作自己的 compose 项目；用户容器（cpamp-*）与 8080/5432/9092 未被占用或清理。凭证只在 `.execution/*.env`（0600）与容器运行时，脚本与 gate.json 不含 secret。
+
+### 2026-10-01 P2.1 检测契约与 scope/窗口（PASSED，G03）
+
+- 内部类型：`RawEnvelope`（contract_version=1、ingestion_id、received_at、origin、mode、origin_reference、replay_of）、`WindowEvaluation`（scope/window_start/window_end/outcome/watermark/detail）、`ScopeKey`（规范 JSON 数组编码）、`RuleVersions`。拓扑输入改为 envelope；旧 raw-events 由 `EnvelopeAdapter` 过渡包装，P3.1 再切 topic。
+- 窗口语义：null/anomaly 状态键包含 window_start，各自 fired；per-scope watermark + grace/future tolerance 决定 INCLUDED/EXPIRED/FUTURE；驱逐按 scope watermark（未来事件不会驱逐 grace 内窗口）；anomaly 基线含观测范围内零窗口，记录 WARMING_UP/BASELINE_ZERO；基线缺失时 `baseline_status=PENDING`（只跳过依赖基线的检查）。
+- 投递身份：ENRICH 后、任何检测前做 ingestion_id + envelope 摘要校验；重投 REDELIVERY 跳过检测，同 id 不同内容 CONFLICT（不污染计数）。
+- 去重按 scope 编码键，跨 source 同 event_id/payload 不再误报（契约 5.2）。
+- G03：`./scripts/verify.sh phase P2` → PASSED，101 tests / 0 fail / 0 err / 0 skip（DetectionContractTest 18 项覆盖 5.4 全部输入、边界、watermark 隔离、重投/冲突、模式跳过、scope key 不可碰撞；QualityStreamsTopologyTest 7 项原用例保留）。原 `expected-failure` 标签与 surefire 排除已移除。
+- 顺带修复：`MetricWindowProjector` 跳过非 INCLUDED 事件；`verify.sh unit/phase` 对容器启动失败做一次有记录的重试（首次日志保留为 attempt1）。
+- 观察：容器启动偶发失败（ContainerLaunchException/exit 126）在重试后消失，属环境竞争；两次运行的日志都保留。
 
 后续每条保留：
 
