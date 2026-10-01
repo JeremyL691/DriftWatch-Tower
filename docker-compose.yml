@@ -100,12 +100,11 @@ services:
 
 networks:
   driftwatch:
-    name: ${DWT_NETWORK:-driftwatch}
 
+# Volumes and the network are project-scoped by compose (<project>_pgdata, ...) so an
+# acceptance run started with -p dwt-acceptance-... can never read or delete the volumes of a
+# running self-host install. Compose only removes volumes on an explicit `down -v`.
 volumes:
   pgdata:
-    name: ${DWT_PG_VOLUME:-driftwatch-pgdata}
   kafkadata:
-    name: ${DWT_KAFKA_VOLUME:-driftwatch-kafkadata}
   streams-state:
-    name: ${DWT_STREAMS_VOLUME:-driftwatch-streams-state}
