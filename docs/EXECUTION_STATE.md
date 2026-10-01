@@ -458,6 +458,12 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 
 10. **GHCR 可见性是本轮唯一可能需要外部动作的环节（已预置恢复动作）**：本机 `gh` 凭据的作用域是 `gist, read:org, repo, workflow`，**没有 `read:packages`/`write:packages`**（实测：列出 packages 直接 403），所以本地无法查改 GHCR 包可见性；工作流的 `GITHUB_TOKEN` 有 `packages: write` 能推送，但能否改可见性不确定（release.yml 已尝试 `PATCH /user/packages/container/...`，失败只告警，真正的判据是随后的**匿名拉取**）。为把恢复成本降到最低，已让匿名拉取失败时在日志里直接给出恢复三步（GitHub UI 路径 `https://github.com/users/JeremyL691/packages/container/driftwatch-tower/settings` → Change visibility → Public；或用具 `write:packages` 的 token 执行 `gh api --method PATCH ... -f visibility=public`；然后重跑 `verify.sh release`），并且**不会**把失败的匿名拉取当作成功。
 
+### 2026-10-01 P6.2 等待期：分支头部的重建身份复核（发布断言前置）
+
+用 CI 自己算的应用内容身份复核了**当前分支头部**（不是只有冻结那一刻）：CI run 36883611532 在 head `15255a1a`（含本会话全部工具/文档修复的后代提交）上于原生 amd64 构建镜像，并上传 `content-identity` 附件，值为 `e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a`，与 `.execution/runs/p61-freeze/manifest.json` 的冻结值**逐字节相同**。
+
+含义：本会话对 `scripts/`、`docs/`、`.github/`、`README.md` 的所有改动都没有改变应用字节；发布工作流在合并后按合并提交重建时，`Assert the application content identity` 这一步会通过，跨架构可复现性再次得到验证。该断言此前只在更早的 head（a53fcd36）上验证过。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
