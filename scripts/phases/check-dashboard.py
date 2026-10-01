@@ -42,6 +42,17 @@ def main() -> int:
         outline = str(keyboard.get("outlineWidth", ""))
         if not keyboard.get("focusable") or outline in ("", "0px"):
             problems.append(f"{label}: no visible focus indicator (outline={outline})")
+        accessibility = page.get("accessibility") or {}
+        if not accessibility.get("ran"):
+            problems.append(f"{label}: accessibility scan did not run")
+        else:
+            for violation in accessibility.get("violations") or []:
+                # Serious and critical findings fail the gate; minor ones are reported, not hidden.
+                if violation.get("impact") in ("critical", "serious"):
+                    problems.append(
+                        f"{label}: accessibility {violation['id']} "
+                        f"({violation['impact']}) on {violation['nodes']} node(s)")
+
         ws = page.get("wsStatus") or {}
         if isinstance(ws, dict):
             state, label = ws.get("state"), ws.get("label")
@@ -52,6 +63,14 @@ def main() -> int:
 
     summary = {
         "captures": len(pages),
+        "accessibility": {
+            page.get("viewport") + "-" + page.get("theme"): {
+                "ran": (page.get("accessibility") or {}).get("ran"),
+                "violations": (page.get("accessibility") or {}).get("violations") or [],
+                "passes": (page.get("accessibility") or {}).get("passes"),
+            }
+            for page in pages
+        },
         "viewports": sorted({page.get("viewport") for page in pages}),
         "themes": sorted({page.get("theme") for page in pages}),
         "problems": problems,

@@ -26,6 +26,61 @@ class OperationsIntegrationTest extends ContainerIntegrationTest {
 
     private Instant now = Instant.now();
 
+    /**
+     * Guide 5.3: coverage must make the difference between "no rule fired" and "the window
+     * evaluated this" visible, including events whose baseline-dependent checks were skipped
+     * because no ACTIVE baseline existed.
+     */
+    @Test
+    void coverageSeparatesEvaluatedExcludedAndBaselineMissingEvents() throws Exception {
+        Instant received = now.minusSeconds(60);
+        // Four distinct states: evaluated with a baseline, excluded from the window, backfilled
+        // with no evaluation at all, and evaluated but with the baseline-dependent checks skipped.
+        insertEvaluated("cov-included", received, "INCLUDED", "APPLIED");
+        insertEvaluated("cov-expired", received, "EXPIRED", "APPLIED");
+        insertEvaluated("cov-bootstrap", received, "SKIPPED_MODE", null);
+        insertEvaluated("cov-no-baseline", received, "INCLUDED", "PENDING");
+
+        String json = mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .get("/api/v1/events/coverage")
+                                .param("hours", "1")
+                                .with(asAdmin()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Map<String, Object> body = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readValue(json, new com.fasterxml.jackson.core.type.TypeReference<>() {});
+
+        assertThat(number(body, "total")).isEqualTo(4);
+        assertThat(number(body, "included")).isEqualTo(2);
+        Map<?, ?> excluded = (Map<?, ?>) body.get("excluded");
+        assertThat(((Number) excluded.get("expired")).longValue()).isEqualTo(1);
+        assertThat(((Number) excluded.get("skipped_mode")).longValue()).isEqualTo(1);
+        assertThat(number(body, "excluded_total")).isEqualTo(2);
+        assertThat(((Number) body.get("included_ratio")).doubleValue()).isBetween(0.49d, 0.51d);
+        Map<?, ?> baseline = (Map<?, ?>) body.get("baseline");
+        assertThat(((Number) baseline.get("applied")).longValue()).isEqualTo(2);
+        assertThat(((Number) baseline.get("pending")).longValue()).isEqualTo(1);
+    }
+
+    private static long number(Map<String, Object> body, String key) {
+        Object value = body.get(key);
+        return value instanceof Number n ? n.longValue() : 0L;
+    }
+
+    private void insertEvaluated(String ingestionId, Instant received, String outcome, String baselineStatus) {
+        jdbcTemplate.update("""
+                        INSERT INTO raw_events (event_id, source, event_type, event_timestamp, received_at,
+                                                payload_json, payload_hash, quality_status, ingestion_id,
+                                                window_evaluation, baseline_status)
+                        VALUES (?, 'cov-src', 'cov_event', ?, ?, '{}'::jsonb, 'hash', 'OK', ?,
+                                jsonb_build_object('outcome', ?), ?)
+                        """,
+                ingestionId, Timestamp.from(received), Timestamp.from(received), ingestionId,
+                outcome, baselineStatus);
+    }
+
     private long rawRow(String ingestionId, String eventId, Instant receivedAt) {
         jdbcTemplate.update("""
                         INSERT INTO raw_events (event_id, source, event_type, event_timestamp, received_at,
