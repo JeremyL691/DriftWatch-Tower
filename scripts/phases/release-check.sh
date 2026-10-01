@@ -82,6 +82,53 @@ import json,sys
 d=json.load(open('$OUT_DIR/gate-evidence.json'))
 sys.exit(1 if d['problems'] else 0)" || problems+=("gate evidence is incomplete or not PASSED; see gate-evidence.json")
 
+# --- 1b. that evidence must belong to the released application surface --------------------------
+# Recording each gate's commit is not enough: the guide rejects gate reports that are stale
+# relative to the code. The gates are produced on the candidate commit while the release is cut
+# from the merged default branch, so compare the application surface (the frozen roots) rather
+# than the commit ids.
+git -C "$DWT_REPO_ROOT" fetch --tags --quiet origin 2>/dev/null || true
+released_sha="$(gh api "repos/:owner/:repo/commits/$VERSION" --jq .sha 2>/dev/null)"
+if [ -z "$released_sha" ]; then
+  problems+=("could not resolve the commit of tag $VERSION")
+else
+  printf '%s\n' "$released_sha" > "$OUT_DIR/released-commit.txt"
+  python3 - "$DWT_REPO_ROOT" "$OUT_DIR" "$released_sha" <<'PY'
+import json, os, subprocess, sys
+repo, out_dir, released = sys.argv[1], sys.argv[2], sys.argv[3]
+roots = ["src", "pom.xml", "Dockerfile", "docker-compose.yml", "docker-compose.dev.yml", ".mvn"]
+evidence = json.load(open(os.path.join(out_dir, "gate-evidence.json")))
+problems, checked = [], {}
+for gate_id, entry in sorted(evidence.get("gates", {}).items()):
+    sha = entry.get("git_sha")
+    if not sha:
+        problems.append(f"{gate_id}: gate.json records no git_sha")
+        continue
+    if sha == released:
+        checked[gate_id] = "same commit as the release"
+        continue
+    diff = subprocess.run(["git", "-C", repo, "diff", "--quiet", sha, released, "--", *roots],
+                          capture_output=True, text=True)
+    if diff.returncode == 0:
+        checked[gate_id] = f"{sha[:8]} has the released application surface"
+    elif diff.returncode == 128:
+        problems.append(f"{gate_id}: cannot compare {sha[:8]} with {released[:8]} ({diff.stderr.strip()[:80]})")
+    else:
+        problems.append(f"{gate_id}: produced from {sha[:8]}, whose application surface differs "
+                        f"from the released commit {released[:8]}")
+evidence["released_commit"] = released
+evidence["surface_check"] = checked
+evidence["surface_problems"] = problems
+json.dump(evidence, open(os.path.join(out_dir, "gate-evidence.json"), "w"), indent=2)
+print(json.dumps({"released_commit": released, "surface_check": checked,
+                  "surface_problems": problems}, indent=2))
+PY
+  python3 -c "
+import json,sys
+d=json.load(open('$OUT_DIR/gate-evidence.json'))
+sys.exit(1 if d['surface_problems'] else 0)" || problems+=("gate evidence was not produced from the released application surface; see gate-evidence.json")
+fi
+
 # --- 2. the pull request was merged -----------------------------------------------------------
 if [ -n "$PR_NUMBER" ]; then
   gh pr view "$PR_NUMBER" --json state,headRefOid,mergeCommit,url > "$OUT_DIR/pull-request.json" 2>&1 \
