@@ -10,10 +10,7 @@ import com.driftwatch.quality.FieldRangeDetector;
 import com.driftwatch.quality.LateEventDetector;
 import com.driftwatch.quality.RuleVersions;
 import com.driftwatch.quality.ScopeKey;
-import com.driftwatch.quality.SchemaDriftDetector;
-import com.driftwatch.quality.schema.SchemaBaselineProvider;
-import com.driftwatch.quality.schema.SchemaRegistry;
-import com.driftwatch.persistence.SchemaVersionRepository;
+import com.driftwatch.quality.schema.BaselineMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -48,6 +45,7 @@ class DetectionContractTest {
 
     private static final String SOURCE = "contract-source";
     private static final String NULL_TYPE = "contract_null_event";
+    private static final Map<String, String> ASK_NUMBER = Map.of("ask", "NUMBER");
     private static final String ANOMALY_TYPE = "contract_anomaly_event";
 
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
@@ -58,8 +56,7 @@ class DetectionContractTest {
 
     @Test
     void allMissingValuesProduceExactlyOneNullSpike() {
-        SchemaBaselineProvider baseline = eventType -> Map.of("ask", "NUMBER");
-        try (Driver driver = driver(baseline)) {
+        try (Driver driver = driver(Map.of(NULL_TYPE, ASK_NUMBER))) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             for (int i = 0; i < 5; i++) {
                 driver.pipe(new DataEvent("null-" + i, SOURCE, NULL_TYPE,
@@ -84,8 +81,7 @@ class DetectionContractTest {
 
     @Test
     void normalThenTwoMissingStillProducesOneNullSpike() {
-        SchemaBaselineProvider baseline = eventType -> Map.of("ask", "NUMBER");
-        try (Driver driver = driver(baseline)) {
+        try (Driver driver = driver(Map.of(NULL_TYPE, ASK_NUMBER))) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             driver.pipe(new DataEvent("old-0", SOURCE, NULL_TYPE, windowStart, Map.of("bid", 1.0, "ask", 2.0)));
             driver.pipe(new DataEvent("old-1", SOURCE, NULL_TYPE, windowStart.plusSeconds(1), Map.of("bid", 2.0)));
@@ -100,7 +96,7 @@ class DetectionContractTest {
 
     @Test
     void fiveEventBurstOverSingleEventBaselineProducesOneAnomalySpike() {
-        try (Driver driver = driver(eventType -> Map.of())) {
+        try (Driver driver = driver(Map.of())) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             driver.pipe(new DataEvent("base-2", SOURCE, ANOMALY_TYPE, windowStart.minusSeconds(120), Map.of("bid", 1.0)));
             driver.pipe(new DataEvent("base-1", SOURCE, ANOMALY_TYPE, windowStart.minusSeconds(60), Map.of("bid", 2.0)));
@@ -125,7 +121,7 @@ class DetectionContractTest {
 
     @Test
     void twoByTwoBaselineThenEightEventBurstStillProducesOneAnomalySpike() {
-        try (Driver driver = driver(eventType -> Map.of())) {
+        try (Driver driver = driver(Map.of())) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             driver.pipe(new DataEvent("old-a0", SOURCE, ANOMALY_TYPE, windowStart.minusSeconds(120), Map.of("bid", 1.0)));
             driver.pipe(new DataEvent("old-a1", SOURCE, ANOMALY_TYPE, windowStart.minusSeconds(119), Map.of("bid", 2.0)));
@@ -144,8 +140,7 @@ class DetectionContractTest {
 
     @Test
     void outOfOrderPreviousWindowEventDoesNotEraseCurrentWindowCounts() {
-        SchemaBaselineProvider baseline = eventType -> Map.of("ask", "NUMBER");
-        try (Driver driver = driver(baseline)) {
+        try (Driver driver = driver(Map.of(NULL_TYPE, ASK_NUMBER))) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             driver.pipe(new DataEvent("ooo-0", SOURCE, NULL_TYPE, windowStart, Map.of("bid", 1.0, "ask", 2.0)));
             driver.pipe(new DataEvent("ooo-1", SOURCE, NULL_TYPE, windowStart.plusSeconds(1), Map.of("bid", 2.0)));
@@ -165,7 +160,7 @@ class DetectionContractTest {
 
     @Test
     void repeatedEventIdKeepsInputsAndFlagsBusinessDuplicate() {
-        try (Driver driver = driver(eventType -> Map.of())) {
+        try (Driver driver = driver(Map.of())) {
             DataEvent event = new DataEvent("dup-1", SOURCE, ANOMALY_TYPE,
                     Instant.now().truncatedTo(ChronoUnit.MINUTES), Map.of("bid", 1.0));
             driver.pipe(event);
@@ -183,8 +178,7 @@ class DetectionContractTest {
 
     @Test
     void expiredEventKeepsRawEvidenceWithoutChangingTheWindow() {
-        SchemaBaselineProvider baseline = eventType -> Map.of("ask", "NUMBER");
-        try (Driver driver = driver(baseline)) {
+        try (Driver driver = driver(Map.of(NULL_TYPE, ASK_NUMBER))) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             driver.pipe(new DataEvent("exp-0", SOURCE, NULL_TYPE, windowStart, Map.of("bid", 1.0)));
             driver.pipe(new DataEvent("exp-1", SOURCE, NULL_TYPE, windowStart.plusSeconds(1), Map.of("bid", 2.0)));
@@ -208,8 +202,7 @@ class DetectionContractTest {
 
     @Test
     void futureEventIsExcludedAndDoesNotAdvanceTheWatermark() {
-        SchemaBaselineProvider baseline = eventType -> Map.of("ask", "NUMBER");
-        try (Driver driver = driver(baseline)) {
+        try (Driver driver = driver(Map.of(NULL_TYPE, ASK_NUMBER))) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             driver.pipe(new DataEvent("fut-0", SOURCE, NULL_TYPE, windowStart, Map.of("bid", 1.0)));
             // Beyond the future tolerance: must not advance the scope watermark.
@@ -233,8 +226,7 @@ class DetectionContractTest {
 
     @Test
     void scopeWatermarksAreIsolatedPerSource() {
-        SchemaBaselineProvider baseline = eventType -> Map.of("ask", "NUMBER");
-        try (Driver driver = driver(baseline)) {
+        try (Driver driver = driver(Map.of(NULL_TYPE, ASK_NUMBER))) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             // Source A runs ahead at T.
             for (int i = 0; i < 3; i++) {
@@ -257,7 +249,7 @@ class DetectionContractTest {
 
     @Test
     void nextWindowCanFireAgainAfterARelapse() {
-        try (Driver driver = driver(eventType -> Map.of())) {
+        try (Driver driver = driver(Map.of())) {
             // Anchored in the past so the later burst does not approach the future tolerance.
             Instant windowStart = Instant.now().minus(Duration.ofMinutes(20)).truncatedTo(ChronoUnit.MINUTES);
             driver.pipe(new DataEvent("w0-base", SOURCE, ANOMALY_TYPE, windowStart.minusSeconds(120), Map.of("bid", 1.0)));
@@ -285,7 +277,7 @@ class DetectionContractTest {
 
     @Test
     void insufficientHistoryRecordsWarmingUpWithoutAlerting() {
-        try (Driver driver = driver(eventType -> Map.of())) {
+        try (Driver driver = driver(Map.of())) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             for (int i = 0; i < 6; i++) {
                 driver.pipe(new DataEvent("warm-" + i, SOURCE, ANOMALY_TYPE,
@@ -301,7 +293,7 @@ class DetectionContractTest {
 
     @Test
     void zeroBaselineRecordsBaselineZeroWithoutAlerting() {
-        try (Driver driver = driver(eventType -> Map.of())) {
+        try (Driver driver = driver(Map.of())) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             // Observation starts four windows earlier, so the two windows before the burst are
             // inside the observed range and are zero.
@@ -323,8 +315,26 @@ class DetectionContractTest {
     }
 
     @Test
+    void baselineFromTheGlobalStoreMarksEventsAppliedAndRunsTheChecks() {
+        try (Driver driver = driver(Map.of(NULL_TYPE, ASK_NUMBER))) {
+            Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+            for (int i = 0; i < 3; i++) {
+                driver.pipe(new DataEvent("applied-" + i, SOURCE, NULL_TYPE,
+                        windowStart.plusSeconds(i), Map.of("bid", i)));
+            }
+
+            List<KeyValue<String, ProcessedEvent>> results = driver.output();
+            assertThat(results).allSatisfy(r ->
+                    assertThat(r.value.baselineStatus()).isEqualTo("APPLIED"));
+            assertThat(alertsOf(results, AlertType.NULL_SPIKE))
+                    .as("with a baseline in the global store the null checks actually run")
+                    .hasSize(1);
+        }
+    }
+
+    @Test
     void missingBaselineMarksBaselinePendingInsteadOfPassing() {
-        try (Driver driver = driver(eventType -> Map.of())) {
+        try (Driver driver = driver(Map.of())) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             driver.pipe(new DataEvent("pending-0", SOURCE, NULL_TYPE, windowStart, Map.of("bid", 1.0)));
 
@@ -338,8 +348,7 @@ class DetectionContractTest {
 
     @Test
     void redeliveredEnvelopeIsMarkedAndDoesNotAddDetectionCounts() {
-        SchemaBaselineProvider baseline = eventType -> Map.of("ask", "NUMBER");
-        try (Driver driver = driver(baseline)) {
+        try (Driver driver = driver(Map.of(NULL_TYPE, ASK_NUMBER))) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             RawEnvelope envelope = new RawEnvelope(RawEnvelope.CONTRACT_VERSION, UUID.randomUUID(),
                     new DataEvent("replay-0", SOURCE, NULL_TYPE, windowStart, Map.of("bid", 1.0)),
@@ -363,8 +372,7 @@ class DetectionContractTest {
 
     @Test
     void reusedIngestionIdWithDifferentContentIsAConflict() {
-        SchemaBaselineProvider baseline = eventType -> Map.of("ask", "NUMBER");
-        try (Driver driver = driver(baseline)) {
+        try (Driver driver = driver(Map.of(NULL_TYPE, ASK_NUMBER))) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             UUID id = UUID.randomUUID();
             driver.pipeEnvelope(new RawEnvelope(RawEnvelope.CONTRACT_VERSION, id,
@@ -386,7 +394,7 @@ class DetectionContractTest {
 
     @Test
     void sameEventIdAndPayloadInDifferentScopesDoNotCrossAlert() {
-        try (Driver driver = driver(eventType -> Map.of())) {
+        try (Driver driver = driver(Map.of())) {
             Instant ts = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             DataEvent shared = new DataEvent("shared-id", "source-a", ANOMALY_TYPE, ts, Map.of("bid", 1.0));
             DataEvent sameIdOtherSource = new DataEvent("shared-id", "source-b", ANOMALY_TYPE, ts, Map.of("bid", 1.0));
@@ -401,8 +409,7 @@ class DetectionContractTest {
 
     @Test
     void bootstrapModeSkipsLiveWindowsButKeepsTheEvent() {
-        SchemaBaselineProvider baseline = eventType -> Map.of("ask", "NUMBER");
-        try (Driver driver = driver(baseline)) {
+        try (Driver driver = driver(Map.of(NULL_TYPE, ASK_NUMBER))) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             for (int i = 0; i < 3; i++) {
                 driver.pipeEnvelope(new RawEnvelope(RawEnvelope.CONTRACT_VERSION, UUID.randomUUID(),
@@ -421,7 +428,7 @@ class DetectionContractTest {
 
     @Test
     void qualityStatusFollowsTheDocumentedPrecedence() {
-        try (Driver driver = driver(eventType -> Map.of())) {
+        try (Driver driver = driver(Map.of())) {
             Instant ts = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             DataEvent clean = new DataEvent("status-ok", SOURCE, ANOMALY_TYPE, ts, Map.of("bid", 1.0));
             driver.pipe(clean);
@@ -444,7 +451,7 @@ class DetectionContractTest {
 
     @Test
     void excludedEventsCarryCoverageEvidenceInsteadOfLookingSuccessful() {
-        try (Driver driver = driver(eventType -> Map.of())) {
+        try (Driver driver = driver(Map.of())) {
             Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             driver.pipe(new DataEvent("cover-0", SOURCE, ANOMALY_TYPE, windowStart, Map.of("bid", 1.0)));
             driver.pipe(new DataEvent("cover-old", SOURCE, ANOMALY_TYPE,
@@ -480,7 +487,11 @@ class DetectionContractTest {
                 .toList();
     }
 
-    private Driver driver(SchemaBaselineProvider baseline) {
+    /**
+     * Builds the pipeline with the given active baselines. Baselines are delivered through the
+     * compacted global topic exactly like the relay does, never through a repository.
+     */
+    private Driver driver(Map<String, Map<String, String>> baselines) {
         TopologySettings settings = new TopologySettings(
                 Duration.ofMinutes(5), Duration.ofMinutes(1), 0.6, 3, 2, 2, 3.0, 5);
         QualityStreamsTopology topology = new QualityStreamsTopology(
@@ -488,32 +499,8 @@ class DetectionContractTest {
                 new LateEventDetector(objectMapper, Duration.ofMinutes(5)),
                 new FieldRangeDetector(objectMapper, Map.of()),
                 new FieldFormatDetector(objectMapper, ""),
-                new SchemaDriftDetector(new SchemaRegistry(fakeSchemaRepo(), objectMapper), objectMapper),
-                baseline, objectMapper, settings);
-        return new Driver(topology);
-    }
-
-    @SuppressWarnings("unchecked")
-    private SchemaVersionRepository fakeSchemaRepo() {
-        return (SchemaVersionRepository) java.lang.reflect.Proxy.newProxyInstance(
-                SchemaVersionRepository.class.getClassLoader(),
-                new Class<?>[]{SchemaVersionRepository.class},
-                (proxy, method, args) -> {
-                    switch (method.getName()) {
-                        case "findByEventTypeAndSchemaHash":
-                        case "findFirstByEventTypeAndStatus":
-                            return java.util.Optional.empty();
-                        case "save":
-                            return args[0];
-                        default:
-                            if (method.getReturnType() == boolean.class) return false;
-                            if (method.getReturnType() == long.class) return 0L;
-                            if (method.getReturnType() == int.class) return 0;
-                            if (List.class.isAssignableFrom(method.getReturnType())) return List.of();
-                            if (method.getReturnType() == java.util.Optional.class) return java.util.Optional.empty();
-                            return null;
-                    }
-                });
+                objectMapper, settings);
+        return new Driver(topology, baselines);
     }
 
     /** Wraps a TopologyTestDriver wired to the quality pipeline over an envelope input topic. */
@@ -522,7 +509,7 @@ class DetectionContractTest {
         private final TestInputTopic<String, RawEnvelope> input;
         private final TestOutputTopic<String, ProcessedEvent> output;
 
-        Driver(QualityStreamsTopology topology) {
+        Driver(QualityStreamsTopology topology, Map<String, Map<String, String>> baselines) {
             StreamsBuilder builder = new StreamsBuilder();
             var envelopes = builder.stream("envelope-input",
                     org.apache.kafka.streams.kstream.Consumed.with(
@@ -538,6 +525,10 @@ class DetectionContractTest {
                     new StringSerializer(), envelopeSerde().serializer());
             this.output = driver.createOutputTopic(
                     KafkaTopics.QUALITY_EVENTS, new StringDeserializer(), serdes.processedEventSerde().deserializer());
+            TestInputTopic<String, BaselineMessage> baselineInput = driver.createInputTopic(
+                    KafkaTopics.SCHEMA_BASELINES, new StringSerializer(), serdes.baselineMessageSerde().serializer());
+            baselines.forEach((eventType, leaves) ->
+                    baselineInput.pipeInput(eventType, new BaselineMessage(eventType, 1L, leaves)));
         }
 
         void pipe(DataEvent event) {

@@ -40,49 +40,20 @@ if [ "$exit_code" -ne 0 ] && grep -qE 'ContainerLaunchException|Wait strategy fa
   exit_code=$?
 fi
 
-python3 - "$OUT_DIR" <<'PY'
-import glob, json, os, sys, xml.etree.ElementTree as ET
-out_dir = sys.argv[1]
-seen = set()
-totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
-required = {"com.driftwatch.stream.DetectionContractTest": None,
-            "com.driftwatch.stream.QualityStreamsTopologyTest": None}
-for path in sorted(glob.glob('target/surefire-reports/TEST-*.xml'), key=os.path.getmtime):
-    root = ET.parse(path).getroot()
-    name = root.get('name')
-    if name in seen:
-        continue
-    seen.add(name)
-    counts = {k: int(root.get(k)) for k in ('tests', 'failures', 'errors', 'skipped')}
-    for key, value in counts.items():
-        totals[key] += value
-    if name in required:
-        required[name] = counts
-json.dump({"totals": totals, "required_classes": required},
-          open(f"{out_dir}/p2-summary.json", "w"), indent=2)
-print(json.dumps({"totals": totals, "required": required}))
-PY
+python3 "$SCRIPT_DIR/check-suite.py" \
+  --reports target/surefire-reports \
+  --out "$OUT_DIR/p2-summary.json" \
+  --require com.driftwatch.stream.DetectionContractTest \
+  --require com.driftwatch.stream.QualityStreamsTopologyTest \
+  --require com.driftwatch.quality.schema.SchemaTransactionIntegrationTest \
+  || check_exit=1
+check_exit="${check_exit:-0}"
 
-missing=0
-for cls in DetectionContractTest QualityStreamsTopologyTest; do
-  count="$(python3 -c "
-import json,sys
-d=json.load(open('$OUT_DIR/p2-summary.json'))['required_classes']
-entry=d.get('com.driftwatch.stream.$cls')
-print(0 if entry is None else entry['tests']-entry['skipped'])
-")"
-  [ "$count" -gt 0 ] || { missing=1; log "detection class $cls did not run (count=$count)"; }
-done
-
-failures="$(python3 -c "import json;print(json.load(open('$OUT_DIR/p2-summary.json'))['totals']['failures'])")"
-errors="$(python3 -c "import json;print(json.load(open('$OUT_DIR/p2-summary.json'))['totals']['errors'])")"
-skipped="$(python3 -c "import json;print(json.load(open('$OUT_DIR/p2-summary.json'))['totals']['skipped'])")"
-
-if [ "$exit_code" -eq 0 ] && [ "$missing" = "0" ] && [ "$failures" = "0" ] && [ "$errors" = "0" ] && [ "$skipped" = "0" ]; then
+if [ "$exit_code" -eq 0 ] && [ "$check_exit" -eq 0 ]; then
   write_gate "$OUT_DIR" "PHASE-P2" PASSED "phase-P2.sh --out $OUT_DIR" "$started" "$(utc_now)" 0 \
     "$OUT_DIR/p2-summary.json" "$OUT_DIR/mvn-phase-p2.log" >/dev/null
   exit 0
 fi
 write_gate "$OUT_DIR" "PHASE-P2" FAILED "phase-P2.sh --out $OUT_DIR" "$started" "$(utc_now)" 1 \
   "$OUT_DIR/p2-summary.json" "$OUT_DIR/mvn-phase-p2.log" >/dev/null
-fail "P2 detection gate failed (failures=$failures errors=$errors skipped=$skipped missing_class=$missing)"
+fail "P2 gate failed (suite exit=$exit_code, contract check exit=$check_exit); see $OUT_DIR"

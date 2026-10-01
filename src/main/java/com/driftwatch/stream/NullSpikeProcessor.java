@@ -5,7 +5,7 @@ import com.driftwatch.quality.AlertType;
 import com.driftwatch.quality.RuleVersions;
 import com.driftwatch.quality.ScopeKey;
 import com.driftwatch.quality.Severity;
-import com.driftwatch.quality.schema.SchemaBaselineProvider;
+import com.driftwatch.quality.schema.BaselineMessage;
 import com.driftwatch.quality.schema.SchemaInferrer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -15,6 +15,7 @@ import org.apache.kafka.streams.processor.api.ProcessorContext;
 import org.apache.kafka.streams.processor.api.Record;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.state.ValueAndTimestamp;
 
 import java.time.Instant;
 import java.util.Map;
@@ -36,17 +37,14 @@ import java.util.Map;
 final class NullSpikeProcessor implements Processor<String, PendingEvent, String, PendingEvent> {
 
     private final ObjectMapper objectMapper;
-    private final SchemaBaselineProvider baselineProvider;
     private final TopologySettings settings;
     private ProcessorContext<String, PendingEvent> context;
     private KeyValueStore<String, NullWindowState> windowStore;
     private KeyValueStore<String, Long> watermarkStore;
+    private KeyValueStore<String, ValueAndTimestamp<BaselineMessage>> baselineStore;
 
-    NullSpikeProcessor(ObjectMapper objectMapper,
-                       SchemaBaselineProvider baselineProvider,
-                       TopologySettings settings) {
+    NullSpikeProcessor(ObjectMapper objectMapper, TopologySettings settings) {
         this.objectMapper = objectMapper;
-        this.baselineProvider = baselineProvider;
         this.settings = settings;
     }
 
@@ -55,6 +53,7 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
         this.context = context;
         this.windowStore = context.getStateStore(QualityStreamsTopology.NULL_WINDOW_STORE);
         this.watermarkStore = context.getStateStore(QualityStreamsTopology.SCOPE_WATERMARK_STORE);
+        this.baselineStore = context.getStateStore(QualityStreamsTopology.SCHEMA_BASELINE_STORE);
         context.schedule(settings.metricsWindowSize(), PunctuationType.STREAM_TIME, this::evictExpired);
     }
 
@@ -105,7 +104,11 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
             watermark = eventMs;
         }
 
-        Map<String, String> expectedFields = baselineProvider.activeLeafFieldTypes(eventType);
+        // The DSL materialises global store values as ValueAndTimestamp.
+        ValueAndTimestamp<BaselineMessage> stamped = baselineStore.get(eventType);
+        BaselineMessage baseline = stamped == null ? null : stamped.value();
+        Map<String, String> expectedFields = baseline == null || baseline.leafTypes() == null
+                ? Map.of() : baseline.leafTypes();
         if (expectedFields.isEmpty()) {
             // Only baseline-dependent checks are skipped; the event is never reported as fully checked.
             pending.baselineStatus = "PENDING";
