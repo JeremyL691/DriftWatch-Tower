@@ -9,16 +9,16 @@
 | document_revision | 1.0 |
 | handoff_date | 2026-09-30，America/Los_Angeles |
 | product_goal_status | RUNNING，P0-P2 完成，P3 进行中 |
-| current_phase | P4 |
-| current_task | P4.1 |
-| next_action | P4.1：GitHub poller（ETag/X-Poll-Interval、inbox/outbox、lease、candidate/applied 检查点、缺口与退避）与 G08 |
+| current_phase | P5 |
+| current_task | P5.1 |
+| next_action | P5.1：incident 关联接入 sink、定时健康 scheduler（无副作用 GET）、采集器状态与 G10 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（本地；尚未推送） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 7217ff67（P3 完成；P4-P7 未完成，仍不能作为发布候选） |
+| candidate_sha | fbba4d05（P4 完成；P5-P7 未完成，仍不能作为发布候选） |
 | source_tree_hash | 8c8797ad9fe505c8e12d0f797264e4cb15de7fc5c00ffddce25c61cdd023570c（src+pom+Dockerfile+compose） |
 | candidate_image_id / public_digest | 本地镜像 sha256:1a419f6a…（仅本地验证，未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
@@ -60,9 +60,9 @@
 | P3.1 | 摄取确认、envelope、幂等 | PASSED | G05 PASSED（132/0/0/0）；见 `.execution/verify/p3-gate1/` |
 | P3.2 | retry / DLT / replay | PASSED | G06 PASSED（141/0/0/0 + 现场停机演练）；见 `.execution/verify/p3-gate3/`、`.execution/runs/p32-drill/` |
 | P3.3 | 历史升级与回滚演练 | PASSED | G07 PASSED；真实旧版本镜像 + 升级/桥接/回滚演练；`.execution/runs/p33-upgrade/` |
-| P4.1 | GitHub 持久 poller | RUNNING | - |
-| P4.2 | 官方真实数据全链路 | NOT_STARTED | - |
-| P5.1 | incident / scheduler | NOT_STARTED | - |
+| P4.1 | GitHub 持久 poller | PASSED | G08 PASSED（152/0/0/0，GithubPollerIntegrationTest 11 项）；`.execution/verify/p4-gate1/` |
+| P4.2 | 官方真实数据全链路 | PASSED | G09 PASSED；官方源无 token，bootstrap 199 事件 + 启动后新增 LIVE 事件 + 重启检查点保持；`.execution/runs/p42-smoke/` |
+| P5.1 | incident / scheduler | RUNNING | - |
 | P5.2 | 指标、保留、备份恢复 | NOT_STARTED | - |
 | P5.3 | Dashboard 操作与响应式 | NOT_STARTED | 设计 3/2/8 已确认 |
 | P6.1 | 冻结候选、短门槛、负载 | NOT_STARTED | - |
@@ -85,8 +85,8 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G05 摄取与幂等 | PASSED（最新 PHASE-P3 证据 7217ff67 已覆盖其用例） | SHA 45d18bce；PHASE-P3 gate：132 tests / 0 fail / 0 skip，IdempotencyIntegrationTest 5 + PreAckFailureTest 1 + KafkaIngestionIntegrationTest 1；`.execution/verify/p3-gate1/` |
 | G06 故障与死信 | PASSED（最新 PHASE-P3 证据 7217ff67 已覆盖其用例） | SHA b5c10c0a；PHASE-P3 gate 141 tests / 0 fail / 0 skip（DeadLetterIntegrationTest 5、SinkRetryTest 4）；现场演练：60s 停机被重试吸收且无死信、200s 停机产生死信并在恢复后投影与重放（各一次副作用）；`.execution/runs/p32-drill/` |
 | G07 升级兼容 | PASSED | SHA 7217ff67；PHASE-P3 gate 141 tests / 0 fail / 0 skip；演练：V1-V7 checksum 不变、5 条旧行保留且可查（legacy-db 身份）、2 条真实 backlog 桥接（稳定 legacy-kafka 身份）、仅回滚镜像被 Flyway 拒绝而「备份恢复 + 旧镜像」可用；`.execution/runs/p33-upgrade/` |
-| G08 来源协议 | NOT_RUN | - |
-| G09 官方真实源 | NOT_RUN | - |
+| G08 来源协议 | PASSED | SHA fbba4d05；PHASE-P4 gate 152 tests / 0 fail / 0 skip；GithubPollerIntegrationTest 11 项覆盖 304/403+Retry-After/429/401/404/500+恢复/超时/坏 JSON/跨页重叠/bootstrap 与 live 模式/重启恢复；`.execution/verify/p4-gate1/` |
+| G09 官方真实源 | PASSED | 官方 api.github.com 无 token；bootstrap 199 条真实事件（mode=BOOTSTRAP、SKIPPED_MODE）、启动后新增 16162901734（mode=LIVE）经 inbox→outbox→Kafka→receipt→raw→API 全链路、重启后检查点保持不重摄；`.execution/runs/p42-smoke/` |
 | G10 操作闭环 | NOT_RUN | - |
 | G11 保留与恢复 | NOT_RUN | - |
 | G12 浏览器与四断点 | NOT_RUN | - |
@@ -244,6 +244,13 @@ P3.1 之后仍需完成（下一动作）：
 - 历史保留：升级后 raw_events 仍为 5 行，全部带 `legacy-db:<pk>` 稳定身份，新 API `GET /api/v1/events/recent` 仍可查询；未 purge 任何旧数据或告警。
 - 真实 backlog 桥接：停机期间向旧 `raw-events` 追加 2 条记录（offset 0:5-6），运行一次性 `LegacyBridge`（配置门控、报告写盘）→ 2 条以 `legacy-kafka:raw-events:0:5/6` 派生稳定身份进入新管道；重复运行不会重复副作用（同一 offset 恒等同一 ingestion_id）。
 - 回滚演练：① 仅回滚镜像（旧镜像对新 schema）→ Flyway 报错 4 条，证明「只回滚镜像」被禁止；② 把备份恢复到新数据库并启动旧镜像 → readiness 正常、旧数据可查（restored_rows=5）。演练卷已清理，未触碰用户卷。
+
+### 2026-10-01 P4.1 / P4.2 GitHub 真实来源（PASSED，G08 + G09）
+
+- P4.1 实现（SHA fbba4d05）：`GithubEventsClient` 使用契约头（Accept、固定 X-GitHub-Api-Version、User-Agent、可选 token、If-None-Match）、5s 连接/可配请求超时，区分 200/304/401/403/404/429/5xx/超时/坏 JSON；`GithubEventConverter` 只保留 repository/type/actor/public 与类型专属结构字段、UNKNOWN 保留、缺字段显式 null、保留原记录摘要哈希；`GithubPoller` 单租约 + READY/FETCHING/STAGED/PUBLISHING/APPLIED（BACKOFF/ERROR）、每轮单事务写 inbox+ingestion_id+outbox、relay 20 条一批等 broker ack、candidate ETag 只在所有记录有 receipt 或终态死信后才提升为 applied、缺口记录（截断/失去重叠/停机超出可见范围/预算耗尽，缺失数量记 unknown）、304 只更新 poll 健康且不推进游标、403/429 遵守 Retry-After 或 rate-limit reset、5xx/超时 5s–5min 指数退避；V11 新增 5 张状态表；非官方 base URL 在生产配置下启动失败。
+- G08（`.execution/verify/p4-gate1/`，152 tests / 0 fail / 0 err / 0 skip）：本地 stub 覆盖 304 游标不动、403+Retry-After 退避并记 BUDGET_EXHAUSTED 缺口、429 指数退避、401/404 进入 ERROR 且不回显 token、500 后退避并在下一轮恢复、8s 慢响应超时、坏 JSON 失败且下一轮可用、跨页重叠不重复入库、重复轮询不新增、BOOTSTRAP→LIVE 模式记录、重启恢复（失败轮不推进检查点）。
+- G09（`.execution/runs/p42-smoke/`）：官方 `api.github.com` 无 token 只读证据（ETag、x-poll-interval、rate-limit 头）；bootstrap 轮 mode=BOOTSTRAP 摄取 199 条真实事件（窗口评估 SKIPPED_MODE），outbox 199 条全部 SENT；抽样事件 16156955211 全链路可查（raw origin=GITHUB、receipt、`GET /api/v1/events/{ingestionId}`）；重启后 inbox 仍 199、etag_applied 保持、无重复摄取；随后轮询发现启动后新增事件 16162901734（created 06:02:59Z，mode=LIVE，run #4 LIVE records_seen=199/new=1 APPLIED），raw 行 source=github:apache/kafka；QUIET 轮（304）证明无变化时不推进游标。速率预算按 PT2M 轮询（约 30 次/小时）低于未认证 60 次/小时上限；生产默认仍为 5 分钟。
+- 观察：BOOTSTRAP 事件按契约不参与实时窗口，因此其 baseline_status 为空（未执行基线检查），LIVE 事件才带 APPLIED/PENDING。
 
 后续每条保留：
 
