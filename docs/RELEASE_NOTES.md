@@ -77,6 +77,12 @@ new database.
   token the budget is 60 requests/hour, which is why the default poll interval is five minutes.
   Bootstrap backfill is persisted and schema-observed but never treated as realtime signal;
   gaps are recorded with an unknown size rather than estimated.
+- Gap records are deliberately conservative, and currently over-report. The collector writes a
+  `NO_OVERLAP` gap whenever a live poll finds an event newer than the *start* of its initial
+  backfill, which for a busy repository is always; those rows stay open and accumulate. Read them
+  as "the public API can no longer serve that range for re-reading", not as "these events were
+  lost" — the ingestion ledger, deduplication and replay are unaffected, and the follow-up release
+  corrects the classifier. This is visible as `open_gaps` on `GET /api/v1/sources/collectors`.
 - Retention removes raw payloads after 30 days while keeping the deduplication identity longer.
 - The dashboard is verified on Chromium at four widths in two themes; other engines are not part
   of the acceptance matrix.

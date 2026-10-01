@@ -560,6 +560,41 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 - `ci.yml` 的 `Build application image`：同样处理，避免 PR 验证被同一瞬时故障染红（`e6f59125` 就是这么红的）。
 - 复验：两个工作流 YAML 可解析、抽取出的 run 脚本 `bash -n` 通过；`git status` 仅显示这两个工作流文件被修改，`src`/`pom.xml`/`Dockerfile`/compose/`.mvn` 无任何改动。
 
+### 2026-10-01 P6.2 等待期：发现真实缺陷——gap 分类器会把「没有丢数据」误报成缺口（不阻断本次发布）
+
+核对窗口数据时注意到 0.8 小时内已累计 5 条 `source_gaps`（对 5 分钟轮询而言过于频繁），于是按下述顺序查证，而不是猜：
+
+**证据（本窗口实测，按轮询逐条对齐）**
+
+| poll id | mode | 本轮新增事件 | 本轮产生 gap |
+|---|---|---|---|
+| 1 | BOOTSTRAP | 300 | 0 |
+| 2 | LIVE | 0 | 0 |
+| 3 | LIVE | 1 | **1** |
+| 4 | LIVE | 0 | 0 |
+| 5 | LIVE | 2 | **1** |
+| 6 | LIVE | 4 | **1** |
+| 7 | LIVE | 1 | **1** |
+| 8、9 | LIVE | 0 | 0 |
+| 10 | LIVE | 3 | **1** |
+
+规律是确定的：**只要 LIVE 轮询抓到任何新事件，就记一条 NO_OVERLAP gap**；抓不到就一条都不记。5 条 gap 的 `visible_from` 都是同一个值 `2026-09-30T05:10:22Z`，`missing_count=unknown`、`confirmed_from` 为 null、`recovery_state=OPEN`（永不关闭）。
+
+**根因（写入方与读取方对同一字段的语义相反）**
+
+- 写入（`GithubPoller` 第 395-397 行，仅 bootstrap 且仅当字段为 null 时）：`observedFrom = min(staged.created_at)` —— 即**初次回填的最早时间**，本窗口实测为 `2026-09-01T03:40:35Z`。
+- 读取（第 498 行）：`if (staged.oldestCreatedAt().isAfter(state.getObservedFrom())) recordGap("NO_OVERLAP", ...)`，其 detail 写的是「the visible window starts after the previously observed range」——把 `observedFrom` 当作**已观测区间的末端**来比较。
+- 结果：`observedFrom`（9 月 1 日）远早于此后任何新事件（9 月 30 日起），条件对新事件**恒为真**。而 GitHub 公共事件 API 的可见窗口对 `apache/kafka` 这类高频仓库会向前滑动，正是「初次回填起点」必然早于「当前可见起点」的场景。字段自 bootstrap 后再无更新（全仓只有这一处写入、这一处读取）。
+
+**影响判定（为什么不阻断本次发布）**
+
+- 数据完整性不受影响：事件照常被抓取、去重、入库；没有丢事件，账本、幂等与重放都不受影响。
+- 门禁不受影响：G16 会查询 `source_gaps` 计数，但**不对其做任何断言**（判据只有「不同真实事件 ≥20」「LIVE ≥1」），因此 G16 不会因此失败（我已逐条核对判定器十项判据）。
+- 用户可见性有限但真实：`GET /api/v1/sources/collectors` 会给出 `open_gaps` 计数，24 小时约累计 200+ 条且永不关闭，容易被自托管者读成「持续丢数据」。这是**误报**：存在这些行的语义是「公共 API 已无法再回读那段时间窗」，而不是「这些事件丢了」。
+- 修改它属于应用面改动（`src/main/java` 在 `source_tree_hash` 内），会作废当前 24 小时窗口与全部门禁，而用户本轮的指令是「等这个窗口结束后判定并发布」。因此本轮**不改代码**，改为：如实记录 + 写进版本说明的已知限制 + 作为发布后修复项。
+
+**拟修复方向（发布后，v1.0.1）**：把「连续观测区间」的两个端点分开——保留 `observed_from` 作为区间**起点**（bootstrap 的 min），另加/改用「上次观测区间的末端」（如 `last_event_at` 或新增 `observed_to`）作为 NO_OVERLAP 的比较基准，并只在 `new_oldest > 上次末端 + 容差` 时记 gap；同时让 gap 在后续轮询重新覆盖该区间时可关闭（`confirmed_from`/`recovered_at`），避免永不关闭的行堆积。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
