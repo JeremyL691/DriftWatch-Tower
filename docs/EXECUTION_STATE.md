@@ -11,17 +11,17 @@
 | product_goal_status | RUNNING，P0-P6.1 完成，P6.2 进行中 |
 | current_phase | P6 |
 | current_task | P6.2 |
-| next_action | P6.2：等待 24 小时 run 20261001T083508Z-soak24（预计 2026-10-02T08:35:08Z 结束），期间准备 PR 正文与 Release 证据包；结束后运行 `verify.sh soak-report` 判定 G16 |
+| next_action | P6.2：等待 run 20261001T103023Z-soak24 结束（2026-10-02T10:30:23Z），然后按下方「收尾程序」执行 G16 判定与 P7 发布 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
-| execution_branch | codex/release-v1（本地；尚未推送） |
+| execution_branch | codex/release-v1（已推送到 origin；PR #1 已开，head 75e6a10 的 CI 全绿） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
 | candidate_sha | 75e6a10（应用面；P6.1 冻结并全部门禁通过） |
 | source_tree_hash | f85b04310b5d9f3a…（完整值见 `.execution/runs/p61-freeze/manifest.json`；src+pom+Dockerfile+compose+.mvn，工具链单独记 tooling_tree_hash） |
 | config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
-| candidate_image_id / public_digest | 本地镜像 sha256:1f915abc95127ae1…（完整值见 freeze manifest；未发布） |
+| candidate_image_id / public_digest | 本地镜像 sha256:1f915abc95127ae12bfe75de97674f4a5ca924c065ed064afe00ed438e0f80ee（未发布；`content_identity.jar_content_hash` = 7340276fb267104260cc516283b634fe211cc36ef44088b01667af8d6e944d0e，已实测可由同源重建复现） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
@@ -30,6 +30,16 @@
 | external_blocker | 无 |
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
+
+## 收尾程序（G16 之后，按序执行，勿跳步）
+
+1. `./scripts/verify.sh soak-report --run-id 20261001T103023Z-soak24 --out .execution/verify/p61-soak` → 判定 G16，并写出 `gate.json`(SOAK)。有问题就记录并修复后重开完整 24 小时，不拼接。
+2. 通过后更新本文件：G16 PASSED、P6.2 PASSED，写入实测数字与证据路径；提交并推送 `codex/release-v1`。
+3. 合并 PR：先 `gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 75e6a10（或其后代）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`；合并后确认 main 含该候选树。
+4. 发布：`release.yml` 只有在默认分支上才会注册，所以合并后再 `gh workflow run release.yml --ref main -f version=v1.0.0 -f candidate_sha=75e6a10 -f content_identity=7340276fb267104260cc516283b634fe211cc36ef44088b01667af8d6e944d0e`，然后 `gh run watch`。该 job 会用同一锁定输入重建并比对 content identity（不一致就拒绝推送）、推送 v1.0.0 与 sha-75e6a10、尝试把 package 设为 public、在干净 Docker config 里匿名拉取 digest、创建 Release。匿名拉取失败即 package 非 public：记录确切错误与恢复动作（GitHub UI 或具 write:packages 的 token），不得当作成功。
+5. 附件：`./scripts/evidence-pack.sh --out .execution/evidence --run-id p7-release` 重新生成证据包，然后 `./scripts/upload-release-assets.sh --version v1.0.0 --artifacts .execution/verify/p61-package4/artifacts --evidence .execution/evidence --digest sha256:...`（digest 取自 Release 正文）。
+6. 匿名核验：`./scripts/verify.sh release --out .execution/verify/p7-release --version v1.0.0 --pr 1`。
+7. 最终报告写回本文件：Release URL、image@digest、源码 SHA、证据路径、性能条件与已知限制；同步 `docs/RELEASE_NOTES.md` 的 digest 行。
 
 ## 历史审核快照
 
