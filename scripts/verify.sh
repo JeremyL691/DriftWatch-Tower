@@ -144,21 +144,41 @@ cmd_unit() {
     die "Docker is required for the container-backed integration tests"
   fi
 
-  ( cd "$DWT_REPO_ROOT" && ./mvnw clean test -Ddwt.requireDocker=true --batch-mode ) \
-    > "$OUT_DIR/mvn-test.log" 2>&1
+  run_suite() {
+    ( cd "$DWT_REPO_ROOT" && ./mvnw clean test -Ddwt.requireDocker=true --batch-mode ) \
+      > "$OUT_DIR/mvn-test.log" 2>&1
+  }
+
+  run_suite
   local exit_code=$?
+  local attempts=1
+  # Container startup on a busy machine occasionally fails before any test runs; retry once and
+  # keep both logs so the gate never hides a real failure behind a flake.
+  if [ "$exit_code" -ne 0 ] && grep -qE 'ContainerLaunchException|Wait strategy failed|Container startup failed' "$OUT_DIR/mvn-test.log"; then
+    log "infrastructure failure while starting containers; retrying the suite once"
+    mv "$OUT_DIR/mvn-test.log" "$OUT_DIR/mvn-test.attempt1.log"
+    run_suite
+    exit_code=$?
+    attempts=2
+  fi
+  echo "$attempts" > "$OUT_DIR/attempts.txt"
 
   python3 - "$OUT_DIR" <<'PY'
-import glob, json, sys, xml.etree.ElementTree as ET
+import glob, json, os, sys, xml.etree.ElementTree as ET
 out_dir = sys.argv[1]
+seen = set()
 tot = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
 classes = []
-for path in sorted(glob.glob('target/surefire-reports/TEST-*.xml')):
+for path in sorted(glob.glob('target/surefire-reports/TEST-*.xml'), key=os.path.getmtime):
     root = ET.parse(path).getroot()
+    name = root.get('name')
+    if name in seen:
+        continue
+    seen.add(name)
     counts = {k: int(root.get(k)) for k in ('tests', 'failures', 'errors', 'skipped')}
     for key, value in counts.items():
         tot[key] += value
-    classes.append({"class": root.get('name'), **counts})
+    classes.append({"class": name, **counts})
 with open(f"{out_dir}/unit-summary.json", "w") as handle:
     json.dump({"totals": tot, "classes": classes}, handle, indent=2)
 print(json.dumps(tot))

@@ -39,6 +39,7 @@ public class LateEventDetector implements QualityDetector {
         evidence.put("received_at", ctx.receivedAt().toString());
         evidence.put("lateness_seconds", lateness.getSeconds());
         evidence.put("threshold", threshold.toString());
+        evidence.put("rule_version", RuleVersions.RULES_VERSION);
         return List.of(new DraftAlert(
                 AlertType.LATE_EVENT,
                 lateness.compareTo(threshold.multipliedBy(10)) > 0 ? Severity.WARN : Severity.INFO,

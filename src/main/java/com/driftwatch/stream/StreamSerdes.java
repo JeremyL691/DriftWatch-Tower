@@ -1,6 +1,7 @@
 package com.driftwatch.stream;
 
 import com.driftwatch.event.DataEvent;
+import com.driftwatch.quality.schema.BaselineMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
@@ -18,7 +19,8 @@ import org.springframework.stereotype.Component;
 public class StreamSerdes {
 
     private static final String[] TRUSTED_PACKAGES = {
-            "com.driftwatch.event", "com.driftwatch.quality", "com.driftwatch.stream"
+            "com.driftwatch.event", "com.driftwatch.quality", "com.driftwatch.stream",
+            "com.driftwatch.quality.schema"
     };
 
     private final ObjectMapper objectMapper;
@@ -33,6 +35,10 @@ public class StreamSerdes {
 
     public Serde<ProcessedEvent> processedEventSerde() {
         return serde(ProcessedEvent.class);
+    }
+
+    public Serde<BaselineMessage> baselineMessageSerde() {
+        return serde(BaselineMessage.class);
     }
 
     private <T> Serde<T> serde(Class<T> type) {

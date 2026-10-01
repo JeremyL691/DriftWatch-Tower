@@ -51,4 +51,53 @@ class SchemaInferrerTest {
         assertThat(diff.typeChanged()).containsKey("bid");
         assertThat(diff.typeChanged().get("bid")).containsExactly("NUMBER", "STRING");
     }
+
+    // Array semantics are the tested inferrer contract; the null-spike detector depends on it,
+    // so the exact behaviour is locked here (P2.2).
+
+    @Test
+    void emptyArrayIsAnArrayLeaf() {
+        TreeMap<String, String> s = SchemaInferrer.infer(mapper.valueToTree(Map.of("tags", java.util.List.of())));
+        assertThat(s).containsEntry("tags", "ARRAY").hasSize(1);
+    }
+
+    @Test
+    void heterogeneousArrayIsStillOneArrayLeaf() {
+        TreeMap<String, String> s = SchemaInferrer.infer(mapper.valueToTree(
+                Map.of("mixed", java.util.List.of(1, "two", true, Map.of("k", 1)))));
+        assertThat(s).containsEntry("mixed", "ARRAY").hasSize(1);
+    }
+
+    @Test
+    void arrayOfObjectsIsNotIntrospected() {
+        TreeMap<String, String> s = SchemaInferrer.infer(mapper.valueToTree(
+                Map.of("items", java.util.List.of(Map.of("id", 1)))));
+        assertThat(s).containsEntry("items", "ARRAY").hasSize(1);
+    }
+
+    @Test
+    void nestedObjectInsideArrayDoesNotLeakLeafPaths() {
+        TreeMap<String, String> s = SchemaInferrer.infer(mapper.valueToTree(
+                Map.of("wrapper", Map.of("items", java.util.List.of(Map.of("id", 1))))));
+        assertThat(s).containsEntry("wrapper", "OBJECT")
+                .containsEntry("wrapper.items", "ARRAY")
+                .doesNotContainKey("wrapper.items.id")
+                .hasSize(2);
+    }
+
+    @Test
+    void explicitNullsAreTypedAsNullAndDeepNestingKeepsDottedPaths() {
+        java.util.Map<String, Object> level2 = new java.util.LinkedHashMap<>();
+        level2.put("leaf", null);
+        java.util.Map<String, Object> level1 = new java.util.LinkedHashMap<>();
+        level1.put("level2", level2);
+        java.util.Map<String, Object> deep = new java.util.LinkedHashMap<>();
+        deep.put("level1", level1);
+        deep.put("maybe", null);
+        TreeMap<String, String> s = SchemaInferrer.infer(mapper.valueToTree(deep));
+        assertThat(s).containsEntry("maybe", "NULL")
+                .containsEntry("level1", "OBJECT")
+                .containsEntry("level1.level2", "OBJECT")
+                .containsEntry("level1.level2.leaf", "NULL");
+    }
 }

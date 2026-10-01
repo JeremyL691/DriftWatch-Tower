@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.testcontainers.DockerClientFactory;
@@ -53,6 +54,7 @@ public abstract class ContainerIntegrationTest {
     @Autowired protected MetricWindowRepository metricWindowRepository;
     @Autowired protected SourceHealthRepository sourceHealthRepository;
     @Autowired protected MockMvc mockMvc;
+    @Autowired protected JdbcTemplate jdbcTemplate;
 
     @Value("${driftwatch.security.admin.username}")
     protected String adminUsername;
@@ -112,6 +114,9 @@ public abstract class ContainerIntegrationTest {
 
     @BeforeEach
     void cleanPersistence() {
+        // Delete dependants first: outbox and migration rows reference schema versions.
+        jdbcTemplate.update("DELETE FROM baseline_outbox");
+        jdbcTemplate.update("DELETE FROM schema_baseline_migrations");
         qualityAlertRepository.deleteAll();
         sourceHealthRepository.deleteAll();
         metricWindowRepository.deleteAll();

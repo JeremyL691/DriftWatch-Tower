@@ -7,8 +7,14 @@ import com.driftwatch.persistence.QualityAlertEntity;
 import com.driftwatch.persistence.QualityAlertRepository;
 import com.driftwatch.persistence.RawEventEntity;
 import com.driftwatch.persistence.RawEventRepository;
+import com.driftwatch.quality.AlertType;
+import com.driftwatch.quality.RuleVersions;
+import com.driftwatch.quality.Severity;
+import com.driftwatch.quality.schema.SchemaObservationService;
 import com.driftwatch.source.SourceHealthService;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -33,6 +39,7 @@ public class QualityEventSink {
     private final RawEventRepository rawEventRepository;
     private final QualityAlertRepository alertRepository;
     private final SourceHealthService sourceHealthService;
+    private final SchemaObservationService schemaObservationService;
     private final MetricWindowProjector metricWindowProjector;
     private final DashboardWebSocketHandler ws;
     private final ObjectMapper objectMapper;
@@ -42,6 +49,7 @@ public class QualityEventSink {
     public QualityEventSink(RawEventRepository rawEventRepository,
                             QualityAlertRepository alertRepository,
                             SourceHealthService sourceHealthService,
+                            SchemaObservationService schemaObservationService,
                             MetricWindowProjector metricWindowProjector,
                             DashboardWebSocketHandler ws,
                             ObjectMapper objectMapper,
@@ -49,6 +57,7 @@ public class QualityEventSink {
         this.rawEventRepository = rawEventRepository;
         this.alertRepository = alertRepository;
         this.sourceHealthService = sourceHealthService;
+        this.schemaObservationService = schemaObservationService;
         this.metricWindowProjector = metricWindowProjector;
         this.ws = ws;
         this.objectMapper = objectMapper;
@@ -87,6 +96,13 @@ public class QualityEventSink {
         for (ProcessedEvent.ProcessedAlert a : p.alerts()) {
             alerts.add(toEntity(a, now));
         }
+        // Schema observation happens in this transaction under an advisory lock (guide 4.4);
+        // drift alerting therefore never runs on a topology thread.
+        SchemaObservationService.Observation observation =
+                schemaObservationService.observe(event.eventType(), raw.getPayloadJson(), now);
+        if (observation.drift() && !observation.changedFields().isEmpty()) {
+            alerts.add(schemaDriftAlert(event, observation, now));
+        }
         List<QualityAlertEntity> staleAlerts = sourceHealthService.refreshAllAndPersist(now);
         if (!alerts.isEmpty()) {
             alertRepository.saveAll(alerts);
@@ -99,6 +115,56 @@ public class QualityEventSink {
 
         ws.broadcastEvent(raw);
         alerts.forEach(ws::broadcastAlert);
+    }
+
+    private QualityAlertEntity schemaDriftAlert(DataEvent event,
+                                                SchemaObservationService.Observation observation,
+                                                Instant now) {
+        ObjectNode evidence = objectMapper.createObjectNode();
+        evidence.put("baseline_version_id",
+                observation.baseline() == null ? null : observation.baseline().getId());
+        evidence.put("observed_version_id", observation.observedRow().getId());
+        evidence.put("observed_hash", observation.observedHash());
+        evidence.put("rule_version", RuleVersions.RULES_VERSION);
+        if (observation.baseline() != null) {
+            evidence.set("expected_schema", observation.baseline().getSchemaJson());
+        }
+        evidence.set("observed_schema", objectMapper.valueToTree(observation.observedSchema()));
+        evidence.set("missing_fields", arrayOf(observation.diff().missing()));
+        evidence.set("added_fields", arrayOf(observation.diff().added()));
+        ObjectNode typeChanged = objectMapper.createObjectNode();
+        observation.diff().typeChanged().forEach((field, change) -> {
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("expected", change[0]);
+            node.put("observed", change[1]);
+            typeChanged.set(field, node);
+        });
+        evidence.set("type_changed", typeChanged);
+
+        String firstField = observation.diff().typeChanged().keySet().stream().findFirst()
+                .or(() -> observation.diff().missing().stream().findFirst())
+                .or(() -> observation.diff().added().stream().findFirst())
+                .orElse(null);
+
+        QualityAlertEntity alert = new QualityAlertEntity();
+        alert.setAlertType(AlertType.SCHEMA_DRIFT);
+        alert.setSeverity(Severity.WARN);
+        alert.setSource(event.source());
+        alert.setEventType(event.eventType());
+        alert.setFieldPath(firstField);
+        alert.setMessage("Schema drift in " + event.eventType()
+                + " (missing=" + observation.diff().missing().size()
+                + ", added=" + observation.diff().added().size()
+                + ", type_changed=" + observation.diff().typeChanged().size() + ")");
+        alert.setEvidenceJson(evidence);
+        alert.setCreatedAt(now);
+        return alert;
+    }
+
+    private JsonNode arrayOf(java.util.Collection<String> values) {
+        var array = objectMapper.createArrayNode();
+        values.forEach(array::add);
+        return array;
     }
 
     private QualityAlertEntity toEntity(ProcessedEvent.ProcessedAlert a, Instant now) {

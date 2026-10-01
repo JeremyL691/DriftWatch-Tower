@@ -1,5 +1,6 @@
 package com.driftwatch.config;
 
+import com.driftwatch.quality.FieldFormatPatterns;
 import com.driftwatch.quality.FieldRangeDetector;
 import jakarta.annotation.PostConstruct;
 import jakarta.validation.Valid;
@@ -155,6 +156,12 @@ public record DriftwatchProperties(
         if (sourceHealth.collectorLostAfter().compareTo(sourceHealth.defaultStaleAfter()) < 0) {
             throw new IllegalStateException(
                     "driftwatch.source-health.collector-lost-after must be >= driftwatch.source-health.default-stale-after");
+        }
+        try {
+            FieldFormatPatterns.parse(detector.fieldFormat().patterns());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "driftwatch.detector.field-format.patterns is invalid: " + e.getMessage());
         }
         detector.fieldRange().fields().forEach((field, bounds) -> {
             if (bounds.getMin() != null && bounds.getMax() != null && bounds.getMin() > bounds.getMax()) {

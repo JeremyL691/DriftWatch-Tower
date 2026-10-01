@@ -34,6 +34,12 @@ public class MetricWindowProjector {
 
     @Transactional
     public void project(ProcessedEvent p) {
+        // Only events that contributed to a window are projected; EXPIRED/FUTURE exclusions and
+        // redeliveries keep their raw evidence but must not move the metric projections.
+        if (p.windowEvaluation() != null
+                && p.windowEvaluation().outcome() != WindowEvaluation.Outcome.INCLUDED) {
+            return;
+        }
         String source = p.event().source();
         String eventType = p.event().eventType();
         metrics.increment(source, eventType, EVENT_COUNT, p.event().eventTimestamp(), 1.0d);
