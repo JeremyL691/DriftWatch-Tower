@@ -55,6 +55,12 @@ class OpenApiContractTest extends ContainerIntegrationTest {
         assertThat(document.at("/paths").has("/api/v1/alerts")).isTrue();
         assertThat(document.at("/paths").has("/api/v1/incidents")).isTrue();
         assertThat(document.at("/paths").has("/api/v1/schemas")).isTrue();
+        // Guide 4.5 and 5.3: the coverage surface is part of the documented contract, so a client
+        // can tell "no rule fired" apart from "the window never evaluated this".
+        assertThat(document.at("/paths").has("/api/v1/events/coverage")).isTrue();
+        assertThat(document.at("/paths").has("/api/v1/sources/collectors")).isTrue();
+        assertThat(document.at("/paths").has("/api/v1/dead-letters")).isTrue();
+        assertThat(document.at("/paths").has("/api/v1/events/{ingestionId}")).isTrue();
     }
 
     private static java.util.List<String> toTextSet(java.util.Iterator<JsonNode> nodes) {

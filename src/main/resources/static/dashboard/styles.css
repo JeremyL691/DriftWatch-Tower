@@ -964,3 +964,14 @@ html[data-theme="dark"] {
     --ink-soft: #B8B2A4;
     --muted: #8B8576;
 }
+
+/* Evaluation coverage: excluded rows are the point of the panel, so they read as warnings. */
+.coverage-panel { margin-top: 1rem; }
+.coverage-note { max-width: 70ch; margin: 0.25rem 0 0.75rem; }
+.coverage-table td:first-child { white-space: normal; }
+.coverage-table .coverage-excluded td:nth-child(2) { color: var(--gold-bright); }
+
+.dead-letter-detail { margin-top: 1rem; }
+.dead-letter-detail pre { max-height: 22rem; overflow: auto; text-align: left; }
+.action-error { color: var(--gold-bright); }
+.status-chip { border: 1px solid currentColor; border-radius: 999px; padding: 0.05rem 0.5rem; font-size: 0.8rem; }

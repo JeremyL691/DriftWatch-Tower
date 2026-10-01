@@ -115,6 +115,25 @@ for (const theme of themes) {
       }
     }
 
+    // Automated accessibility scan (guide 7.5): axe runs in the page against the vendored copy,
+    // and the report carries the violations so the gate can fail on them.
+    const accessibility = await page.evaluate(async () => {
+      if (typeof window.axe === "undefined") return { ran: false };
+      const result = await window.axe.run(document, {
+        runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] },
+      });
+      return {
+        ran: true,
+        violations: result.violations.map((v) => ({
+          id: v.id,
+          impact: v.impact,
+          help: v.help,
+          nodes: v.nodes.length,
+        })),
+        passes: result.passes.length,
+      };
+    }).catch((error) => ({ ran: false, error: String(error) }));
+
     const file = join(outDir, `${label}-${viewport.name}-${theme}.png`);
     await page.screenshot({ path: file, fullPage: true });
 
@@ -156,7 +175,7 @@ for (const theme of themes) {
     report.pages.push({
       viewport: viewport.name, theme, file, status, wsStatus,
       horizontalOverflow: overflow.scrollWidth > overflow.clientWidth,
-      overflow, consoleErrors, failedResponses, keyboard,
+      overflow, consoleErrors, failedResponses, keyboard, accessibility,
     });
     await context.close();
   }

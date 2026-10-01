@@ -133,6 +133,59 @@ public class EventController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    /**
+     * Evaluation coverage over a recent window (guide 5.3). "OK" must not be read as "every
+     * window participated": this reports how much traffic was INCLUDED, how much was excluded and
+     * why, and how much ran with no active schema baseline (PENDING), which is the visible symptom
+     * of a missing baseline cache.
+     */
+    @io.swagger.v3.oas.annotations.Operation(summary = "Evaluation coverage over a recent window")
+    @GetMapping("/coverage")
+    public Map<String, Object> coverage(
+            @RequestParam(defaultValue = "24") int hours) {
+        if (hours < 1 || hours > 24 * 30) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "hours must be between 1 and 720");
+        }
+        java.time.Instant cutoff = java.time.Instant.now().minus(java.time.Duration.ofHours(hours));
+        Map<String, Object> row = rawEventRepository.evaluationCoverage(cutoff);
+        long total = number(row, "total");
+        long included = number(row, "included");
+        long expired = number(row, "expired");
+        long future = number(row, "future");
+        long skippedMode = number(row, "skipped_mode");
+        long missing = number(row, "unevaluated_missing");
+        long baselineApplied = number(row, "baseline_applied");
+        long baselinePending = number(row, "baseline_pending");
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("window_hours", hours);
+        body.put("since", cutoff);
+        body.put("total", total);
+        body.put("included", included);
+        body.put("excluded", Map.of(
+                "expired", expired,
+                "future", future,
+                "skipped_mode", skippedMode,
+                "no_window_evaluation", missing));
+        body.put("excluded_total", expired + future + skippedMode + missing);
+        body.put("included_ratio", total == 0 ? null : round((double) included / total));
+        body.put("baseline", Map.of("applied", baselineApplied, "pending", baselinePending));
+        body.put("note", "INCLUDED events participated in window evaluation; the rest are recorded "
+                + "exclusions and must not be read as evaluated. baseline.pending counts events whose "
+                + "baseline-dependent checks were skipped because no ACTIVE baseline was available.");
+        return body;
+    }
+
+    private static long number(Map<String, Object> row, String key) {
+        Object value = row == null ? null : row.get(key);
+        return value instanceof Number n ? n.longValue() : 0L;
+    }
+
+    private static double round(double value) {
+        return Math.round(value * 10000.0d) / 10000.0d;
+    }
+
     @GetMapping("/recent")
     public List<EventResponse> recent(
             @RequestParam(defaultValue = "0") int page,

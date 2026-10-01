@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DriftWatch Tower Dashboard</title>
     <link rel="icon" href="/favicon.ico" sizes="16x16">
+    <!-- Vendored accessibility scanner: the browser gate runs it in-page, no external CDN. -->
+    <script src="/dashboard/vendor/axe.min.js" defer></script>
     <link rel="stylesheet" href="/dashboard/styles.css">
     <!-- Everything is served locally: no external CDN is required for the dashboard to work. -->
 </head>
@@ -22,6 +24,15 @@
         </a>
         <a href="#schemas" class="rail-link" data-target="schemas" aria-label="Schema registry">
             <i data-lucide="code-2" aria-hidden="true"></i>
+        </a>
+        <a href="#incidents" class="rail-link" data-target="incidents" aria-label="Incidents">
+            <i data-lucide="siren"></i>
+        </a>
+        <a href="#metrics" class="rail-link" data-target="metrics" aria-label="Metric windows">
+            <i data-lucide="bar-chart-3"></i>
+        </a>
+        <a href="#deadletters" class="rail-link" data-target="deadletters" aria-label="Dead letters">
+            <i data-lucide="mail-warning"></i>
         </a>
         <a href="#demos" class="rail-link" data-target="demos" aria-label="Demo scenarios">
             <i data-lucide="play-circle" aria-hidden="true"></i>
@@ -93,6 +104,26 @@
                     <div id="recentEvents" class="timeline"></div>
                 </article>
             </div>
+            <div class="subpanel coverage-panel">
+                <div class="subpanel-head">
+                    <h3>Evaluation coverage</h3>
+                    <span class="muted" id="coverageWindow">last 24h</span>
+                </div>
+                <p class="muted coverage-note">
+                    An <strong>OK</strong> status only means no rule fired. It does not mean the event
+                    was evaluated: backfilled history and out-of-window arrivals are recorded
+                    exclusions, and events whose baseline was not yet active skip the
+                    baseline-dependent checks.
+                </p>
+                <table class="data-table coverage-table">
+                    <thead>
+                        <tr><th>Outcome</th><th>Events</th><th>Share</th></tr>
+                    </thead>
+                    <tbody id="coverageRows">
+                        <tr><td colspan="3" class="muted">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </section>
 
         <section id="alerts" class="panel">
@@ -146,6 +177,67 @@
                 <span class="muted">Grouped by event type</span>
             </div>
             <div id="schemasTable" class="table-shell"></div>
+        </section>
+
+        <section id="incidents" class="panel">
+            <div class="section-head">
+                <div>
+                    <p class="section-kicker">Incidents</p>
+                    <h2>Correlated incidents</h2>
+                </div>
+                <span class="muted">Alerts grouped by source and event type</span>
+            </div>
+            <div class="table-shell">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>ID</th><th>Title</th><th>Source</th><th>Status</th><th>Created</th><th>Action</th></tr>
+                    </thead>
+                    <tbody id="incidentRows">
+                        <tr><td colspan="6" class="muted">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="metrics" class="panel">
+            <div class="section-head">
+                <div>
+                    <p class="section-kicker">Metrics</p>
+                    <h2>Metric windows</h2>
+                </div>
+                <span class="muted">Per source, event type and one-minute window</span>
+            </div>
+            <div class="table-shell">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>Source</th><th>Event type</th><th>Metric</th><th>Window start</th><th>Value</th></tr>
+                    </thead>
+                    <tbody id="metricRows">
+                        <tr><td colspan="5" class="muted">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="deadletters" class="panel">
+            <div class="section-head">
+                <div>
+                    <p class="section-kicker">Recovery</p>
+                    <h2>Dead letters</h2>
+                </div>
+                <span class="muted">Durable failures with a replay action</span>
+            </div>
+            <div class="table-shell">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>Diagnostic</th><th>Stage</th><th>Source</th><th>Attempts</th><th>State</th><th>Detail</th></tr>
+                    </thead>
+                    <tbody id="deadLetterRows">
+                        <tr><td colspan="6" class="muted">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="deadLetterDetail" class="subpanel dead-letter-detail" hidden></div>
         </section>
 
         <section id="demos" class="panel">

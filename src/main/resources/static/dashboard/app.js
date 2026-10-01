@@ -167,7 +167,152 @@ async function refreshDashboard() {
     loadSourceHealth(),
     loadSchemas(),
     loadRecentEvents(),
+    loadCoverage(),
+    loadIncidents(),
+    loadMetricWindows(),
+    loadDeadLetters(),
   ]);
+}
+
+async function loadIncidents() {
+  const rows = await fetchJson(`${API}/incidents`);
+  const body = document.getElementById("incidentRows");
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="6" class="muted">No incidents</td></tr>';
+    return;
+  }
+  body.innerHTML = rows
+    .map((incident) => `<tr>
+        <td>${incident.id}</td>
+        <td>${escapeHtml(incident.title || "")}</td>
+        <td>${escapeHtml(incident.source || "")}</td>
+        <td><span class="status-chip">${escapeHtml(incident.status || "")}</span></td>
+        <td>${formatDate(incident.created_at)}</td>
+        <td>${incident.status === "RESOLVED"
+          ? '<span class="muted">resolved</span>'
+          : `<button class="ghost-button" data-resolve-incident="${incident.id}">Resolve</button>`}</td>
+      </tr>`)
+    .join("");
+  body.querySelectorAll("[data-resolve-incident]").forEach((button) => {
+    button.addEventListener("click", () => resolveIncident(button));
+  });
+}
+
+// Loading, disabled repeat submission and explicit success/failure feedback (guide 7.5).
+async function resolveIncident(button) {
+  const id = button.getAttribute("data-resolve-incident");
+  button.disabled = true;
+  button.textContent = "Resolving…";
+  try {
+    await postJson(`${API}/incidents/${id}/resolve`, { rootCause: "resolved from dashboard" });
+    button.textContent = "Resolved";
+    await loadIncidents();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Retry resolve";
+    showActionError(`Resolve failed: ${error.message}`);
+  }
+}
+
+async function loadMetricWindows() {
+  const rows = await fetchJson(`${API}/metrics/windows?size=20`);
+  const body = document.getElementById("metricRows");
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="5" class="muted">No metric windows yet</td></tr>';
+    return;
+  }
+  body.innerHTML = rows
+    .map((row) => `<tr>
+        <td>${escapeHtml(row.source)}</td>
+        <td>${escapeHtml(row.event_type)}</td>
+        <td>${escapeHtml(row.metric_name)}</td>
+        <td>${formatDate(row.window_start)}</td>
+        <td>${row.metric_value}</td>
+      </tr>`)
+    .join("");
+}
+
+async function loadDeadLetters() {
+  const rows = await fetchJson(`${API}/dead-letters?size=20`);
+  const body = document.getElementById("deadLetterRows");
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="6" class="muted">No dead letters</td></tr>';
+    return;
+  }
+  body.innerHTML = rows
+    .map((row) => `<tr>
+        <td class="code-chip">${escapeHtml(row.diagnostic_id || "")}</td>
+        <td>${escapeHtml(row.stage || "")}</td>
+        <td>${escapeHtml(row.source || "")}</td>
+        <td>${row.attempts}</td>
+        <td><span class="status-chip">${escapeHtml(row.status || "")}</span></td>
+        <td><button class="ghost-button" data-dead-letter="${row.id}">Detail</button></td>
+      </tr>`)
+    .join("");
+  body.querySelectorAll("[data-dead-letter]").forEach((button) => {
+    button.addEventListener("click", () => showDeadLetter(button.getAttribute("data-dead-letter")));
+  });
+}
+
+async function showDeadLetter(id) {
+  const detail = await fetchJson(`${API}/dead-letters/${id}`);
+  const panel = document.getElementById("deadLetterDetail");
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="subpanel-head">
+      <h3>${escapeHtml(detail.diagnostic_id || `Dead letter ${id}`)}</h3>
+      <button class="ghost-button" id="replayDeadLetter">Replay</button>
+    </div>
+    <p class="muted">${escapeHtml(detail.reason || "")}</p>
+    <p><span class="code-chip">${escapeHtml(detail.kafka_topic || "")}</span>
+       partition ${detail.kafka_partition ?? "-"} offset ${detail.kafka_offset ?? "-"}</p>
+    <details><summary>Payload and recovery history</summary>
+      <pre>${escapeHtml(JSON.stringify({ payload: detail.payload, replays: detail.replays }, null, 2))}</pre>
+    </details>`;
+  document.getElementById("replayDeadLetter").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "Replaying…";
+    try {
+      await postJson(`${API}/dead-letters/${id}/replay`, {});
+      button.textContent = "Replayed";
+      await loadDeadLetters();
+      await showDeadLetter(id);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Retry replay";
+      showActionError(`Replay failed: ${error.message}`);
+    }
+  });
+}
+
+function showActionError(message) {
+  const panel = document.getElementById("deadLetterDetail");
+  panel.hidden = false;
+  panel.innerHTML = `<p class="action-error">${escapeHtml(message)}</p>`;
+}
+
+// Evaluation coverage (guide 5.3): an OK status must not be read as "the window evaluated this".
+async function loadCoverage() {
+  const body = await fetchJson(`${API}/events/coverage?hours=24`);
+  const total = body.total || 0;
+  const rows = [
+    ["Included in a window", body.included, true],
+    ["Expired (past grace)", body.excluded.expired, false],
+    ["Future (beyond tolerance)", body.excluded.future, false],
+    ["Skipped by mode (bootstrap/replay)", body.excluded.skipped_mode, false],
+    ["No window evaluation recorded", body.excluded.no_window_evaluation, false],
+    ["Baseline active", body.baseline.applied, true],
+    ["Baseline missing (checks skipped)", body.baseline.pending, false],
+  ];
+  document.getElementById("coverageWindow").textContent = `last ${body.window_hours}h`;
+  document.getElementById("coverageRows").innerHTML = rows
+    .map(([label, value, good]) => {
+      const share = total ? `${((value / total) * 100).toFixed(1)}%` : "–";
+      return `<tr class="${good ? "" : "coverage-excluded"}"><td>${escapeHtml(label)}</td>`
+        + `<td>${value}</td><td>${share}</td></tr>`;
+    })
+    .join("");
 }
 
 async function loadSummary() {
@@ -441,6 +586,18 @@ async function fetchJson(url) {
     throw new Error(`Request failed for ${url}: ${response.status}`);
   }
   return response.json();
+}
+
+/** POST with the CSRF header; throws on a non-2xx so the caller can offer a retry. */
+async function postJson(url, body) {
+  const response = await mutate(url, {
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed for ${url}: ${response.status}`);
+  }
+  return response.status === 204 ? null : response.json();
 }
 
 // Browser mutations must carry the CSRF token from the readable XSRF-TOKEN cookie.

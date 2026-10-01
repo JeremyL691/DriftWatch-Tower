@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/JeremyL691/DriftWatch-Tower#readme",
   "devDependencies": {
+    "axe-core": "4.13.0",
     "lucide": "^0.469.0",
     "playwright-core": "^1.55.0",
     "sockjs-client": "^1.6.1",
