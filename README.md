@@ -150,6 +150,11 @@ and the resumable 24-hour runner (`acceptance.py`).
   `open_gaps` on `GET /api/v1/sources/collectors`.
 - Without a GitHub token the collector is limited to 60 requests/hour, which is why the default
   poll interval is five minutes.
+- `STALE_SOURCE` alerts on the GitHub source are expected and do not mean the collector is broken:
+  the freshness threshold is five minutes while the public API publishes in bursts that can lag by
+  minutes to hours, so a quiet window moves the source healthy → STALE and raises one `WARN` per
+  transition. Polling keeps succeeding throughout; a late release tunes the threshold for delayed
+  polled sources.
 - Retention deletes raw payloads after 30 days; the deduplication identity is kept longer than
   the payload so replays remain correct, but old payload contents are not recoverable.
 - Browser support is verified on Chromium at 320/768/1024/1440 px in dark and light themes.
