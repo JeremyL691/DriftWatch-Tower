@@ -452,6 +452,8 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 6. **`release.yml` 允许发布未经比对镜像**：tag push 触发时 `content_identity` 为空，旧代码只 `::warning::` 然后继续推送——正是该断言存在的意义所在。现在直接 `::error::` 拒绝并给出恢复动作（改用 dispatch 并带上冻结身份）；发布仍走 dispatch。同时把镜像 tag 的文档写准（实际是 `sha-<candidate_sha 前 12 位>`）。
 7. **证据包不在 checksums 覆盖内**：`upload-release-assets.sh` 从 artifacts 目录之外上传证据包，而 `checksums.txt` 只覆盖 artifacts 目录，与 RELEASE_NOTES「checksums 覆盖每个附件」的说法不符。现在证据包在重建 checksums **之前**先被搬进 artifacts 目录，且上传前逐个断言「每个附件都能在 checksums.txt 里找到」（checksums.txt 自身除外）。用已验收的 package 制品彩排：14 个文件被 checksum 覆盖、证据包在内、所有断言通过，只在预期的 `release not found` 处停下。
 
+8. **发布包不是被验收的那份字节**：`upload-release-assets.sh` 上传前会**重新 tar** bundle，于是发布出去的 tar 与 `package-check.sh`(G15) 验证过的 tar 不是同一串字节（内容相同、mtime 不同），与「上传已验收制品」不符。现在改为断言打包产出的 bundle 存在并原样上传（checksums 仍会重建，因为写入 digest 会改写 `release-manifest.json`）。彩排：上传前后 bundle 的 sha256 完全相同、13 个文件被 checksum 覆盖、证据包在内，只在预期的 `release not found` 停下。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
