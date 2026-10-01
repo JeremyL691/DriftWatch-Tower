@@ -477,6 +477,16 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 
 重启后的判据（不新增 BOOTSTRAP 轮、`etag_applied` 保留、LIVE 轮询继续、inbox/outbox 连续），届时用同一条 SQL 对比即可，不靠叙述。
 
+### 2026-10-01 P6.2 等待期：凭证封闭性核验（本地文件之外零泄漏）
+
+指南与目标都要求「凭证仅放安全本地文件/Actions，不写 Git、状态文件、日志、提示词或公开附件」。做了一次机器核验，而不是只靠约定：
+
+- 从 `.execution/` 下全部 `*.env` 中提取出 **18 个不同的真实密钥值**（POSTGRES/ADMIN/INGEST 三类，值只在内存里比对、不打印）。
+- 对 `git ls-files` 的全部受控文件逐个取 `HEAD` 版本内容做子串匹配：**0 个受控文件包含任何真实密钥值**。
+- 对 `git log --all -p`（全部可达提交的完整补丁）做同样匹配：**历史中也不存在**任何真实密钥值。
+- `.gitignore` 第 35 行以注释「Local execution evidence and secrets (never commit)」忽略整个 `.execution/`，实测 `git check-ignore` 生效，且 `git ls-files` 下 `.execution` 受控文件数为 0——因此即使将来有人执行 `git add -A`，证据与 env 文件也进不了提交。
+- 唯一匹配到 "credential" 字样的受控路径是 `ProductionCredentialsValidator.java` 与其测试，属源码而非密钥。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
