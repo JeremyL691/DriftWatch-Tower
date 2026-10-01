@@ -13,9 +13,7 @@ import com.driftwatch.quality.LateEventDetector;
 import com.driftwatch.quality.QualityDetector;
 import com.driftwatch.quality.RuleVersions;
 import com.driftwatch.quality.ScopeKey;
-import com.driftwatch.quality.SchemaDriftDetector;
 import com.driftwatch.quality.Severity;
-import com.driftwatch.quality.schema.SchemaBaselineProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.kafka.common.serialization.Serde;
@@ -23,6 +21,7 @@ import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.kstream.Named;
 import org.apache.kafka.streams.kstream.Produced;
 import org.apache.kafka.streams.processor.api.Processor;
@@ -63,6 +62,7 @@ public class QualityStreamsTopology {
     static final String ANOMALY_SCOPE_STORE = "anomaly-scope-store";
     static final String SCOPE_WATERMARK_STORE = "scope-watermark-store";
     static final String ENVELOPE_DIGEST_STORE = "envelope-digest-store";
+    static final String SCHEMA_BASELINE_STORE = "schema-baseline-store";
     static final String DUPLICATE_EVENT_ID_STORE = "duplicate-event-id-store";
     static final String DUPLICATE_PAYLOAD_STORE = "duplicate-payload-store";
 
@@ -71,8 +71,6 @@ public class QualityStreamsTopology {
     private final LateEventDetector lateEventDetector;
     private final FieldRangeDetector fieldRangeDetector;
     private final FieldFormatDetector fieldFormatDetector;
-    private final SchemaDriftDetector schemaDriftDetector;
-    private final SchemaBaselineProvider baselineProvider;
     private final ObjectMapper objectMapper;
     private final TopologySettings settings;
 
@@ -81,8 +79,6 @@ public class QualityStreamsTopology {
                                   LateEventDetector lateEventDetector,
                                   FieldRangeDetector fieldRangeDetector,
                                   FieldFormatDetector fieldFormatDetector,
-                                  SchemaDriftDetector schemaDriftDetector,
-                                  SchemaBaselineProvider baselineProvider,
                                   ObjectMapper objectMapper,
                                   TopologySettings settings) {
         this.serdes = serdes;
@@ -90,8 +86,6 @@ public class QualityStreamsTopology {
         this.lateEventDetector = lateEventDetector;
         this.fieldRangeDetector = fieldRangeDetector;
         this.fieldFormatDetector = fieldFormatDetector;
-        this.schemaDriftDetector = schemaDriftDetector;
-        this.baselineProvider = baselineProvider;
         this.objectMapper = objectMapper;
         this.settings = settings;
     }
@@ -109,6 +103,10 @@ public class QualityStreamsTopology {
      */
     KStream<String, ProcessedEvent> buildPipeline(StreamsBuilder builder, KStream<String, RawEnvelope> envelopes) {
         long duplicateWindowMs = settings.duplicatePayloadWindow().toMillis();
+        // Active baselines arrive from the compacted topic; the topology never queries JPA.
+        builder.globalTable(KafkaTopics.SCHEMA_BASELINES,
+                Consumed.with(Serdes.String(), serdes.baselineMessageSerde()),
+                Materialized.as(SCHEMA_BASELINE_STORE));
         builder.addStateStore(windowStore(DUPLICATE_EVENT_ID_STORE, duplicateWindowMs, Serdes.Long()));
         builder.addStateStore(windowStore(DUPLICATE_PAYLOAD_STORE, duplicateWindowMs, Serdes.String()));
         builder.addStateStore(jsonStore(NULL_WINDOW_STORE, NullWindowState.class));
@@ -126,9 +124,7 @@ public class QualityStreamsTopology {
                         Named.as("stateless"))
                 .process(() -> new DuplicateProcessor(objectMapper, duplicateWindowMs),
                         Named.as("duplicate"), DUPLICATE_EVENT_ID_STORE, DUPLICATE_PAYLOAD_STORE)
-                .process(() -> new DetectorProcessor(List.of(schemaDriftDetector)),
-                        Named.as("schema"))
-                .process(() -> new NullSpikeProcessor(objectMapper, baselineProvider, settings),
+                .process(() -> new NullSpikeProcessor(objectMapper, settings),
                         Named.as("null-spike"), NULL_WINDOW_STORE, SCOPE_WATERMARK_STORE)
                 .process(() -> new AnomalySpikeProcessor(objectMapper, settings),
                         Named.as("anomaly"), ANOMALY_WINDOW_STORE, ANOMALY_SCOPE_STORE, SCOPE_WATERMARK_STORE)

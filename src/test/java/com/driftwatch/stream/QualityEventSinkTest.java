@@ -28,6 +28,8 @@ class QualityEventSinkTest {
         RawEventRepository rawEventRepository = mock(RawEventRepository.class);
         QualityAlertRepository alertRepository = mock(QualityAlertRepository.class);
         SourceHealthService sourceHealthService = mock(SourceHealthService.class);
+        com.driftwatch.quality.schema.SchemaObservationService schemaObservationService =
+                mock(com.driftwatch.quality.schema.SchemaObservationService.class);
         MetricWindowProjector metricWindowProjector = mock(MetricWindowProjector.class);
         DashboardWebSocketHandler webSocket = mock(DashboardWebSocketHandler.class);
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
@@ -64,10 +66,18 @@ class QualityEventSinkTest {
         staleAlert.setCreatedAt(receivedAt);
         when(sourceHealthService.refreshAllAndPersist(receivedAt)).thenReturn(List.of(staleAlert));
 
+        when(schemaObservationService.observe(org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new com.driftwatch.quality.schema.SchemaObservationService.Observation(
+                        null, null, java.util.Map.of(), "hash", false,
+                        new com.driftwatch.quality.schema.SchemaInferrer.SchemaDiff(java.util.Set.of(), java.util.Set.of(), java.util.Map.of()),
+                        false));
+
         QualityEventSink sink = new QualityEventSink(
                 rawEventRepository,
                 alertRepository,
                 sourceHealthService,
+                schemaObservationService,
                 metricWindowProjector,
                 webSocket,
                 new ObjectMapper(),

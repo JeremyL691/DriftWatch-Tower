@@ -10,6 +10,8 @@ public class KafkaTopics {
 
     public static final String RAW_EVENTS = "raw-events";
     public static final String QUALITY_EVENTS = "quality-events";
+    /** Compacted topic carrying the active schema baseline per event type. */
+    public static final String SCHEMA_BASELINES = "schema-baselines-v1";
 
     @Bean
     NewTopic rawEvents() {
@@ -19,5 +21,12 @@ public class KafkaTopics {
     @Bean
     NewTopic qualityEvents() {
         return TopicBuilder.name(QUALITY_EVENTS).partitions(3).replicas(1).build();
+    }
+
+    @Bean
+    NewTopic schemaBaselines() {
+        return TopicBuilder.name(SCHEMA_BASELINES).partitions(3).replicas(1)
+                .config("cleanup.policy", "compact")
+                .build();
     }
 }
