@@ -11,32 +11,42 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/dashboard/api")
 public class DashboardDataController {
 
+    private final com.driftwatch.config.WsTicketService wsTicketService;
     private final RawEventRepository rawEventRepository;
     private final QualityAlertRepository alertRepository;
     private final SourceHealthRepository sourceHealthRepository;
     private final SourceHealthService sourceHealthService;
 
-    public DashboardDataController(RawEventRepository rawEventRepository,
+    public DashboardDataController(com.driftwatch.config.WsTicketService wsTicketService,
+                                   RawEventRepository rawEventRepository,
                                    QualityAlertRepository alertRepository,
                                    SourceHealthRepository sourceHealthRepository,
                                    SourceHealthService sourceHealthService) {
+        this.wsTicketService = wsTicketService;
         this.rawEventRepository = rawEventRepository;
         this.alertRepository = alertRepository;
         this.sourceHealthRepository = sourceHealthRepository;
         this.sourceHealthService = sourceHealthService;
     }
 
-    // TODO: this refresh-on-read pattern works fine for a demo but would be a performance problem
-    //   in production — should be moved to a scheduled task or event-driven refresh
+    // Health is refreshed by the scheduler; a dashboard read stays side-effect free (guide 7.2).
+    /** Short-lived ticket for the dashboard WebSocket handshake (admin only). */
+    @GetMapping("/ws-ticket")
+    public Map<String, Object> wsTicket(java.security.Principal principal) {
+        String username = principal == null ? "dashboard" : principal.getName();
+        return Map.of("ticket", wsTicketService.issue(username),
+                "expires_in_seconds", com.driftwatch.config.WsTicketService.TTL.getSeconds());
+    }
+
     @GetMapping("/summary")
     public DashboardSummary summary() {
         Instant now = Instant.now();
-        sourceHealthService.refreshAllAndPersist(now);
         long totalEvents = rawEventRepository.count();
         long activeSources = rawEventRepository.findDistinctSources().size();
         long alertsLast24h = alertRepository.countByCreatedAtAfter(now.minus(Duration.ofHours(24)));

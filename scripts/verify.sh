@@ -36,6 +36,7 @@ RATE=""
 DURATION=""
 RUN_ID=""
 PHASE_NAME=""
+BASE=""
 
 usage() {
   sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
@@ -51,10 +52,11 @@ while [ $# -gt 0 ]; do
     --rate)      RATE="$2"; shift 2 ;;
     --duration)  DURATION="$2"; shift 2 ;;
     --run-id)    RUN_ID="$2"; shift 2 ;;
+    --base)      BASE="$2"; shift 2 ;;
     --keep)      KEEP=1; shift ;;
     --no-build)  NO_BUILD=1; shift ;;
     --help|-h)   usage ;;
-    P1|P2|P3|P4|P5|P5b|P6|P7) PHASE_NAME="$1"; shift ;;
+    P1|P2|P3|P4|P5|P5b|P5c|P6|P7) PHASE_NAME="$1"; shift ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -353,7 +355,7 @@ cmd_phase() {
     finish_gate "PHASE-${PHASE_NAME}" NOT_IMPLEMENTED "$started" 2 >/dev/null
     die "no phase check script for ${PHASE_NAME} yet ($check_script); it is added by that phase's implementation"
   fi
-  "$check_script" --project "$PROJECT" --env-file "$ENV_FILE" --out "$OUT_DIR"
+  "$check_script" --project "$PROJECT" --env-file "$ENV_FILE" --out "$OUT_DIR" ${BASE:+--base "$BASE"}
   local exit_code=$?
   [ "$exit_code" -eq 0 ] && finish_gate "PHASE-${PHASE_NAME}" PASSED "$started" 0 >/dev/null \
                           || finish_gate "PHASE-${PHASE_NAME}" FAILED "$started" "$exit_code" >/dev/null

@@ -75,8 +75,11 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/events", "/api/v1/events/batch")
                         .hasAnyAuthority("ROLE_ADMIN", "INGEST")
+                        // The socket path is guarded by the ticket handshake interceptor instead:
+                        // browsers cannot attach Basic credentials to a WebSocket handshake.
+                        .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/api/**", "/actuator/**", "/api-docs/**", "/swagger-ui/**",
-                                "/swagger-ui.html", "/", "/dashboard/**", "/ws/**")
+                                "/swagger-ui.html", "/", "/dashboard/**")
                         .hasAuthority("ROLE_ADMIN")
                         .anyRequest().denyAll())
                 .httpBasic(Customizer.withDefaults())
