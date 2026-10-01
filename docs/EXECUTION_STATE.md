@@ -103,7 +103,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 
 | 字段 | 值 |
 |---|---|
-| run_id / run_dir | 20261001T103023Z-soak24 / `.execution/soak/20261001T103023Z-soak24/`（作废：20261001T083508Z-soak24、20261001T093502Z-resume、20261001T093737Z-soak24） |
+| run_id / run_dir | 20261001T103023Z-soak24 / `.execution/soak/20261001T103023Z-soak24/`（作废的候选 run：20261001T083508Z-soak24、20261001T093502Z-resume、20261001T093737Z-soak24；`.execution/soak/p13-*` 与 20261001T03* 是 P1.3 runner 测试夹具，非验收 run，其中 p13-resume2 的 state 仍写 RUNNING 是当时故意 kill runner 的测试遗留，`ps` 已确认当前只有 1 个 acceptance.py runner 进程） |
 | compose_project / volume 所有权 | dwt-soak（自有卷 dwt-soak_pgdata、dwt-soak_kafkadata、dwt-soak_streams-state） |
 | env_file 路径 | `.execution/soak.env`（0600，仅路径，不含 secret 内容） |
 | candidate_sha / image_id / config_hash | 75e6a10（应用面）/ sha256:1f915abc95127ae1… / 7457349d… |
