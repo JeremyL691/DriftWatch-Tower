@@ -110,6 +110,16 @@ class ConfigurationValidationTest {
     }
 
     @Test
+    void invalidFieldFormatRegexFailsAndNamesTheKey() {
+        runner.withPropertyValues("driftwatch.detector.field-format.patterns=code=^SKU-[0-9{6}$")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasStackTraceContaining("driftwatch.detector.field-format.patterns");
+                });
+    }
+
+    @Test
     void staleSourceThresholdOrderingFailsAndNamesTheKey() {
         runner.withPropertyValues("driftwatch.source-health.rss-stale-after=PT1M").run(context -> {
             assertThat(context).hasFailed();

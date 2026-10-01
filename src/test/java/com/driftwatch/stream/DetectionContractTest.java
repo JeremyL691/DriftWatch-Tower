@@ -8,6 +8,7 @@ import com.driftwatch.quality.AlertType;
 import com.driftwatch.quality.FieldFormatDetector;
 import com.driftwatch.quality.FieldRangeDetector;
 import com.driftwatch.quality.LateEventDetector;
+import com.driftwatch.quality.RuleVersions;
 import com.driftwatch.quality.ScopeKey;
 import com.driftwatch.quality.SchemaDriftDetector;
 import com.driftwatch.quality.schema.SchemaBaselineProvider;
@@ -257,7 +258,8 @@ class DetectionContractTest {
     @Test
     void nextWindowCanFireAgainAfterARelapse() {
         try (Driver driver = driver(eventType -> Map.of())) {
-            Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+            // Anchored in the past so the later burst does not approach the future tolerance.
+            Instant windowStart = Instant.now().minus(Duration.ofMinutes(20)).truncatedTo(ChronoUnit.MINUTES);
             driver.pipe(new DataEvent("w0-base", SOURCE, ANOMALY_TYPE, windowStart.minusSeconds(120), Map.of("bid", 1.0)));
             driver.pipe(new DataEvent("w1-base", SOURCE, ANOMALY_TYPE, windowStart.minusSeconds(60), Map.of("bid", 2.0)));
             for (int i = 0; i < 8; i++) {
@@ -418,6 +420,51 @@ class DetectionContractTest {
     }
 
     @Test
+    void qualityStatusFollowsTheDocumentedPrecedence() {
+        try (Driver driver = driver(eventType -> Map.of())) {
+            Instant ts = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+            DataEvent clean = new DataEvent("status-ok", SOURCE, ANOMALY_TYPE, ts, Map.of("bid", 1.0));
+            driver.pipe(clean);
+            assertThat(driver.output().get(0).value.qualityStatus()).isEqualTo("OK");
+
+            // Late arrival: flagged LATE.
+            driver.pipe(new DataEvent("status-late", SOURCE, ANOMALY_TYPE,
+                    ts.minusSeconds(600), Map.of("bid", 2.0)));
+            assertThat(driver.output().get(1).value.qualityStatus()).isEqualTo("LATE");
+
+            // Repeated event id: DUPLICATE outranks LATE when both apply.
+            driver.pipe(new DataEvent("status-late", SOURCE, ANOMALY_TYPE,
+                    ts.minusSeconds(600), Map.of("bid", 2.0)));
+            ProcessedEvent both = driver.output().get(2).value;
+            assertThat(both.alerts()).extracting(ProcessedEvent.ProcessedAlert::type)
+                    .contains(AlertType.DUPLICATE_EVENT, AlertType.LATE_EVENT);
+            assertThat(both.qualityStatus()).isEqualTo("DUPLICATE");
+        }
+    }
+
+    @Test
+    void excludedEventsCarryCoverageEvidenceInsteadOfLookingSuccessful() {
+        try (Driver driver = driver(eventType -> Map.of())) {
+            Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+            driver.pipe(new DataEvent("cover-0", SOURCE, ANOMALY_TYPE, windowStart, Map.of("bid", 1.0)));
+            driver.pipe(new DataEvent("cover-old", SOURCE, ANOMALY_TYPE,
+                    windowStart.minusSeconds(3600), Map.of("bid", 2.0)));
+
+            List<KeyValue<String, ProcessedEvent>> results = driver.output();
+            assertThat(results.get(0).value.windowEvaluation().outcome())
+                    .isEqualTo(WindowEvaluation.Outcome.INCLUDED);
+            ProcessedEvent excluded = results.get(1).value;
+            assertThat(excluded.windowEvaluation().outcome())
+                    .isEqualTo(WindowEvaluation.Outcome.EXPIRED);
+            assertThat(excluded.windowEvaluation().scope()).contains(SOURCE).contains(ANOMALY_TYPE);
+            // Exclusion is a window decision, not a quality verdict: the event is also late.
+            assertThat(excluded.qualityStatus()).isEqualTo("LATE");
+            assertThat(excluded.alerts()).extracting(ProcessedEvent.ProcessedAlert::type)
+                    .containsExactly(AlertType.LATE_EVENT);
+        }
+    }
+
+    @Test
     void scopeKeyEncodingCannotCollideThroughSeparators() {
         assertThat(ScopeKey.of("a|b", "c")).isNotEqualTo(ScopeKey.of("a", "b|c"));
         assertThat(ScopeKey.of("a", "b")).isEqualTo("[\"a\",\"b\"]");
@@ -502,8 +549,12 @@ class DetectionContractTest {
             input.pipeInput(key, envelope, envelope.event().eventTimestamp().toEpochMilli());
         }
 
+        private final List<KeyValue<String, ProcessedEvent>> collected = new java.util.ArrayList<>();
+
+        /** Drains new records and returns everything seen so far in this test. */
         List<KeyValue<String, ProcessedEvent>> output() {
-            return output.readKeyValuesToList();
+            collected.addAll(output.readKeyValuesToList());
+            return List.copyOf(collected);
         }
 
         @Override

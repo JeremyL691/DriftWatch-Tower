@@ -3,6 +3,7 @@ package com.driftwatch.stream;
 import com.driftwatch.event.DataEvent;
 import com.driftwatch.event.RawEnvelope;
 import com.driftwatch.quality.AlertType;
+import com.driftwatch.quality.RuleVersions;
 
 import java.time.Instant;
 import java.util.ArrayList;

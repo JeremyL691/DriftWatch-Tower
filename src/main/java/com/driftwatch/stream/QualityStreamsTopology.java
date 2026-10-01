@@ -11,6 +11,7 @@ import com.driftwatch.quality.FieldFormatDetector;
 import com.driftwatch.quality.FieldRangeDetector;
 import com.driftwatch.quality.LateEventDetector;
 import com.driftwatch.quality.QualityDetector;
+import com.driftwatch.quality.RuleVersions;
 import com.driftwatch.quality.ScopeKey;
 import com.driftwatch.quality.SchemaDriftDetector;
 import com.driftwatch.quality.Severity;
