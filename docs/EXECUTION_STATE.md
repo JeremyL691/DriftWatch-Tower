@@ -651,6 +651,24 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 - 暴露面：demo 端点位于 `/api/**`，按既有安全规则**只对 `ROLE_ADMIN` 开放**，匿名不可调用。
 - 唯一缺口是**文档**：端点此前无任何说明，自托管者看到 `demo-api` 行会不明所以。已在 `docs/RUNBOOK.md` 的日常检查一节补上「合成检测演示」——列出 8 个场景、说明其 `source` 前缀、明确「GitHub 源的数据绝不合成」「验收证据只统计 origin=GITHUB」，并提示归档前过滤。属文档改动（非冻结面）。
 
+### 2026-10-01 P6.2 等待期：CI 第四种失败模式——320px 布局零余量（字体度量敏感，真实但边缘）
+
+统计最近 40 次 CI：35 成功 / 4 失败 / 1 进行中。四个失败已全部定因：`e6f59125`＝上游 Maven Central 502；`bec724bc` 与 `9ebc4b81`＝`DeadLetterIntegrationTest` 测试隔离竞态（分别落在 migration job 与 integration job）；`d5d4c917`＝**本条**，浏览器 job 的 `320-light` 水平溢出。
+
+证据（两侧对比，都是实测）：
+
+| 环境 | 320px 测量 | 结论 |
+|---|---|---|
+| 已验收 macOS 抓取（`.execution/verify/p61-browser10/after-report.json`，8 个视口） | 每个视口 `scrollWidth == clientWidth`（320/320、768/768、1024/1024、1440/1440，两主题） | **零余量**，恰好贴合 |
+| CI（Linux，`d5d4c917`） | `320-light: scrollWidth 331 vs clientWidth 320`（body 亦 331），同次 320-dark 无问题 | 溢出 11px |
+
+零余量 + 换到 Linux 回退字体就溢出 11px，是最典型的**字体度量敏感**特征（同一份 CSS，macOS 系统字体下恰好容纳，Linux 回退字体略宽即越界）；且它**不是确定的**——同 job 在其它 head（如 `ef55dc18`）为成功，说明与页面具体内容（表格里的 id/时间/计数长度）相关，属于临界翻转。同次抓取里 a11y 8/8 无违规、consoleErrors 0，仅此一项。
+
+影响与处置：
+- 真实但边缘的用户可见问题：Linux 桌面/窄窗口在 320px 用浅色主题时可能出现约 11px 横向滚动；macOS（验收环境）没有。发布说明中的「四宽度两主题已验证」对验收环境成立，但对 Linux 字体栈不保证，需如实写进已知限制。
+- 修复需改 `src/main/resources/static/dashboard/styles.css`（冻结面内），会作废窗口与门禁，本轮不改。跟进项：让窄布局对字体度量稳健（长标识/数字允许断行，如对表格单元格加 `overflow-wrap: anywhere`，或收窄 320 断点的内边距），并把零余量本身当成一个可改进点。
+- **不得**为了让这个检查变绿而放宽 `check-dashboard.py` 的溢出判据（属指南禁止的「改阈值绕过用例」）。合并前的应对：若失败项**仅**是这条 320-light 溢出测量，重跑该 job 一次并如实记录测量值与「已知临界布局问题」；若重跑仍失败，则记录为已知缺陷并在状态与回复中报告，不以任何方式绕过必需检查。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。

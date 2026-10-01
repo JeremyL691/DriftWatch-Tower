@@ -163,7 +163,9 @@ and the resumable 24-hour runner (`acceptance.py`).
   polled sources.
 - Retention deletes raw payloads after 30 days; the deduplication identity is kept longer than
   the payload so replays remain correct, but old payload contents are not recoverable.
-- Browser support is verified on Chromium at 320/768/1024/1440 px in dark and light themes.
+- Browser support is verified on Chromium at 320/768/1024/1440 px in dark and light themes, on
+  macOS. The 320 px layout fits there with no margin, so Chromium on Linux with fallback fonts can
+  overflow by about 11 px in the light theme; a follow-up release makes that layout font-robust.
 
 ## License
 
