@@ -1,0 +1,114 @@
+name: Release
+
+# Publishes the accepted candidate to GHCR and cuts the GitHub Release.
+#
+# Default permissions stay read-only; only this job may write, and only for a tag or an explicit
+# dispatch. The job rebuilds from the same locked inputs as the accepted candidate and asserts the
+# application content identity recorded in the freeze manifest before anything is pushed, so a
+# published image cannot silently contain different bytes than the one that was verified.
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag to publish (for example v1.0.0)
+        required: true
+      candidate_sha:
+        description: Commit that passed the acceptance gates
+        required: true
+      content_identity:
+        description: content_identity.jar_content_hash from the freeze manifest
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: jeremyl691/driftwatch-tower
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.candidate_sha || github.sha }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Resolve the version being published
+        id: version
+        run: |
+          version="${{ github.event.inputs.version || github.ref_name }}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "candidate=${{ github.event.inputs.candidate_sha || github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the candidate image from the locked inputs
+        run: docker build --tag candidate:local .
+
+      - name: Assert the application content identity
+        env:
+          EXPECTED: ${{ github.event.inputs.content_identity }}
+        run: |
+          if [ -z "$EXPECTED" ]; then
+            echo "::warning::no content identity supplied; a tag push cannot re-verify the accepted candidate"
+            exit 0
+          fi
+          container=$(docker create candidate:local)
+          docker cp "$container:/app/app.jar" /tmp/app.jar
+          docker rm -f "$container" >/dev/null
+          actual=$(python3 - <<'PY'
+          import hashlib, zipfile
+          digest = hashlib.sha256()
+          with zipfile.ZipFile('/tmp/app.jar') as archive:
+              for info in sorted(archive.infolist(), key=lambda entry: entry.filename):
+                  digest.update(f"{info.filename}\0{info.file_size}\0{info.CRC}\n".encode())
+          print(digest.hexdigest())
+          PY
+          )
+          echo "expected $EXPECTED"
+          echo "actual   $actual"
+          [ "$actual" = "$EXPECTED" ] || { echo "::error::rebuilt image does not match the accepted candidate"; exit 1; }
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Tag and push
+        id: push
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          sha="${{ steps.version.outputs.candidate }}"
+          docker tag candidate:local "$REGISTRY/$IMAGE_NAME:$version"
+          docker tag candidate:local "$REGISTRY/$IMAGE_NAME:sha-${sha:0:12}"
+          docker push "$REGISTRY/$IMAGE_NAME:$version"
+          docker push "$REGISTRY/$IMAGE_NAME:sha-${sha:0:12}"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY/$IMAGE_NAME:$version" | cut -d@ -f2)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          sha="${{ steps.version.outputs.candidate }}"
+          if gh release view "$version" >/dev/null 2>&1; then
+            echo "release $version already exists; leaving it untouched"
+            exit 0
+          fi
+          gh release create "$version" \
+            --title "DriftWatch Tower $version" \
+            --notes "Candidate commit: $sha
+          Image: $REGISTRY/$IMAGE_NAME@${{ steps.push.outputs.digest }}
+
+          Acceptance evidence and the release manifest are attached as assets." \
+            --target "$sha"
