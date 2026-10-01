@@ -8,23 +8,24 @@
 |---|---|
 | document_revision | 1.0 |
 | handoff_date | 2026-09-30，America/Los_Angeles |
-| product_goal_status | RUNNING，P0 与 P1.1 完成，P1.2 进行中 |
-| current_phase | P1 |
-| current_task | P1.2 |
-| next_action | 集中 @ConfigurationProperties、凭据/访问保护（Spring Security 基础）、生产与测试 profile |
+| product_goal_status | RUNNING，P0 与 P1 完成，P2 进行中 |
+| current_phase | P2 |
+| current_task | P2.1 |
+| next_action | 实现 scope/规范 key、独立窗口与 watermark、fired 状态，使 G01 三个红色用例在 G03 转绿 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
-| remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验，即为 execution_base_sha |
+| remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（本地；尚未推送） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha / source_tree_hash | 未冻结；开发分支推进中（P0.2/P1.1 已提交） |
-| candidate_image_id / public_digest | 未冻结；P1.1 本地镜像 sha256:1d84b418…（仅本地验证） |
+| candidate_sha | dfd79c29d5228b294c93543130ba83208c786245（分支最新；P2 起为新候选基） |
+| source_tree_hash | 8c8797ad9fe505c8e12d0f797264e4cb15de7fc5c00ffddce25c61cdd023570c（src+pom+Dockerfile+compose） |
+| candidate_image_id / public_digest | 本地镜像 sha256:1a419f6a…（仅本地验证，未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | 无；24 小时验收尚未启动 |
+| active_soak_run | 无；P1.3 已验证 runner 行为（150s 短run PASSED），正式 24 小时待在 P6.2 启动 |
 | external_blocker | 无 |
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
@@ -52,8 +53,8 @@
 | P0.2 | 基线与红色回归 | PASSED | 60/0/0/0 真实容器；G01 三例 EXPECTED_FAILURE 已绑定 SHA |
 | P1.1 | 可重复部署、固定依赖 | PASSED | G02 通过；apache/kafka:3.9.2、postgres:16.15、摘要锁定、SCA 应用镜像 0 High/Critical |
 | P1.2 | 配置和认证基础 | PASSED | 86/0/0/0；live 19/19；弱/缺生产凭证 fail-fast；见 `.execution/runs/p12/` |
-| P1.3 | 验证脚本及后台 runner | RUNNING | 指南命令目前待实现 |
-| P2.1 | scope / 窗口 / 漏报修复 | NOT_STARTED | - |
+| P1.3 | 验证脚本及后台 runner | PASSED | preflight/unit/sca/compose 入口全部 PASSED；selfhost init/up/status/down/backup/restore 实测；soak runner 采样/checkpoint/连续性/恢复实测 |
+| P2.1 | scope / 窗口 / 漏报修复 | RUNNING | - |
 | P2.2 | 规则与配置覆盖 | NOT_STARTED | - |
 | P2.3 | schema 事务及基线反馈 | NOT_STARTED | - |
 | P3.1 | 摄取确认、envelope、幂等 | NOT_STARTED | - |
@@ -168,6 +169,22 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 - 验证：单元+容器套件 86 tests / 0 fail / 0 err / 0 skip（需 Docker，`-Ddwt.requireDocker=true`）；live 环境 19/19 检查通过（401/403、health 详情隔离、ingest 只能摄取、CSRF 流程、坏 JSON 400、事件落库）；弱/缺口令 fail-fast 各以独立容器复现。证据 `.execution/runs/p12/`（summary.md、junit-summary.json、live-check-output.txt）与 `.execution/runs/p12-live/`。
 - 顺带修复：logback 只覆盖 prod/dev/default 导致 selfhost 无日志；坏 JSON 返回 500 改为 400；dashboard JS 增加 CSRF 头。
 - 经验记录：测试套件与验收 compose 栈不可同时运行（vCPU/内存竞争会导致 readiness 与落库超时）；验收脚本必须串行（P1.3）。
+
+### 2026-10-01 P1.3 自动执行入口（PASSED）
+
+脚本位于 `scripts/`（verify.sh、selfhost.sh、acceptance.py、lib/common.sh）。命令与指南 §9.1 同名同参数；退出码 0 通过 / 1 验证失败 / 2 外部前提缺失或未实现；每个命令在 `--out` 写入 `gate.json`（含 id/status/command/时间/exit_code/git_sha/证据路径）。
+
+实测（当前 SHA dfd79c2，source_tree_hash 8c8797ad…）：
+
+- `verify.sh preflight` → PASSED，gate.json 记录 JDK21（脚本自动选择 21）、Docker 29.5.3、Compose v5.1.4、Python 3.14.7、11 CPU/19.3GiB、磁盘、端口（18080 空闲；8080/5432/9092 被用户进程占用时只提示不抢占）、gh 认证。
+- `verify.sh unit` → PASSED，86 tests / 0 fail / 0 err / 0 skip（`-Ddwt.requireDocker=true`，Docker 不可用直接 exit 2）。
+- `verify.sh sca` → PASSED，Trivy 0.58.1（DB UpdatedAt 2026-10-01T01:24:14Z），依赖+镜像 0 HIGH/CRITICAL。
+- `verify.sh compose --project dwt-p13b` → PASSED，全新项目启动，容器 start→ready 11s（限 120s），raw/quality 各 3 分区，pg/kafka 无宿主端口，摄取 smoke 202 且落库。
+- `verify.sh phase P2/P3/P4/P5`、`load`、`release` 在对应阶段实现前返回 exit 2 且 gate.json 为 NOT_IMPLEMENTED（不预标 PASS）。
+- `selfhost.sh init` 生成随机凭证（0600）；`up/status/down` 实测；`down` 默认保留卷、`--volumes` 才删除；`backup` 生成 pg_dump custom 格式（23KB）；`restore --target-db driftwatch_restore` 恢复后 raw_events=1、flyway 迁移=7。
+- 资源隔离修复：compose 卷/网络改为按项目名作用域（`<project>_pgdata` 等），验收项目不再可能读写或删除自托管安装的数据卷。
+- `acceptance.py`：soak-start 异步（PID + 进程启动时间 + 锁文件），150s 验证 run 采样 5 点、连续性 max gap 32.2s（限 120s）、结果 PASSED 并写入镜像身份；重复 soak-start 返回既有状态且不启动第二个 runner；kill 掉 runner 后 `soak-resume` 将旧 run 标记 FAILED、给出原因并以原时长启动新 run（exit 1）。
+- 脚本只操作自己的 compose 项目；用户容器（cpamp-*）与 8080/5432/9092 未被占用或清理。凭证只在 `.execution/*.env`（0600）与容器运行时，脚本与 gate.json 不含 secret。
 
 后续每条保留：
 
