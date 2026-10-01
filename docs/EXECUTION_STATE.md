@@ -552,6 +552,14 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 
 对发布的含义与恢复动作（不改源码）：`release.yml` 的 `Build the candidate image` 会执行同一条 `./mvnw -DskipTests dependency:go-offline`，因此**也可能**撞上同样的瞬时 502。此时**不得**改 `Dockerfile` 绕开——它在冻结应用面内（`source_tree_hash` 覆盖 `Dockerfile`），改动会作废 24 小时窗口与全部门禁。正确恢复是**重新 dispatch**（`gh workflow run release.yml ...`）：已推送的 tag/镜像可重入，未推送则重跑即可；若连续失败再记录确切错误与时间窗。
 
+### 2026-10-01 P6.2 等待期：针对同一次 502 的发布路径加固（工作流可改，冻结面不可改）
+
+既然已观察到 `dependency:go-offline` 会因上游 5xx 失败，就顺手把这个失效模式在**允许改动的范围内**消掉：`.github/workflows/` 不在冻结应用面内（`source_tree_hash` 只覆盖 `src`、`pom.xml`、`Dockerfile`、两个 compose 文件与 `.mvn`），所以改工作流不会作废 24 小时窗口、也不改变镜像字节（发布仍由 content-identity 断言把关）。
+
+- `release.yml` 的 `Build the candidate image from the locked inputs`：改为最多 3 次尝试、每次退避 20/40s。理由：构建是确定性的、Docker 会复用已完成的层，重试只重做失败那一步；真正的构建错误在 3 次后仍会失败，而「镜像是否可发布」仍由紧随其后的 content-identity 断言决定。
+- `ci.yml` 的 `Build application image`：同样处理，避免 PR 验证被同一瞬时故障染红（`e6f59125` 就是这么红的）。
+- 复验：两个工作流 YAML 可解析、抽取出的 run 脚本 `bash -n` 通过；`git status` 仅显示这两个工作流文件被修改，`src`/`pom.xml`/`Dockerfile`/compose/`.mvn` 无任何改动。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
