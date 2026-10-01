@@ -13,7 +13,7 @@ public-events API. Java 21, Spring Boot, Kafka Streams, PostgreSQL.
 | Config hash | recorded in `release-manifest.json` (`config_hash`) |
 | Application content identity | `e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a` (`content_identity.jar_content_hash`) |
 | Image | `ghcr.io/jeremyl691/driftwatch-tower@<digest>` — the digest is recorded in the release body and in `release-manifest.json` (`image.published_digest`) |
-| Image tags | `v1.0.0` and `sha-<candidate_sha>` (the candidate SHA passed to the release workflow: the merged `main` commit that carries the frozen application surface) |
+| Image tags | `v1.0.0` and `sha-<first 12 hex of the candidate SHA>` |
 | SBOM | `driftwatch-tower-v1.0.0.cdx.json` (CycloneDX) |
 | Checksums | `checksums.txt` over every attached asset |
 | Deployment bundle | `driftwatch-tower-v1.0.0-bundle.tar.gz` (compose, `.env.example`, self-host tooling, runbook, guide) |
