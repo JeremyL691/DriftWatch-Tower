@@ -8,10 +8,10 @@ public-events API. Java 21, Spring Boot, Kafka Streams, PostgreSQL.
 | Item | Value |
 |---|---|
 | Release tag | `v1.0.0` |
-| Candidate commit | `8a798a6e7396f2a267cc26e1519bf987c7f13ff3` (application surface; frozen and gated) |
+| Candidate commit | `573154b9b7db0cb78a6db1ad10bd09c8df12fe57` (application surface; frozen and gated) |
 | Source tree hash | recorded in `release-manifest.json` (`source_tree_hash`) |
 | Config hash | recorded in `release-manifest.json` (`config_hash`) |
-| Application content identity | `e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a` (`content_identity.jar_content_hash`) |
+| Application content identity | `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d` (`content_identity.jar_content_hash`) |
 | Image | `ghcr.io/jeremyl691/driftwatch-tower@<digest>` — the digest is recorded in the release body and in `release-manifest.json` (`image.published_digest`) |
 | Image tags | `v1.0.0` and `sha-<first 12 hex of the candidate SHA>` |
 | SBOM | `driftwatch-tower-v1.0.0.cdx.json` (CycloneDX) |
@@ -19,10 +19,9 @@ public-events API. Java 21, Spring Boot, Kafka Streams, PostgreSQL.
 | Deployment bundle | `driftwatch-tower-v1.0.0-bundle.tar.gz` (compose, `.env.example`, self-host tooling, runbook, guide) |
 | Acceptance evidence | `driftwatch-tower-<run>-evidence.tar.gz` (gate results, load and soak reports, browser captures, scan summaries; credentials redacted) |
 
-The published image is not rebuilt from different inputs: the release pipeline rebuilds from the
+Publication is pending. The release pipeline uses the accepted locked inputs: the release pipeline rebuilds from the
 same locked inputs and refuses to push unless the application content identity inside the image
-matches the frozen candidate (`content_identity.jar_content_hash`). That hash is reproducible —
-two independent builds of this commit were verified byte-identical.
+matches the frozen candidate (`content_identity.jar_content_hash`). That content hash excludes archive timestamps. Local arm64 and published architecture/digest mappings will be recorded separately in the manifest.
 
 ## What it does
 
@@ -39,15 +38,15 @@ transaction; failures retry four times and then go to a durable dead-letter topi
 
 | Gate | Result |
 |---|---|
-| Unit + container suite | 171 tests, 0 failures, 0 errors, 0 skipped, against real Kafka and PostgreSQL containers |
+| Unit + container suite | 174 tests, 0 failures, 0 errors, 0 skipped, against real Kafka and PostgreSQL containers |
 | Detection contract | Guide 5.4 matrix, including the two previously missed-alert cases, plus mode, window and identity boundaries |
-| Load (100 events/s for 30 minutes) | 180,000/180,000 offers at 100.0/s, 0 failures, acknowledgement p95 5.5 ms (limit 1 s; p99 10.9 ms), commit p95 112 ms (limit 5 s), ledger 180,100 accepted = processed = raw, 0 dead letters, consumer lag back to 0 in 29.3 s |
+| Load (100 events/s for 30 minutes) | 180,000/180,000 offers at 100.0/s, 0 failures, acknowledgement p95 4.9 ms (limit 1 s), commit p95 112 ms (limit 5 s), ledger 180,100 accepted = processed = raw, 0 dead letters, consumer lag back to 0 in 30.1 s |
 | Browser | 8/8 captures at 320/768/1024/1440 px in dark and light, no console errors, no horizontal overflow, visible focus, live socket connected |
 | Security | Trivy 0.58.1, database 2026-10-01: no HIGH/CRITICAL in the dependency tree or the runtime image, no secret in the image or the tracked tree |
-| Continuous 24-hour run | run `20261001T145553Z-soak24` on the frozen image; the numbers land in the evidence pack (`soak/20261001T145553Z-soak24/soak-report.json`): duration and monitor continuity, real GitHub events (distinct, bootstrap, live), the three controlled faults with outage and recovery times, the ingestion ledger, lag, and the memory curve |
+| Continuous 24-hour run | RUNNING, `20261001T182403Z-soak24`; G16 has not passed. Final report pending full real window. |
+| Public installation | G17 NOT_STARTED; release remains pending until public assets and digest pass independent verification. |
 
-Performance conditions: single node, 11 CPU / 18 GiB RAM / 45 GiB free disk at freeze time
-(43 GiB when these notes were written) on macOS arm64, Docker Desktop, images pinned by digest,
+Performance conditions: single node, 11 CPU / 19.327 GB RAM / 41 GiB free disk at freeze time on macOS arm64, Docker Desktop, images pinned by digest,
 one Kafka broker and one PostgreSQL instance in the same compose project. The load figures are
 measurements on that machine, not a capacity promise.
 

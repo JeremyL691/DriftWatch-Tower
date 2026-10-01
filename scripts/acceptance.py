@@ -496,11 +496,19 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
     result = read_json(os.path.join(directory, "result.json"), {})
     continuity = continuity_report(directory)
     samples = read_samples(directory)
-    faults = [json.loads(line) for line in
-              (open(os.path.join(directory, "faults.jsonl")).read().splitlines()
-               if os.path.exists(os.path.join(directory, "faults.jsonl")) else []) if line.strip()]
+    fault_path = os.path.join(directory, "faults.jsonl")
+    faults = []
+    if os.path.exists(fault_path):
+        with open(fault_path) as handle:
+            faults = [json.loads(line) for line in handle if line.strip()]
     project, env_file = state.get("project", ""), state.get("env_file", "")
     problems: list[str] = []
+
+    if state.get("status") != "PASSED" or result.get("status") != "PASSED":
+        problems.append("runner has not completed successfully")
+    expected_image = (state.get("image") or {}).get("image_id")
+    if not expected_image or identify_image(project).get("image_id") != expected_image:
+        problems.append("running image differs from the observed candidate")
 
     # 1. duration and monitor continuity
     measured = float(result.get("measured_seconds") or 0)
@@ -546,12 +554,17 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
 
     # 3. controlled faults
     planned_faults = state.get("planned_faults") or []
+    required_actions = {"app-restart", "kafka-stop", "db-stop"}
+    if len(planned_faults) != 3 or {f.get("action") for f in planned_faults} != required_actions:
+        problems.append("fault plan does not contain exactly the three required faults")
+    if len(faults) != 3 or {f.get("action") for f in faults} != required_actions:
+        problems.append("required faults are missing, duplicated or unexpected")
     if len(faults) < len(planned_faults):
         problems.append(f"{len(faults)} of {len(planned_faults)} planned faults executed")
     for fault in faults:
         if fault.get("status") != "completed":
             problems.append(f"fault {fault.get('action')} ended {fault.get('status')}")
-        if (fault.get("outage_seconds") or 0) > 60:
+        if not isinstance(fault.get("outage_seconds"), (int, float)) or not (0 <= fault["outage_seconds"] <= 60):
             problems.append(f"fault {fault.get('action')} outage {fault.get('outage_seconds')}s > 60s")
         if fault.get("readiness_recovery_seconds") is None \
                 or fault["readiness_recovery_seconds"] > 300:
@@ -571,12 +584,22 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
           'accepted_without_processed', (
              select count(*) from ingestion_receipts r where r.publish_state='CONFIRMED'
                and not exists (select 1 from processed_receipts p where p.ingestion_id = r.ingestion_id)),
+          'source_without_processed', (select count(*) from source_inbox i
+             where not exists (select 1 from processed_receipts p where p.ingestion_id=i.ingestion_id)),
+          'raw_without_processed', (select count(*) from raw_events r
+             where not exists (select 1 from processed_receipts p where p.ingestion_id=r.ingestion_id)),
           'processed_without_raw', (
              select count(*) from processed_receipts p
                where not exists (select 1 from raw_events e where e.ingestion_id = p.ingestion_id)),
           'alerts', (select count(*) from quality_alerts),
           'open_alerts', (select count(*) from quality_alerts where resolved_at is null)
         )""") or {}
+    required_ledger = {"accepted", "unconfirmed", "processed", "raw", "dlt_open", "pending_outbox", "accepted_without_processed", "processed_without_raw", "source_without_processed", "raw_without_processed"}
+    if not required_ledger.issubset(ledger) or any(not isinstance(ledger.get(k), int) for k in required_ledger):
+        problems.append("persistence ledger is missing or invalid; cannot infer zero")
+    for key in ("source_without_processed", "raw_without_processed"):
+        if ledger.get(key):
+            problems.append(f"{key}: {ledger[key]}")
     if ledger.get("accepted_without_processed"):
         problems.append(f"{ledger['accepted_without_processed']} accepted ingestions never processed")
     if ledger.get("processed_without_raw"):
@@ -593,6 +616,19 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
     if lag != 0:
         problems.append(f"consumer lag {lag} is not zero")
 
+    # A later report must cite a real zero-backlog observation within ten minutes of completion.
+    drain_path = os.path.join(directory, "drain-confirmation.json")
+    finished = result.get("finished_utc")
+    checked_at = utc_now()
+    zero_fields = ("unconfirmed", "dlt_open", "pending_outbox", "accepted_without_processed", "processed_without_raw", "source_without_processed", "raw_without_processed")
+    complete_zero = required_ledger.issubset(ledger) and all(ledger.get(k) == 0 for k in zero_fields) and lag == 0
+    if finished and 0 <= parse_epoch(checked_at) - parse_epoch(finished) <= 600 and complete_zero:
+        atomic_write_json(drain_path, {"run_id": args.run_id, "observed_at": checked_at,
+            "finished_utc": finished, "image_id": expected_image, "ledger": ledger, "lag_total": lag})
+    drain = read_json(drain_path, {})
+    if not finished or drain.get("run_id") != args.run_id or drain.get("image_id") != expected_image or drain.get("finished_utc") != finished or not drain.get("observed_at") or not (0 <= parse_epoch(drain["observed_at"]) - parse_epoch(finished) <= 600) or drain.get("lag_total") != 0 or any((drain.get("ledger") or {}).get(k) != 0 for k in zero_fields):
+        problems.append("no proven zero backlog/DLT/lag within ten minutes of window completion")
+
     # 5b. no unplanned container restart and no exhausted disk
     health = container_health(project, env_file)
     problems.extend(health.pop("problems", []))
@@ -608,7 +644,7 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
         epoch = parse_epoch(sample["utc"])
         if any(start <= epoch <= end for start, end in fault_windows):
             continue
-        if sample.get("readiness") != 200:
+        if sample.get("readiness") != 200 or sample.get("liveness") != 200 or sample.get("recent_probe") != 200:
             unhealthy.append(sample["utc"])
     if unhealthy:
         problems.append(f"readiness was not 200 in {len(unhealthy)} sample(s) of the last hour "
@@ -630,6 +666,8 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
     memory = [(sample["monotonic"], memory_mib(sample)) for sample in samples]
     memory = [(when, value) for when, value in memory if value is not None]
     resource = {"samples": len(memory)}
+    if not memory:
+        problems.append("no valid memory samples; resource bound cannot be verified")
     if memory:
         base_monotonic = memory[0][0]
         last_monotonic = memory[-1][0]
@@ -640,6 +678,8 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
         early = [value for when, value in memory if when - base_monotonic <= 7200]
         plateau = [value for when, value in memory if 3600 <= when - base_monotonic <= 7200]
         late = [value for when, value in memory if when >= last_monotonic - 3600]
+        if not plateau or not late:
+            problems.append("memory plateau or final-hour samples missing")
         early_mean = sum(early) / len(early) if early else None
         plateau_mean = sum(plateau) / len(plateau) if plateau else None
         late_mean = sum(late) / len(late) if late else None
@@ -682,6 +722,8 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
         "faults": faults,
         "ledger": ledger,
         "lag": {"total": lag, "detail": lag_detail},
+        "drain_confirmation": drain,
+        "reported_utc": checked_at,
         "containers": health,
         "resource": resource,
         "problems": problems,
@@ -731,14 +773,21 @@ def consumer_lag_total(project: str, env_file: str) -> tuple[int, list[str]]:
         if completed.returncode != 0:
             detail.append(f"{group}: {completed.stderr.strip()[:200]}")
             return -1, detail
+        rows = 0
         for line in completed.stdout.splitlines():
             parts = line.split()
-            if len(parts) >= 6 and parts[0] != "GROUP":
-                try:
+            if len(parts) >= 6 and parts[0] == group:
+                rows += 1
+                if parts[5].isdigit():
                     total += int(parts[5])
-                except ValueError:
-                    continue
+                elif parts[3:6] == ["-", "0", "-"]:
+                    # A consumer of an empty topic has no committed offset; log-end=0 proves zero.
+                    pass
+                else:
+                    return -1, detail + [f"{group}: unknown lag: {line.strip()}"]
                 detail.append(line.strip())
+        if rows == 0:
+            return -1, detail + [f"{group}: no partition lag evidence"]
     return total, detail
 
 
@@ -751,23 +800,29 @@ def container_health(project: str, env_file: str) -> dict:
         name = f"{project}-{service}-1"
         completed = subprocess.run(
             ["docker", "inspect", "--format",
-             "{{.RestartCount}}|{{.State.StartedAt}}|{{.State.Status}}", name],
+             "{{.RestartCount}}|{{.State.StartedAt}}|{{.State.Status}}|{{.State.OOMKilled}}", name],
             capture_output=True, text=True)
         if completed.returncode != 0:
             report["containers"][service] = {"error": completed.stderr.strip()[:120]}
+            report["problems"].append(f"cannot inspect {service}")
             continue
-        restarts, started, status = (completed.stdout.strip().split("|") + ["", ""])[:3]
+        restarts, started, status, oom = (completed.stdout.strip().split("|") + ["", "", "", ""])[:4]
         entry = {"restart_count": int(restarts or 0), "started_at": started, "status": status}
+        entry["oom_killed"] = oom == "true"
         report["containers"][service] = entry
+        if status != "running" or oom != "false":
+            report["problems"].append(f"{service} status={status}, OOMKilled={oom}")
         if entry["restart_count"] > 0:
             report["problems"].append(
                 f"{service} restarted {entry['restart_count']} time(s) outside the planned faults")
-    disk = subprocess.run(["df", "-g", REPO_ROOT], capture_output=True, text=True)
+    disk = subprocess.run(["df", "-Pk", REPO_ROOT], capture_output=True, text=True)
     if disk.returncode == 0 and disk.stdout.strip():
-        free_gib = disk.stdout.strip().splitlines()[-1].split()[3]
+        free_gib = int(disk.stdout.strip().splitlines()[-1].split()[3]) // (1024 * 1024)
         report["disk_free_gib"] = int(free_gib)
         if int(free_gib) < 5:
             report["problems"].append(f"only {free_gib}GiB free on the run volume")
+    else:
+        report["problems"].append("disk headroom could not be measured")
     return report
 
 
