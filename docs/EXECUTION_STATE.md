@@ -475,7 +475,7 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 - `source_poll_runs` 7 次（BOOTSTRAP 1 + LIVE 6）；真实事件 300 bootstrap + 8 LIVE；`source_inbox` 308 行；`source_outbox` PENDING 0；`source_gaps` 4；`collector_state` 1 行。
 - 检查点：`etag_applied` = `W/"6d5ee8fd…"`（与 candidate 相同）、`last_poll_success` = 15:27:00Z、`next_poll_at` = 15:32:15Z、`consecutive_failures` = 0。
 
-重启后的判据（不新增 BOOTSTRAP 轮、`etag_applied` 保留、LIVE 轮询继续、inbox/outbox 连续），届时用同一条 SQL 对比即可，不靠叙述。
+重启后的判据（不新增 BOOTSTRAP 轮、`etag_applied` 保留、LIVE 轮询继续、inbox/outbox 连续），届时用同一条 SQL 对比即可，不靠叙述。**对比命令已固化**：`scripts/poller-state.sh --project dwt-soak --env-file .execution/soak.env`（输出字段与本基线文件一致，已实测一致），重启前后各跑一次并 diff。注意 `etag_applied` 的**值**会随新事件正常变化（实测 6d5ee8fd… → 2bf590e0…），要判的是「仍存在且未被重置」，不是「值相同」。
 
 ### 2026-10-01 P6.2 等待期：凭证封闭性核验（本地文件之外零泄漏）
 
