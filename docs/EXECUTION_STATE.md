@@ -8,25 +8,25 @@
 |---|---|
 | document_revision | 1.0 |
 | handoff_date | 2026-09-30，America/Los_Angeles |
-| product_goal_status | RUNNING，P0-P6.1 完成（G00-G15 在候选 378d7cf 上全部 PASSED），P6.2 进行中 |
+| product_goal_status | RUNNING，P0-P6.1 完成（G00-G15 在候选 8a798a6e 上全部 PASSED），P6.2 进行中 |
 | current_phase | P6 |
 | current_task | P6.2 |
-| next_action | P6.2：等待 run 20261001T124728Z-soak24 结束（2026-10-02T12:47:28Z），然后按下方「收尾程序」执行 G16 判定与 P7 发布 |
+| next_action | P6.2：等待 run 20261001T134438Z-soak24 结束（2026-10-02T13:44:38Z），然后按下方「收尾程序」执行 G16 判定与 P7 发布 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（已推送到 origin；PR #1 已开） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 378d7cf（应用面；P6.1 冻结并全部门禁通过） |
+| candidate_sha | 8a798a6e（应用面；P6.1 冻结并全部门禁通过） |
 | source_tree_hash | f85b04310b5d9f3a…（完整值见 `.execution/runs/p61-freeze/manifest.json`；src+pom+Dockerfile+compose+.mvn，工具链单独记 tooling_tree_hash） |
 | config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
-| candidate_image_id / public_digest | 本地镜像 sha256:1f915abc95127ae12bfe75de97674f4a5ca924c065ed064afe00ed438e0f80ee（未发布；`content_identity.jar_content_hash` = 7340276fb267104260cc516283b634fe211cc36ef44088b01667af8d6e944d0e，已实测可由同源重建复现） |
+| candidate_image_id / public_digest | 本地镜像 sha256:aeb1c9f9ccd68ca352bd2a6cb93751203e3cbd9f78c14db15e175b87c178ce83（未发布；`content_identity.jar_content_hash` = e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a，已实测可由同源重建复现） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | 20261001T124728Z-soak24（RUNNING，PID 95382，dwt-soak，18087，86400s，2026-10-01T12:47:28Z 起，预计 2026-10-02T12:47:28Z 结束；`caffeinate -i -w 95382` 持有防休眠断言） |
+| active_soak_run | 20261001T134438Z-soak24（RUNNING，PID 18174，dwt-soak，18087，86400s，2026-10-01T13:44:38Z 起，预计 2026-10-02T13:44:38Z 结束；`caffeinate -i -w 18174` 持有防休眠断言） |
 | external_blocker | 无 |
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
@@ -113,19 +113,19 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 
 | 字段 | 值 |
 |---|---|
-| run_id / run_dir | 20261001T124728Z-soak24 / `.execution/soak/20261001T124728Z-soak24/`（作废的候选 run：20261001T083508Z-soak24、20261001T093502Z-resume、20261001T093737Z-soak24、20261001T103023Z-soak24、20261001T114957Z-soak24；`.execution/soak/p13-*` 与 20261001T03* 是 P1.3 runner 测试夹具，非验收 run，其中 p13-resume2 的 state 仍写 RUNNING 是当时故意 kill runner 的测试遗留，`ps` 已确认当前只有 1 个 acceptance.py runner 进程） |
+| run_id / run_dir | 20261001T134438Z-soak24 / `.execution/soak/20261001T134438Z-soak24/`（作废的候选 run：20261001T083508Z-soak24、20261001T093502Z-resume、20261001T093737Z-soak24、20261001T103023Z-soak24、20261001T114957Z-soak24、20261001T124728Z-soak24；`.execution/soak/p13-*` 与 20261001T03* 是 P1.3 runner 测试夹具，非验收 run，其中 p13-resume2 的 state 仍写 RUNNING 是当时故意 kill runner 的测试遗留，`ps` 已确认当前只有 1 个 acceptance.py runner 进程） |
 | compose_project / volume 所有权 | dwt-soak（自有卷 dwt-soak_pgdata、dwt-soak_kafkadata、dwt-soak_streams-state） |
 | env_file 路径 | `.execution/soak.env`（0600，仅路径，不含 secret 内容） |
-| candidate_sha / image_id / config_hash | 378d7cf（应用面）/ sha256:a8fa82cbcd3c9a9e…（完整值见 freeze manifest）/ 7457349d… |
-| started_at_utc / expected_end_at_utc | 2026-10-01T12:47:28Z / 2026-10-02T12:47:28Z |
-| runner_pid / process_start / lock | PID 95382（runner.pid 记录进程创建时间；`runner_alive` 校验命令行与创建时间；`caffeinate -i -w 95382` 绑定其生命周期防休眠） |
+| candidate_sha / image_id / config_hash | 8a798a6e（应用面）/ sha256:aeb1c9f9ccd68ca352b…（完整值见 freeze manifest）/ 7457349d… |
+| started_at_utc / expected_end_at_utc | 2026-10-01T13:44:38Z / 2026-10-02T13:44:38Z |
+| runner_pid / process_start / lock | PID 18174（runner.pid 记录进程创建时间；`runner_alive` 校验命令行与创建时间；`caffeinate -i -w 18174` 绑定其生命周期防休眠） |
 | last_heartbeat_utc / checkpoint | samples.jsonl 每 30s 一行；checkpoint.json 每 5 分钟原子写 |
 | live_unique_events / new_after_bootstrap | 待结束后由 `soak-report` 从 raw_events(origin=GITHUB) 统计 |
 | source_poll 状态 / outbox / DLT / lag | 待结束后统计（要求全部归零） |
 | planned_faults / completed_faults | 3 个计划（2h app-restart、8h kafka-stop、16h db-stop），已完成 0 |
 | monitor_gap / continuity_valid | 待判定（上限 120s） |
-| exact_resume_command | `./scripts/verify.sh soak-status --run-id 20261001T124728Z-soak24`；runner 失联时 `./scripts/verify.sh soak-resume --run-id 20261001T124728Z-soak24`（标记旧 run FAILED 并以全新 24 小时重启，沿用原 project/env-file/fault-plan；重启后记得重新 `caffeinate -i -w <新 PID>`） |
-| last_failure / required_external_action | 无；等待到 2026-10-02T12:47:28Z |
+| exact_resume_command | `./scripts/verify.sh soak-status --run-id 20261001T134438Z-soak24`；runner 失联时 `./scripts/verify.sh soak-resume --run-id 20261001T134438Z-soak24`（标记旧 run FAILED 并以全新 24 小时重启，沿用原 project/env-file/fault-plan；重启后记得重新 `caffeinate -i -w <新 PID>`） |
+| last_failure / required_external_action | 无；等待到 2026-10-02T13:44:38Z |
 
 恢复顺序：读状态 -> 核对 checkout/SHA -> 查原 runner 锁和进程身份 -> 验证采样连续性 -> 继续现有任务或保留失败记录并新建 run。不能看到 PID 就启动第二套。
 
@@ -387,6 +387,16 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 3. **Kafka 保留期依赖 broker 默认**（指南 7.1「默认Kafka保留7天」）。raw/quality/DLT 三个持久 topic 现在显式设置 `retention.ms=604800000`；运行中的栈已实测 `kafka-configs --describe` 返回 `retention.ms=604800000`。
 
 新候选 378d7cf 上重跑全部门禁：UNIT 169/0/0/0（`.execution/verify/p61-unit6/`）、G02（`p61-compose9/`）、G12（`p61-browser9/`，8/8、可访问性 0 serious/critical）、G13（`p61-g13g/`）、G14（`p61-load6/`，180000@100.0/s、ack p95 4.6ms、commit p95 112ms）、G15（`p61-package-final2/`，镜像身份一致）。第五个 24 小时 run 20261001T124728Z-soak24 于 2026-10-01T12:47:28Z 启动（PID 95382，镜像 sha256:a8fa82cb…，`caffeinate` 防休眠），启动后 299 条真实事件、1 条 LIVE 告警、0 incident。
+
+### 2026-10-01 P6.2 第六次启动（当前有效 run）：批次收据缺陷
+
+审计指南 4.2/4.3 时发现一个严重缺陷并用测试复现：收据主键是 (source, event_type, idempotency_key)，而批次里同一 source/event_type 往往有多条事件——旧实现为**每条**事件写一行收据，于是同批次内第二条同类型事件与第一条撞键，冲突校验比对的是**单条摘要**，整个批次直接返回 409。「一次批量提交多条同类型事件」这一最常见用法是坏的。
+
+修复：一行收据代表该 (source, event_type) 在本批中的全部条目，逐条状态存 `batch_items`（指南 4.3 的列语义）；冲突摘要改用**批次摘要**（指南 4.2「batch Idempotency-Key 对应固定顺序的整批」）；行级 publish_state 由条目汇总（全部确认才 CONFIRMED，有失败即 FAILED），逐条真相仍在 batch_items；重试只重发未确认条目并保留其原身份；批次同时受 100 条与 4 MiB 双重限制（此前只限制条数与单条 256 KiB）。新增测试 `aRetriedBatchResendsOnlyTheUnconfirmedItemsAndCompletes` 与 `aBatchOverTheTotalSizeLimitIsRejectedWithoutPublishing`。
+
+新候选 8a798a6e 上重跑全部门禁：UNIT 171/0/0/0（`.execution/verify/p61-unit7/`）、G02（`p61-compose10/`）、G12（`p61-browser10/`，0 问题）、G13（`p61-g13h/`）、G14（`p61-load7/`，180000@100.0/s、ack p95 5.5ms、commit p95 112ms）、G15（`p61-package-final3/`，镜像身份一致）。第六个 24 小时 run 20261001T134438Z-soak24 于 2026-10-01T13:44:38Z 启动（PID 18174，镜像 sha256:aeb1c9f9…，`caffeinate` 防休眠），启动后 299 条真实事件、1 条 LIVE 告警、0 incident。
+
+审计收敛：本轮已逐条核对指南 §4.1-4.6、§5.1-5.4、§6.1-6.3、§7.1-7.5（§4.4 与实现一致；§5.2 各检测器证据字段与实现一致）。除出现新的具体证据外，不再为新增行为要求重开 run，让本次运行走完 24 小时。
 
 后续每条保留：
 
