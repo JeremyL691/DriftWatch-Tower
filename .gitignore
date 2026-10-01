@@ -33,3 +33,7 @@ HELP.md
 
 # Local execution evidence and secrets (never commit)
 .execution/
+
+# Python bytecode from local script checks
+__pycache__/
+*.pyc
