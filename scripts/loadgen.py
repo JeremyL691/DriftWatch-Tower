@@ -198,12 +198,16 @@ def main() -> int:
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--workers", type=int, default=32)
     parser.add_argument("--source", default="load:generator")
-    parser.add_argument("--event-type", default="LoadProbeEvent")
+    parser.add_argument("--event-type", default="",
+                        help="single event type; the whole run then shares one scope and one partition")
+    parser.add_argument("--event-types", default="PaymentEvent,OrderEvent,InventoryEvent,UserEvent,ShipmentEvent,RefundEvent",
+                        help="realistic mix: independent scopes spread across the topic partitions")
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
     target_offers = args.rate * args.duration
     run_marker = "load-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    event_types = [args.event_type] if args.event_type else [t for t in args.event_types.split(",") if t]
     credentials = base64.b64encode(f"{args.user}:{args.password}".encode()).decode()
     client = Client(args.base, args.ingest_token)
     report: dict = {
@@ -214,7 +218,7 @@ def main() -> int:
         "target_duration_seconds": args.duration,
         "target_offers": target_offers,
         "source": args.source,
-        "event_type": args.event_type,
+        "event_types": event_types,
         "warmup_seconds": args.warmup,
         "workers": args.workers,
     }
@@ -239,7 +243,9 @@ def main() -> int:
         payload = {
             "event_id": event_id,
             "source": args.source,
-            "event_type": args.event_type,
+            # Rotating the event type rotates the scope key, so independent scopes land on
+            # different partitions instead of queueing behind one another.
+            "event_type": event_types[index % len(event_types)],
             "event_timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "payload": {
                 "sequence": index,
@@ -351,7 +357,7 @@ def main() -> int:
     previous = -1
     lag_total = -1
     lag_lines: list[str] = []
-    while time.perf_counter() - drain_started < 600:
+    while time.perf_counter() - drain_started < 1200:
         processed = int(psql(args.project, args.env_file, "select count(*) from processed_receipts") or 0)
         lag_total, lag_lines = consumer_lag(args.project, args.env_file, LAG_GROUPS)
         if processed == previous and lag_total <= 0:
@@ -364,6 +370,7 @@ def main() -> int:
         time.sleep(5)
     report["drain"] = {
         "seconds": round(time.perf_counter() - drain_started, 1),
+        "limit_seconds": 1200,
         "consumer_groups": LAG_GROUPS,
         "lag_total": lag_total,
         "lag_detail": lag_lines,
