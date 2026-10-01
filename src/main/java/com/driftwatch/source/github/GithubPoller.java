@@ -188,21 +188,28 @@ public class GithubPoller {
             return;
         }
 
-        List<JsonNode> records = new ArrayList<>(first.body() == null ? List.of() : toList(first.body()));
+        // Each record keeps the URL of the page it actually came from, so the persisted origin
+        // reference can name the exact request (guide 6.2) instead of guessing one page for all.
+        List<PagedRecord> paged = new ArrayList<>();
+        String firstUrl = config.eventsUrl(config.pageSize());
+        if (first.body() != null) {
+            toList(first.body()).forEach(node -> paged.add(new PagedRecord(node, firstUrl)));
+        }
         int pagesRead = 1;
         boolean truncated = false;
         while (pagesRead < config.maxPages()) {
-            List<JsonNode> page = recordsOfLastPage(records, config.pageSize(), pagesRead);
+            List<JsonNode> page = recordsOfLastPage(paged.stream().map(PagedRecord::node).toList(),
+                    config.pageSize(), pagesRead);
             if (page.size() < config.pageSize() || allKnown(source, page)) {
                 break;
             }
-            if (bootstrap && records.size() >= config.maxFirstReadRecords()) {
+            if (bootstrap && paged.size() >= config.maxFirstReadRecords()) {
                 truncated = true;
                 break;
             }
             pagesRead++;
-            GithubFetchResult next = client.fetchPage(
-                    config.eventsUrlForPage(pagesRead, config.pageSize()), null);
+            String pageUrl = config.eventsUrlForPage(pagesRead, config.pageSize());
+            GithubFetchResult next = client.fetchPage(pageUrl, null);
             if (next.status() != GithubFetchResult.Status.OK) {
                 // A failed later page keeps the records already read; the checkpoint is not applied.
                 recordGap(source, run.getId(), "PAGINATION_INCOMPLETE",
@@ -210,11 +217,12 @@ public class GithubPoller {
                 truncated = true;
                 break;
             }
-            records.addAll(toList(next.body()));
+            toList(next.body()).forEach(node -> paged.add(new PagedRecord(node, pageUrl)));
         }
-        records.sort(GithubEventConverter::compareForOrdering);
+        paged.sort((left, right) -> GithubEventConverter.compareForOrdering(left.node(), right.node()));
+        List<JsonNode> records = paged.stream().map(PagedRecord::node).toList();
 
-        StageResult staged = stage(source, run, records, first, config);
+        StageResult staged = stage(source, run, paged, first, config);
         if (truncated) {
             recordGap(source, run.getId(), "PAGINATION_TRUNCATED",
                     staged.oldestCreatedAt(), staged.newestCreatedAt(),
@@ -233,23 +241,27 @@ public class GithubPoller {
     private record StageResult(int newRecords, int seenRecords, Instant oldestCreatedAt,
                                Instant newestCreatedAt, Long runId) {}
 
+    /** One fetched record together with the page URL it came from. */
+    private record PagedRecord(JsonNode node, String url) {}
+
     /**
      * Stages one round in a single transaction: inbox rows, ingestion ids and outbox rows commit
      * together (guide 6.3 step 3). The transaction is explicit because the caller is in the same
      * bean, so an annotation on this method would be bypassed.
      */
-    StageResult stage(String source, SourcePollRunEntity run, List<JsonNode> records,
+    StageResult stage(String source, SourcePollRunEntity run, List<PagedRecord> records,
                       GithubFetchResult first, DriftwatchProperties.Source.Github config) {
         return transactionTemplate.execute(status -> stageInTransaction(source, run, records, first, config));
     }
 
-    private StageResult stageInTransaction(String source, SourcePollRunEntity run, List<JsonNode> records,
+    private StageResult stageInTransaction(String source, SourcePollRunEntity run, List<PagedRecord> records,
                                            GithubFetchResult first, DriftwatchProperties.Source.Github config) {
         Instant now = Instant.now();
         int newRecords = 0;
         Instant oldest = null;
         Instant newest = null;
-        for (JsonNode raw : records) {
+        for (PagedRecord entry : records) {
+            JsonNode raw = entry.node();
             GithubEventConverter.Converted converted = converter.convert(raw, config.repository());
             if (oldest == null || converted.createdAt().isBefore(oldest)) {
                 oldest = converted.createdAt();
@@ -268,7 +280,7 @@ public class GithubPoller {
             inbox.setIngestionId(UUID.randomUUID().toString());
             inbox.setMode(run.getMode());
             inbox.setOriginReference("github:" + config.repository() + "#" + converted.githubEventId()
-                    + "@" + run.getId());
+                    + "@" + run.getId() + "|" + entry.url());
             inbox.setPayload(converted.payload());
             inbox.setContentHash(converted.contentHash());
             inbox.setPollRunId(run.getId());

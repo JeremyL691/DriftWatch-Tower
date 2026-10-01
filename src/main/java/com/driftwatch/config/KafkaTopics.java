@@ -21,19 +21,28 @@ public class KafkaTopics {
     /** Compacted topic carrying the active schema baseline per event type. */
     public static final String SCHEMA_BASELINES = "schema-baselines-v1";
 
+    /** Seven days, stated on the topic so the contract does not depend on broker defaults. */
+    private static final String SEVEN_DAYS_MS = "604800000";
+
     @Bean
     NewTopic rawEvents() {
-        return TopicBuilder.name(RAW_EVENTS_V1).partitions(3).replicas(1).build();
+        return TopicBuilder.name(RAW_EVENTS_V1).partitions(3).replicas(1)
+                .config("retention.ms", SEVEN_DAYS_MS)
+                .build();
     }
 
     @Bean
     NewTopic qualityEvents() {
-        return TopicBuilder.name(QUALITY_EVENTS_V1).partitions(3).replicas(1).build();
+        return TopicBuilder.name(QUALITY_EVENTS_V1).partitions(3).replicas(1)
+                .config("retention.ms", SEVEN_DAYS_MS)
+                .build();
     }
 
     @Bean
     NewTopic deadLetterEvents() {
-        return TopicBuilder.name(DEAD_LETTER_EVENTS).partitions(3).replicas(1).build();
+        return TopicBuilder.name(DEAD_LETTER_EVENTS).partitions(3).replicas(1)
+                .config("retention.ms", SEVEN_DAYS_MS)
+                .build();
     }
 
     @Bean

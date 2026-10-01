@@ -104,16 +104,35 @@ for (const theme of themes) {
       .catch(() => {});
     await page.waitForTimeout(1200);
 
-    if (theme === 'light') {
-      // Use the dashboard's own switch when it exists; the CSS token set is what matters here.
-      const toggle = page.locator('[data-theme-toggle], #themeToggle, button:has-text("Light")').first();
-      if (await toggle.count() > 0) {
-        await toggle.click({ timeout: 3000 }).catch(() => {});
-        await page.waitForTimeout(300);
-      } else {
-        await page.emulateMedia({ colorScheme: 'light' });
-      }
+    // Select the theme explicitly rather than clicking the switch. One click is not equivalent:
+    // on a page whose system preference is already light, the switch flips it to dark, so a
+    // "light" capture would silently measure dark and pass. Setting the attribute is exactly what
+    // the dashboard's own stored preference does.
+    await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+    await page.waitForTimeout(300);
+    const appliedTheme = await page.evaluate(() => document.documentElement.dataset.theme);
+    if (appliedTheme !== theme) {
+      throw new Error(`theme ${theme} did not apply (page reports ${appliedTheme})`);
     }
+
+    // Automated accessibility scan (guide 7.5): axe runs in the page against the vendored copy,
+    // and the report carries the violations so the gate can fail on them.
+    const accessibility = await page.evaluate(async () => {
+      if (typeof window.axe === "undefined") return { ran: false };
+      const result = await window.axe.run(document, {
+        runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] },
+      });
+      return {
+        ran: true,
+        violations: result.violations.map((v) => ({
+          id: v.id,
+          impact: v.impact,
+          help: v.help,
+          nodes: v.nodes.length,
+        })),
+        passes: result.passes.length,
+      };
+    }).catch((error) => ({ ran: false, error: String(error) }));
 
     const file = join(outDir, `${label}-${viewport.name}-${theme}.png`);
     await page.screenshot({ path: file, fullPage: true });
@@ -156,7 +175,7 @@ for (const theme of themes) {
     report.pages.push({
       viewport: viewport.name, theme, file, status, wsStatus,
       horizontalOverflow: overflow.scrollWidth > overflow.clientWidth,
-      overflow, consoleErrors, failedResponses, keyboard,
+      overflow, consoleErrors, failedResponses, keyboard, accessibility,
     });
     await context.close();
   }

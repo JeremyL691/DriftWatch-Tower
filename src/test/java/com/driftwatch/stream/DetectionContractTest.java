@@ -469,6 +469,37 @@ class DetectionContractTest {
     }
 
     @Test
+    void aNewActiveBaselineVersionStartsFreshWindowsAndNamesItselfInTheEvidence() {
+        // Guide 5.3: after the active version changes, the new field set must build its own
+        // windows rather than adding its counts to the previous version's, and the emitted
+        // evidence must name the version that governed the check.
+        try (Driver driver = driver(Map.of(NULL_TYPE, ASK_NUMBER))) {
+            Instant windowStart = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+
+            // Two missing values under version 1: below the three-sample threshold, no alert.
+            driver.pipe(new DataEvent("ver1-a", SOURCE, NULL_TYPE, windowStart, Map.of("bid", 1.0)));
+            driver.pipe(new DataEvent("ver1-b", SOURCE, NULL_TYPE, windowStart.plusSeconds(1), Map.of("bid", 2.0)));
+            assertThat(alertsOf(driver.output(), AlertType.NULL_SPIKE)).isEmpty();
+
+            // Activate version 2 and send three missing values in the same window.
+            driver.activateBaseline(NULL_TYPE, 2L, ASK_NUMBER);
+            driver.pipe(new DataEvent("ver2-a", SOURCE, NULL_TYPE, windowStart.plusSeconds(2), Map.of("bid", 3.0)));
+            driver.pipe(new DataEvent("ver2-b", SOURCE, NULL_TYPE, windowStart.plusSeconds(3), Map.of("bid", 4.0)));
+            driver.pipe(new DataEvent("ver2-c", SOURCE, NULL_TYPE, windowStart.plusSeconds(4), Map.of("bid", 5.0)));
+
+            List<ProcessedEvent.ProcessedAlert> alerts = alertsOf(driver.output(), AlertType.NULL_SPIKE);
+            assertThat(alerts)
+                    .as("version 2 must reach three samples on its own; mixing with version 1 would "
+                            + "also fire, but with a wrong total, so the total is asserted too")
+                    .hasSize(1);
+            assertThat(alerts.get(0).evidence().get("total_count").asLong())
+                    .as("the new version's window must not inherit the previous version's counts")
+                    .isEqualTo(3);
+            assertThat(alerts.get(0).evidence().get("baseline_version").asText()).isEqualTo("2");
+        }
+    }
+
+    @Test
     void qualityStatusFollowsTheDocumentedPrecedence() {
         try (Driver driver = driver(Map.of())) {
             Instant ts = Instant.now().truncatedTo(ChronoUnit.MINUTES);
@@ -550,6 +581,7 @@ class DetectionContractTest {
         private final TopologyTestDriver driver;
         private final TestInputTopic<String, RawEnvelope> input;
         private final TestOutputTopic<String, ProcessedEvent> output;
+        private TestInputTopic<String, BaselineMessage> baselineInput;
 
         Driver(QualityStreamsTopology topology, Map<String, Map<String, String>> baselines) {
             StreamsBuilder builder = new StreamsBuilder();
@@ -567,7 +599,7 @@ class DetectionContractTest {
                     new StringSerializer(), envelopeSerde().serializer());
             this.output = driver.createOutputTopic(
                     KafkaTopics.QUALITY_EVENTS_V1, new StringDeserializer(), serdes.processedEventSerde().deserializer());
-            TestInputTopic<String, BaselineMessage> baselineInput = driver.createInputTopic(
+            this.baselineInput = driver.createInputTopic(
                     KafkaTopics.SCHEMA_BASELINES, new StringSerializer(), serdes.baselineMessageSerde().serializer());
             baselines.forEach((eventType, leaves) ->
                     baselineInput.pipeInput(eventType, new BaselineMessage(eventType, 1L, leaves)));
@@ -575,6 +607,10 @@ class DetectionContractTest {
 
         void pipe(DataEvent event) {
             pipeEnvelope(RawEnvelope.forRest(event, Instant.now()));
+        }
+
+        void activateBaseline(String eventType, Long versionId, Map<String, String> leaves) {
+            baselineInput.pipeInput(eventType, new BaselineMessage(eventType, versionId, leaves));
         }
 
         void pipeEnvelope(RawEnvelope envelope) {
