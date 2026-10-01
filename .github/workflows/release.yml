@@ -120,8 +120,17 @@ jobs:
           if DOCKER_CONFIG="$clean" docker pull "$REGISTRY/$IMAGE_NAME@$digest" > /tmp/anon-pull.txt 2>&1; then
             echo "anonymous pull by digest succeeded"
           else
-            echo "::error::anonymous pull by digest failed; the package is not public"
+            echo "::error::anonymous pull by digest failed: the package is not public, so the published image cannot be installed anonymously"
             cat /tmp/anon-pull.txt
+            cat <<'EOF'
+          Recovery (the image itself is already pushed; only visibility is missing):
+            1. GitHub UI: https://github.com/users/JeremyL691/packages/container/driftwatch-tower/settings
+               -> Danger Zone -> Change visibility -> Public.
+            2. Or with a token that has the write:packages scope:
+               gh api --method PATCH /user/packages/container/driftwatch-tower -f visibility=public
+            3. Then re-run the verification: ./scripts/verify.sh release --out .execution/verify/p7-release --version v1.0.0 --pr 1
+          The workflow token (packages: write) can push but may not be allowed to change visibility.
+          EOF
             exit 1
           fi
           rm -rf "$clean"

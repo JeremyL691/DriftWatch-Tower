@@ -456,6 +456,8 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 
 9. **匿名安装会落在空 project 名下**：`verify.sh release` 无条件把 `--project "$PROJECT"` 传给 `release-check.sh`，而 `PROJECT` 默认为空——这会**覆盖**脚本自己的 `dwt-release-check` 默认值，使 P7.3 的匿名安装（以及随后的 `down -v` 清理）跑在一个由目录名隐式推导的 project 上。现在 `verify.sh` 只在真正给了 `--project` 时才转发，且被调脚本忽略空值（两层防护）。实测：空值时转发参数为空、显式值时正常转发、被调脚本在收到空值时保留自己的默认。
 
+10. **GHCR 可见性是本轮唯一可能需要外部动作的环节（已预置恢复动作）**：本机 `gh` 凭据的作用域是 `gist, read:org, repo, workflow`，**没有 `read:packages`/`write:packages`**（实测：列出 packages 直接 403），所以本地无法查改 GHCR 包可见性；工作流的 `GITHUB_TOKEN` 有 `packages: write` 能推送，但能否改可见性不确定（release.yml 已尝试 `PATCH /user/packages/container/...`，失败只告警，真正的判据是随后的**匿名拉取**）。为把恢复成本降到最低，已让匿名拉取失败时在日志里直接给出恢复三步（GitHub UI 路径 `https://github.com/users/JeremyL691/packages/container/driftwatch-tower/settings` → Change visibility → Public；或用具 `write:packages` 的 token 执行 `gh api --method PATCH ... -f visibility=public`；然后重跑 `verify.sh release`），并且**不会**把失败的匿名拉取当作成功。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
