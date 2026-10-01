@@ -59,11 +59,15 @@ tar -czf "$ARTIFACTS/driftwatch-tower-${VERSION}-bundle.tar.gz" -C "$ARTIFACTS/b
 ( cd "$ARTIFACTS" && shasum -a 256 -c checksums.txt >/dev/null ) || fail "regenerated checksums do not verify"
 log "checksums regenerated over $(wc -l < "$ARTIFACTS/checksums.txt") artifacts"
 
+# The SBOM and bundle names are recorded in the manifest, so read them from there rather than
+# re-deriving them from the tag: a mismatch between the two would silently drop an asset.
+sbom="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["sbom"])' "$ARTIFACTS/release-manifest.json")"
+[ -n "$sbom" ] || die "release-manifest.json does not name an SBOM"
 assets=(
   "$ARTIFACTS/release-manifest.json"
   "$ARTIFACTS/checksums.txt"
   "$ARTIFACTS/driftwatch-tower-${VERSION}-bundle.tar.gz"
-  "$ARTIFACTS/driftwatch-tower-${VERSION}.cdx.json"
+  "$ARTIFACTS/$sbom"
 )
 [ -n "$EVIDENCE_DIR" ] && [ -d "$EVIDENCE_DIR" ] && {
   evidence="$(ls -1t "$EVIDENCE_DIR"/driftwatch-tower-*-evidence.tar.gz 2>/dev/null | head -1)"
