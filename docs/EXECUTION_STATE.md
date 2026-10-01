@@ -487,6 +487,16 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 - `.gitignore` 第 35 行以注释「Local execution evidence and secrets (never commit)」忽略整个 `.execution/`，实测 `git check-ignore` 生效，且 `git ls-files` 下 `.execution` 受控文件数为 0——因此即使将来有人执行 `git add -A`，证据与 env 文件也进不了提交。
 - 唯一匹配到 "credential" 字样的受控路径是 `ProductionCredentialsValidator.java` 与其测试，属源码而非密钥。
 
+### 2026-10-01 P6.2 等待期：G16 判定器的一个会「误杀」的判据（重要，已修）
+
+核对 runner 契约（30s 采样 / 5min checkpoint）时发现判定器第 1 组里有个会**误杀**的判据：
+
+- 旧代码：`if continuity.samples * SAMPLE_INTERVAL_SECONDS < planned * 0.95: problem`，即要求 24 小时至少 `0.95*86400/30 = 2736` 个采样点。
+- 但 runner 的实际节奏是「先探测（readiness/liveness/`docker stats`，约 2 秒）→ 再 `sleep 30`」，因此**有效周期 ≈ 32s**（本窗口实测：69 个样本、区间 31.0/32.0/33.0s，中位 32s）。24 小时会得到约 `86400/32.6 ≈ 2650` 个样本，`2650*30 = 79,500 < 82,080`——**一个完全连续的窗口会在第 24 小时被判为不通过**，代价是又一天。
+- 修正：判据改为验证「采样确实覆盖了整个窗口」——`span = last.monotonic - first.monotonic >= planned*0.99`，并要求样本数不少于 `planned / MAX_MONITOR_GAP_SECONDS`（即每 120 秒至少一个，24 小时为 720），空样本直接报错。连续性本身仍由既有的 `max_gap <= 120s` 保证。
+- 修正后用本窗口复验：输出恰好只有「未结束」应有的四条（`measured 0.0s`、`samples cover 2179s of the 86400s window`、`only 69 samples ... need at least 720`、`0 of 3 planned faults`），连续性与 `max_gap 32.6s` 正常；按 24 小时外推则 span≈86400、样本≈2650≥720，不会再因节奏问题失败。
+- 该判据属工具层（`scripts/acceptance.py`），不影响冻结应用面与正在运行的窗口；正在运行的 runner 进程不受影响（它只写样本，不做判定）。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
