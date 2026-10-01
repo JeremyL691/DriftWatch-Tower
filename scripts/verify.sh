@@ -148,23 +148,23 @@ cmd_unit() {
     > "$OUT_DIR/mvn-test.log" 2>&1
   local exit_code=$?
 
-  python3 - "$OUT_DIR" <<'PY' > "$OUT_DIR/unit-summary.json"
-import glob, json, sys, xml.etree.ElementTree as ET, collections
+  python3 - "$OUT_DIR" <<'PY'
+import glob, json, sys, xml.etree.ElementTree as ET
 out_dir = sys.argv[1]
-tot = collections.Counter()
+tot = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
 classes = []
 for path in sorted(glob.glob('target/surefire-reports/TEST-*.xml')):
     root = ET.parse(path).getroot()
     counts = {k: int(root.get(k)) for k in ('tests', 'failures', 'errors', 'skipped')}
-    tot.update(counts)
+    for key, value in counts.items():
+        tot[key] += value
     classes.append({"class": root.get('name'), **counts})
-json.dump({"totals": dict(tot), "classes": classes}, open(f"{out_dir}/unit-summary.json", "w"), indent=2)
-print(json.dumps(dict(tot)))
+with open(f"{out_dir}/unit-summary.json", "w") as handle:
+    json.dump({"totals": tot, "classes": classes}, handle, indent=2)
+print(json.dumps(tot))
 PY
 
-  local summary
-  summary="$(cat "$OUT_DIR/unit-summary.json")"
-  echo "$summary"
+  cat "$OUT_DIR/unit-summary.json"
   local tests failures errors skipped
   tests="$(python3 -c 'import json,sys;d=json.load(open(sys.argv[1]))["totals"];print(d.get("tests",0))' "$OUT_DIR/unit-summary.json")"
   failures="$(python3 -c 'import json,sys;d=json.load(open(sys.argv[1]))["totals"];print(d.get("failures",0))' "$OUT_DIR/unit-summary.json")"
