@@ -42,6 +42,7 @@
 - 最终制品目录: `.execution/verify/p61-package-final3/artifacts`
 
 1. `./scripts/verify.sh soak-report --run-id 20261001T145553Z-soak24 --out .execution/verify/p61-soak` → 判定 G16 并写出 `gate.json`(SOAK)。有问题就记录并修复后重开完整 24 小时，不拼接。
+1b. 判定完成后释放验收资源（指南 §12 第 7 条的所有权清理，必须在打包前做，打包会起自己的 compose 项目）：`docker compose -p dwt-soak --env-file .execution/soak.env down -v`（报告在判定前已读完数据库，证据已落盘到 `.execution/`，卷是该验收项目自有的测试卷）；`caffeinate -i -w <runner pid>` 随 runner 结束自动退出；确认 `docker ps` 只剩用户自己的栈、`docker volume ls` 只剩 `dwt-trivy-cache`（保留给收尾期的 G13 复跑）。
 2. 通过后更新本文件（G16/P6.2 PASSED、实测数字与证据路径），提交并推送 `codex/release-v1`。
 3. 把阶段门禁重新绑定到冻结候选：`for ph in P2 P3 P4 P5 P5b; do ./scripts/verify.sh phase $ph --project dwt-soak --env-file .execution/soak.env --out .execution/verify/p7-$ph; done`（每个脚本跑一次完整套件，约 35 分钟；只依赖 Docker，不需要运行中的栈）。理由：指南 §11.2 要求发布验证「同一候选的 manifest/gate 证据」并拒绝「过期于代码变更」的报告，而这五个门禁的记录仍绑定在更早的 SHA 上；`verify.sh release` 会检查每个 gate id 的最新记录，重跑后整套证据都绑定到冻结候选。
 4. 合并 PR：`gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 `8a798a6e`（或其后代，当前为 215dc7c7）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`（不绕过必需检查）；合并后确认 main 含该候选树：`git fetch origin main` 后 `git diff <main-sha> 8a798a6e -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 为空。
@@ -432,6 +433,16 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 5. 重建环境：`docker compose -p dwt-soak --env-file .execution/soak.env down -v`（仅该验收项目自有测试卷）再 `up -d --wait`，三容器 healthy、app `RestartCount=0`、readiness 200。
 6. 启动第 7 个 run `20261001T145553Z-soak24`（PID 42061，86400s，预计 2026-10-02T14:55:53Z 结束，`caffeinate -i -w 42061`）。启动后约 1 分钟 bootstrap 轮已落库 300 条真实 GitHub 事件、readiness 200。run 记录的 `git_sha=1213d3b8`（启动时 HEAD），工具修复 57baf06/fa27c7b 在启动后数分钟提交；应用面与冻结候选逐字节相同，因此该窗口仍覆盖冻结制品。注意：正在运行的 runner 进程是 14:55:53 启动时加载的**加固前**代码（Python 启动即读源码），所以本窗口内的故障注入没有镜像归属校验；缓解措施是已确认全局只有 1 个 runner（`ps`）、每小时自动化会复查并先停掉多余 runner，且任何未来窗口都用加固后的 runner。不为此重启窗口（会破坏连续性）。
 7. 两条守卫实测（不触碰环境）：`soak-start` 在有存活 runner 时拒绝并列出 run_id/PID（exit 2，未创建 run 目录）；`execute_fault(..., expected_image='sha256:deadbeef')` 返回 `skipped-environment-changed` 且 app 容器 `RestartCount` 仍 0、`StartedAt` 未变、readiness 200。测试中发现 `live_runners` 会被 `.execution/soak/` 下的非目录文件绊倒（`NotADirectoryError`），已加 `isdir` 过滤并复测通过（commit 见下）。
+
+### 2026-10-01 P6.2 等待期：按指南 §12 逐条核对发布交付物（发现并修复 3 处）
+
+在等待窗口继续核对 §12 的 8 条完成条件，发现并修复三处只有发布时才会暴露的问题：
+
+1. **RELEASE_NOTES 与已验收证据不一致**：候选 commit 写的是 `75e6a10`（更早的冻结），单元测试数 166（实际 171），负载 ack p95 6.7ms / drain 29.5s（已验收的 `p61-load7` 报告是 5.5ms / 29.3s），磁盘 49GiB（freeze manifest 记 45Gi）。§12 第 5 条要求版本说明给出准确的 candidate commit 与性能条件，已逐项对齐证据，并补上应用内容身份与镜像 tag 规则（`sha-<candidate_sha>`）。
+2. **架构图没有被发布**：`docs/assets/driftwatch-architecture.svg`（已按真实 Streams 拓扑重绘）不被任何活动文档引用，等于没发布；README 现在链接它（§12 第 6 条「架构图反映实际实现」+「所有文档链接有效」）。
+3. **bundle 里的 README 链接断**：bundle 复制了 README，却没带它链接的本地文件——只有下载 bundle 的安装者会看到断链。现在 bundle 收齐 README 链接的全部本地文件（RUNBOOK、RELEASE_NOTES、EXECUTION_STATE、versions、架构 SVG）以及 LICENSE（许可证必须随制品分发）。已用「按脚本清单复制到临时目录 + 解析 README 本地链接」的方式彩排：0 断链、12 个文件。
+
+同轮按 §12 第 7 条做了一次所有权清理：删掉自己遗留的验收容器 `p37-app-18081`（镜像 driftwatch-tower:local，占 591MiB，已运行 10 小时）、其网络 `dwt-p37_driftwatch` 与 P1.3 夹具卷 `dwt-p13b_*`；保留 `dwt-trivy-cache`（收尾期 G13 复跑要用）与正在运行的 `dwt-soak_*`。用户自己的 `cpamp` 栈未触碰。
 
 后续每条保留：
 
