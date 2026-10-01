@@ -537,6 +537,21 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 
 收尾程序自动化不能只当约定：实测每小时检查任务确实在跑——`automation-82c729b4` 的 `lastRunAt = 2026-10-01T15:00:06Z`（每小时第 6 秒触发，runCount=6）、`nextRunAt = 2026-10-01T16:00:00Z`，与 `0 * * * *` 的设定一致。即：即使没有人工介入，2h 故障后的重启恢复对比、窗口结束时的 `soak-report` 判定、P2-P5b 复跑、合并、发布与匿名核验都会按序被推进；任务内同时写入了断点（run id、fault 基线路径、每步命令与前置条件），接手者无需依赖会话记忆。
 
+### 2026-10-01 P6.2 等待期：一次 CI 失败的真实原因（外部 502，不是代码问题）
+
+核对 CI 队列时发现 head `e6f59125`（纯文档改动）的 CI 是红的。逐 job 查证：`Migration / Unit / Integration / Dashboard` 四个 job **全部 success**，只有 `Image and SCA` 在 `Build application image` 失败，原始错误是 Maven Central 返回 **502 Bad Gateway**：
+
+```
+Failed to collect dependencies at org.springframework.kafka:spring-kafka:jar:3.3.16
+ -> org.assertj:assertj-core:jar:3.25.3 -> net.bytebuddy:byte-buddy:jar:1.14.11
+Failed to read artifact descriptor ... net.bytebuddy:byte-buddy-parent:pom:1.14.11 (absent):
+Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): status code: 502, reason phrase: Bad Gateway
+```
+
+即上游仓库瞬时不可用导致的下载失败，与本次改动无关；同一时期其它 head（0cb1135、7a1b740、720408c5、2457686c…）五个 job 均为 success。判据不受影响——合并要求的是**当前 head** 五个 job 全绿（自动化第 8 步已写明 exact head）。
+
+对发布的含义与恢复动作（不改源码）：`release.yml` 的 `Build the candidate image` 会执行同一条 `./mvnw -DskipTests dependency:go-offline`，因此**也可能**撞上同样的瞬时 502。此时**不得**改 `Dockerfile` 绕开——它在冻结应用面内（`source_tree_hash` 覆盖 `Dockerfile`），改动会作废 24 小时窗口与全部门禁。正确恢复是**重新 dispatch**（`gh workflow run release.yml ...`）：已推送的 tag/镜像可重入，未推送则重跑即可；若连续失败再记录确切错误与时间窗。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
