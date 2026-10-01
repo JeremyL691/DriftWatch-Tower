@@ -60,12 +60,36 @@ def main() -> int:
         version_text = open(version_path).read().strip()
     if "Version" not in version_text:
         problems.append("scan tool version was not recorded")
+    # The database identity lives in the tool banner (0.58 does not repeat it in the JSON
+    # report). A scan whose database is missing or stale is not evidence of zero findings.
+    database = {}
+    in_vuln_db = False
+    for line in version_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Vulnerability DB"):
+            in_vuln_db = True
+            continue
+        if stripped.startswith("Java DB"):
+            in_vuln_db = False
+            continue
+        if in_vuln_db and ":" in stripped:
+            key, _, value = stripped.partition(":")
+            database[key.strip()] = value.strip()
+    if "UpdatedAt" not in database:
+        problems.append("vulnerability database timestamp missing (scan database unavailable?)")
     summary["tool"] = version_text.splitlines()[0] if version_text else None
+    summary["database"] = database
+    summary["scope"] = "runtime image (OS packages + jar dependencies) and the runtime dependency tree"
 
-    database = load(os.path.join(args.dir, "trivy-dependencies.json")).get("Metadata", {})
-    summary["database"] = database.get("DB", {})
-    if not summary["database"]:
-        problems.append("vulnerability database metadata missing (scan database unavailable?)")
+    # A scan that evaluated nothing is not a clean scan.
+    for name in ("trivy-dependencies.json", "trivy-image.json"):
+        data = load(os.path.join(args.dir, name))
+        results = data.get("Results") or []
+        if not results:
+            problems.append(f"{name}: the scan evaluated no targets")
+        summary.setdefault("scanned_targets", {})[name] = [
+            f"{result.get('Target')} ({result.get('Class')}/{result.get('Type')})"
+            for result in results]
 
     for name in ("trivy-dependencies.json", "trivy-image.json"):
         findings = vuln_findings(os.path.join(args.dir, name))
