@@ -8,17 +8,17 @@
 |---|---|
 | document_revision | 1.0 |
 | handoff_date | 2026-09-30，America/Los_Angeles |
-| product_goal_status | RUNNING，P0-P6.1 完成，P6.2 进行中 |
+| product_goal_status | RUNNING，P0-P6.1 完成（G00-G15 在候选 c1220eb 上全部 PASSED），P6.2 进行中 |
 | current_phase | P6 |
 | current_task | P6.2 |
-| next_action | P6.2：等待 run 20261001T103023Z-soak24 结束（2026-10-02T10:30:23Z），然后按下方「收尾程序」执行 G16 判定与 P7 发布 |
+| next_action | P6.2：等待 run 20261001T114957Z-soak24 结束（2026-10-02T11:49:57Z），然后按下方「收尾程序」执行 G16 判定与 P7 发布 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
-| execution_branch | codex/release-v1（已推送到 origin；PR #1 已开，head 75e6a10 的 CI 全绿） |
+| execution_branch | codex/release-v1（已推送到 origin；PR #1 已开） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 75e6a10（应用面；P6.1 冻结并全部门禁通过） |
+| candidate_sha | c1220eb（应用面；P6.1 冻结并全部门禁通过） |
 | source_tree_hash | f85b04310b5d9f3a…（完整值见 `.execution/runs/p61-freeze/manifest.json`；src+pom+Dockerfile+compose+.mvn，工具链单独记 tooling_tree_hash） |
 | config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
 | candidate_image_id / public_digest | 本地镜像 sha256:1f915abc95127ae12bfe75de97674f4a5ca924c065ed064afe00ed438e0f80ee（未发布；`content_identity.jar_content_hash` = 7340276fb267104260cc516283b634fe211cc36ef44088b01667af8d6e944d0e，已实测可由同源重建复现） |
@@ -26,7 +26,7 @@
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | 20261001T103023Z-soak24（RUNNING，PID 85137，dwt-soak，18087，86400s，2026-10-01T10:30:23Z 起，预计 2026-10-02T10:30:23Z 结束） |
+| active_soak_run | 20261001T114957Z-soak24（RUNNING，PID 73433，dwt-soak，18087，86400s，2026-10-01T11:49:57Z 起，预计 2026-10-02T11:49:57Z 结束；`caffeinate -i -w 73433` 持有防休眠断言） |
 | external_blocker | 无 |
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
@@ -113,19 +113,19 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 
 | 字段 | 值 |
 |---|---|
-| run_id / run_dir | 20261001T103023Z-soak24 / `.execution/soak/20261001T103023Z-soak24/`（作废的候选 run：20261001T083508Z-soak24、20261001T093502Z-resume、20261001T093737Z-soak24；`.execution/soak/p13-*` 与 20261001T03* 是 P1.3 runner 测试夹具，非验收 run，其中 p13-resume2 的 state 仍写 RUNNING 是当时故意 kill runner 的测试遗留，`ps` 已确认当前只有 1 个 acceptance.py runner 进程） |
+| run_id / run_dir | 20261001T114957Z-soak24 / `.execution/soak/20261001T114957Z-soak24/`（作废的候选 run：20261001T083508Z-soak24、20261001T093502Z-resume、20261001T093737Z-soak24、20261001T103023Z-soak24；`.execution/soak/p13-*` 与 20261001T03* 是 P1.3 runner 测试夹具，非验收 run，其中 p13-resume2 的 state 仍写 RUNNING 是当时故意 kill runner 的测试遗留，`ps` 已确认当前只有 1 个 acceptance.py runner 进程） |
 | compose_project / volume 所有权 | dwt-soak（自有卷 dwt-soak_pgdata、dwt-soak_kafkadata、dwt-soak_streams-state） |
 | env_file 路径 | `.execution/soak.env`（0600，仅路径，不含 secret 内容） |
-| candidate_sha / image_id / config_hash | 75e6a10（应用面）/ sha256:1f915abc95127ae1… / 7457349d… |
-| started_at_utc / expected_end_at_utc | 2026-10-01T10:30:23Z / 2026-10-02T10:30:23Z |
-| runner_pid / process_start / lock | PID 85137（runner.pid 记录进程创建时间；`runner_alive` 校验命令行与创建时间） |
+| candidate_sha / image_id / config_hash | c1220eb（应用面）/ sha256:1d10f24acb44b9a6…（完整值见 freeze manifest）/ 7457349d… |
+| started_at_utc / expected_end_at_utc | 2026-10-01T11:49:57Z / 2026-10-02T11:49:57Z |
+| runner_pid / process_start / lock | PID 73433（runner.pid 记录进程创建时间；`runner_alive` 校验命令行与创建时间；`caffeinate -i -w 73433` 绑定其生命周期防休眠） |
 | last_heartbeat_utc / checkpoint | samples.jsonl 每 30s 一行；checkpoint.json 每 5 分钟原子写 |
 | live_unique_events / new_after_bootstrap | 待结束后由 `soak-report` 从 raw_events(origin=GITHUB) 统计 |
 | source_poll 状态 / outbox / DLT / lag | 待结束后统计（要求全部归零） |
 | planned_faults / completed_faults | 3 个计划（2h app-restart、8h kafka-stop、16h db-stop），已完成 0 |
 | monitor_gap / continuity_valid | 待判定（上限 120s） |
-| exact_resume_command | `./scripts/verify.sh soak-status --run-id 20261001T103023Z-soak24`；runner 失联时 `./scripts/verify.sh soak-resume --run-id 20261001T103023Z-soak24`（标记旧 run FAILED 并以全新 24 小时重启，且沿用原 project/env-file/fault-plan） |
-| last_failure / required_external_action | 无；等待到 2026-10-02T10:30:23Z |
+| exact_resume_command | `./scripts/verify.sh soak-status --run-id 20261001T114957Z-soak24`；runner 失联时 `./scripts/verify.sh soak-resume --run-id 20261001T114957Z-soak24`（标记旧 run FAILED 并以全新 24 小时重启，沿用原 project/env-file/fault-plan；重启后记得重新 `caffeinate -i -w <新 PID>`） |
+| last_failure / required_external_action | 无；等待到 2026-10-02T11:49:57Z |
 
 恢复顺序：读状态 -> 核对 checkout/SHA -> 查原 runner 锁和进程身份 -> 验证采样连续性 -> 继续现有任务或保留失败记录并新建 run。不能看到 PID 就启动第二套。
 
@@ -363,6 +363,20 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 ### 2026-10-01 P6.2 等待期：CI action 固定到完整 SHA
 
 按指南第 4 节「CI actions 固定完整 SHA」逐条核对两个 workflow，发现此前用的是浮动的 `@v4` 主版本标签——上游重新打标签会悄悄改变发布流水线实际执行的代码，正是该条要防的。已把 `actions/checkout`、`actions/setup-java`、`actions/setup-node`、`actions/upload-artifact` 全部固定到解析出的提交 SHA（版本号保留为行尾注释），两个 workflow 共 14 处 `uses:` 均已固定。推送后 CI 在新 head c5cf8d6 上全绿，证明固定的 SHA 可用。
+
+### 2026-10-01 P6.2 第四次启动与逐条规格审计（当前有效 run）
+
+等待期间按指南逐条审计，发现并修复了三类此前未满足的契约项，因此按规则重开 24 小时 run：
+
+1. **evaluation coverage 缺失**（指南 5.3「另外展示 evaluation coverage，不把 OK 等同所有窗口都参与」，且第 551 行把它写进 G04 的完成条件）。新增 `GET /api/v1/events/coverage`（按 outcome 与 baseline 状态聚合，带 `included_ratio` 与说明文字）与 dashboard 面板；新增容器测试断言四种状态（INCLUDED+APPLIED、EXPIRED、SKIPPED_MODE+null、INCLUDED+PENDING）与 OpenAPI 契约断言。
+2. **仪表盘缺少 incident / 指标窗口 / 死信详情与重放**（指南 7.5 的页面清单）。三个面板与 rail 图标补齐，接入既有 API；重放与 resolve 具备 loading、禁用重复提交、成功/失败反馈与 retry。
+3. **没有自动化可访问性扫描**（指南 7.5）。本地打包 axe-core 4.13.0（不依赖 CDN）并在采集时执行 WCAG 2A/2AA 扫描，critical/serious 违规直接使 G12 失败。
+
+扫描立刻查出三个真实缺陷（这正是该条要求存在的意义）：① 横向滚动容器不可键盘聚焦（`scrollable-region-focusable`）；② 强调色与语义色只按浅色页面定义，深色面板上 gold 仅 3.54:1、ok 仅 2.96:1，且 `[data-theme="dark"]` 只覆盖背景，系统偏好为浅色的用户切到深色会得到浅色系配色（2.9–3.5:1）；③ **浅色截图其实从未是浅色**——系统偏好已是浅色时点一次主题开关会翻成深色，所以此前 G12 的 "light" 证据实际测的是深色（修复后实测平均亮度：修复前 light=27.1 与 dark=26.6 几乎相同，修复后 light=232.4）。三处均已修复：滚动容器与证据块加 `tabindex="0" role="region"`；两套主题各自完整定义强调色/语义色并实测对比度（深色 gold 8.6–9.0、ok 8.3–9.7、err 6.1–7.2；浅色 gold 5.1–5.7、ok 4.9–5.4、err 6.2–7.9、muted 5.6–7.1）；采集脚本改为显式设置并校验 `data-theme`，不再点击开关。
+
+另修：`verify.sh package` 的 bundle 现在包含 `docs/RUNBOOK.md` 与 `docs/RELEASE_NOTES.md`（第 12 节要求的安装/升级/备份恢复说明与版本说明此前不在包内）；两个 workflow 的 action 全部固定到完整 SHA（指南第 4 节）。
+
+新候选 c1220eb 上重跑全部受影响门禁：UNIT 167/0/0/0（`.execution/verify/p61-unit5/`）、G02（`p61-compose8/`）、G12（`p61-browser8/`，8/8 且可访问性扫描 0 serious/critical、主题经属性校验）、G13（`p61-g13f/`）、G14（`p61-load5/`，180000@100.0/s、ack p95 5.1ms、commit p95 112ms、drain 29.2s）、G15（`p61-package-final/`，镜像身份一致、bundle 含三份文档）。第四个 24 小时 run 20261001T114957Z-soak24 于 2026-10-01T11:49:57Z 启动（PID 73433，镜像 sha256:1d10f24a…，`caffeinate` 防休眠），启动后 299 条真实事件、0 告警、0 incident。
 
 后续每条保留：
 
