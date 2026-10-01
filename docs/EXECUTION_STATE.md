@@ -80,8 +80,8 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G00 基线 | PASSED | Java 21.0.12.1 + Docker 29.5.3；60 tests / 0 fail / 0 err / 0 skip；`.execution/runs/20261001T020542Z-p02-baseline/` |
 | G01 红色回归复现 | EXPECTED_FAILURE | 3 个 5.4 用例在旧实现复现（null 全缺失 / 单事件基线突增 / 乱序覆盖窗口）；`g01-red-regression.log`、`g01-cases.json` |
 | G02 全新 Compose | PASSED | 无缓存拉取+构建；容器启动后 6–19s 内全部 healthy（≤120s）；3 分区 topic、Streams changelog、状态卷、仅回环暴露；`runs/20261001T022637Z-p11-g02/` |
-| G03 检测正确性 | PASSED | SHA 5c5a2ea；PHASE-P2 gate：101 tests / 0 fail / 0 skip，DetectionContractTest 18 + QualityStreamsTopologyTest 7；`.execution/verify/p2-gate2/` |
-| G04 schema 反馈 | PASSED | SHA 03b6ca58；PHASE-P2 gate：126 tests / 0 fail / 0 skip，SchemaTransactionIntegrationTest 4 项（并发唯一 ACTIVE、outbox 崩溃补发、激活降级与同步状态）；`.execution/verify/p2-gate5/` |
+| G03 检测正确性 | PASSED | 已随候选重新绑定：SHA 653a7e3（含 bb13ab9 应用代码）；PHASE-P2 gate 126 tests / 0 fail / 0 skip；`.execution/verify/p2-gate6/` |
+| G04 schema 反馈 | PASSED | 已随候选重新绑定：SHA 653a7e3；PHASE-P2 gate 126 tests / 0 fail / 0 skip，SchemaTransactionIntegrationTest 4 项；`.execution/verify/p2-gate6/` |
 | G05 摄取与幂等 | NOT_RUN | - |
 | G06 故障与死信 | NOT_RUN | - |
 | G07 升级兼容 | NOT_RUN | - |
@@ -201,7 +201,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 - P2.2：非法 regex 在启动时失败并指明 `driftwatch.detector.field-format.patterns`；数值字段的非数字值改为类型证据（NOT_A_NUMBER + value_type）而不是静默跳过；所有检测告警带 rule_version；新增测试锁定数组/嵌套 leaf 契约、哈希规范化（嵌套键序、数组顺序、unicode、null）、质量状态优先级与 exclusion coverage、OpenAPI 事件 schema 与 202/400 契约。
 - P2.3：schema 观察与 drift 告警移入 sink 事务（拓扑不再访问 JPA），active leaf types 来自 Streams global store（compacted `schema-baselines-v1`）；V8 迁移增加 ACTIVE 部分唯一索引（升级时保留最早 ACTIVE、其余降级并写迁移记录）与 `baseline_outbox`；`SchemaObservationService` 用 advisory transaction lock，首个观察即 ACTIVE 并同事务写 outbox，NULL 不覆盖已确定的非空类型；`BaselineOutboxRelay` 在 broker ack 后才标 SENT，崩溃窗口内的 PENDING 行会被下一轮补发；`PUT /api/v1/schemas/{eventType}/baseline` 原子激活并降级旧 ACTIVE（不删除版本），响应报告 PUBLISHED/PENDING 而不是宣称 Streams 已应用。
 - 期间修复：激活时先 flush 降级再提升（部分唯一索引要求）；测试清理按外键顺序删除；测试 profile 为每个上下文使用独立 Streams application id（消除并发 rebalance 造成的 readiness/落库抖动）。
-- 证据：`.execution/verify/p2-gate5/`（PHASE-P2 PASSED，126 tests / 0 fail / 0 err / 0 skip，required classes 全部运行）。
+- 证据：`.execution/verify/p2-gate5/`（126/0/0/0）。P3.1 管道切换后已在当前候选重跑：`.execution/verify/p2-gate6/` → PHASE-P2 PASSED，绑定 SHA 653a7e3（应用代码 = bb13ab9），126 tests / 0 fail / 0 err / 0 skip。
 
 ### 2026-10-01 P3.1 摄取身份与幂等投递（RUNNING，未过 G05）
 
