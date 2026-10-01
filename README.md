@@ -125,6 +125,8 @@ and the resumable 24-hour runner (`acceptance.py`).
 - [Project execution guide](docs/PROJECT_EXECUTION_GUIDE.md): the authoritative product,
   implementation, acceptance and release specification.
   recovery information.
+- [Runbook](docs/RUNBOOK.md): install, upgrade, backup/restore, dead letters, retention and
+  troubleshooting.
 - [Versions](docs/versions.md): pinned images and dependency versions.
 
 ## Known limits
