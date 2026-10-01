@@ -525,6 +525,14 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 
 结论：判定器十项判据中没有第二处会误杀健康窗口的逻辑；唯一发现的误杀已修复并复验。
 
+### 2026-10-01 P6.2 等待期：阶段门禁判分器同源缺陷（已修）
+
+用同一「审判分代码」的标准检查收尾程序第 6 步要重跑的 P2-P5b 门禁，发现 `scripts/phases/check-suite.py` 的文档与实现相反：docstring 写「Keeps only the newest report per class (a retry can leave several)」，实现却是 `sorted(..., key=mtime)` **升序** + `seen` 去重——先遇到的（**最旧**）胜出。
+
+- 影响面：五个阶段脚本在容器启动类基础设施错误时会**整轮重跑** `mvnw clean test`（`clean` 会清掉上一轮报告），所以当前路径下该缺陷是**潜伏**的；但一旦出现同一类在同一次构建里留下两份报告（例如将来开启 surefire rerun、或某阶段不再 `clean`），就会出现「重跑已通过却被旧报告判失败」或更糟的「旧报告通过掩盖重跑失败」。
+- 修复：改为 `reverse=True`（最新优先），与 docstring 一致；判据本身（required 类必须真跑且 `tests - skipped > 0`、全局不得有 failures/errors/skips、无报告即失败）保持不变。
+- 双向实测（合成两份同名类的报告）：旧报告 2 failures + 新报告干净 → 现在取新的、`problems` 为空、exit 0；反过来旧报告干净 + 新报告 1 failure → exit 1 并如实报 `totals contain failures`。即既不再误杀，也不会误放。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
