@@ -47,6 +47,8 @@ python3 "$SCRIPT_DIR/check-suite.py" \
   --require com.driftwatch.event.PreAckFailureTest \
   --require com.driftwatch.event.KafkaIngestionIntegrationTest \
   --require com.driftwatch.stream.DetectionContractTest \
+  --require com.driftwatch.dlt.DeadLetterIntegrationTest \
+  --require com.driftwatch.stream.SinkRetryTest \
   || check_exit=1
 check_exit="${check_exit:-0}"
 

@@ -78,14 +78,20 @@ class QualityEventSinkTest {
         when(processedReceiptRepository.findById(org.mockito.ArgumentMatchers.anyString()))
                 .thenReturn(java.util.Optional.empty());
 
-        QualityEventSink sink = new QualityEventSink(
+        SinkPersistenceService persistence = new SinkPersistenceService(
                 rawEventRepository,
                 processedReceiptRepository,
                 alertRepository,
                 sourceHealthService,
                 schemaObservationService,
                 metricWindowProjector,
+                new ObjectMapper().findAndRegisterModules());
+
+        com.driftwatch.dlt.DltPublisher dltPublisher = mock(com.driftwatch.dlt.DltPublisher.class);
+        QualityEventSink sink = new QualityEventSink(
+                persistence,
                 webSocket,
+                dltPublisher,
                 new ObjectMapper().findAndRegisterModules(),
                 meterRegistry
         );

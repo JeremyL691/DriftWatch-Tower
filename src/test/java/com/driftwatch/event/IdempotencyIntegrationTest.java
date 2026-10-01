@@ -183,7 +183,12 @@ class IdempotencyIntegrationTest extends ContainerIntegrationTest {
         }
         pool.shutdown();
 
-        assertThat(identities).as("one key must resolve to exactly one identity").hasSize(1);
+        Integer receiptRows = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM ingestion_receipts WHERE idempotency_key = ?", Integer.class, key);
+        assertThat(identities)
+                .as("one key must resolve to exactly one identity (receipt rows for the key: %s)", receiptRows)
+                .hasSize(1);
+        assertThat(receiptRows).as("exactly one receipt row for the key").isEqualTo(1);
         String ingestionId = identities.iterator().next();
         await().atMost(Duration.ofSeconds(60)).until(() -> rawRows(ingestionId) >= 1);
         assertThat(rawRows(ingestionId)).isEqualTo(1);
