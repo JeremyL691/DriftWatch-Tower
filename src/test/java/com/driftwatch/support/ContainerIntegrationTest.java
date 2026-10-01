@@ -8,10 +8,14 @@ import com.driftwatch.persistence.SourceHealthRepository;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -21,8 +25,11 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.util.stream.Stream;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 @Testcontainers(disabledWithoutDocker = true)
 public abstract class ContainerIntegrationTest {
 
@@ -45,6 +52,29 @@ public abstract class ContainerIntegrationTest {
     @Autowired protected SchemaVersionRepository schemaVersionRepository;
     @Autowired protected MetricWindowRepository metricWindowRepository;
     @Autowired protected SourceHealthRepository sourceHealthRepository;
+    @Autowired protected MockMvc mockMvc;
+
+    @Value("${driftwatch.security.admin.username}")
+    protected String adminUsername;
+
+    @Value("${driftwatch.security.admin.password}")
+    protected String adminPassword;
+
+    @Value("${driftwatch.security.ingest-tokens[0]}")
+    protected String ingestToken;
+
+    /** Admin HTTP Basic credentials for management endpoints. */
+    protected RequestPostProcessor asAdmin() {
+        return httpBasic(adminUsername, adminPassword);
+    }
+
+    /** Independent bearer ingest token; can only post events. */
+    protected RequestPostProcessor asIngest() {
+        return request -> {
+            request.addHeader("Authorization", "Bearer " + ingestToken);
+            return request;
+        };
+    }
 
     /**
      * Acceptance runs set {@code dwt.requireDocker=true} (or {@code DWT_REQUIRE_DOCKER=true}) so a

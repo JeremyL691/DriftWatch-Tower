@@ -51,8 +51,8 @@
 | P0.1 | 保护交接、对齐远端 | PASSED | codex/release-v1 @ 0a2bb07，base 082fd84；见 2026-09-30 运行记录 |
 | P0.2 | 基线与红色回归 | PASSED | 60/0/0/0 真实容器；G01 三例 EXPECTED_FAILURE 已绑定 SHA |
 | P1.1 | 可重复部署、固定依赖 | PASSED | G02 通过；apache/kafka:3.9.2、postgres:16.15、摘要锁定、SCA 应用镜像 0 High/Critical |
-| P1.2 | 配置和认证基础 | RUNNING | - |
-| P1.3 | 验证脚本及后台 runner | NOT_STARTED | 指南命令目前待实现 |
+| P1.2 | 配置和认证基础 | PASSED | 86/0/0/0；live 19/19；弱/缺生产凭证 fail-fast；见 `.execution/runs/p12/` |
+| P1.3 | 验证脚本及后台 runner | RUNNING | 指南命令目前待实现 |
 | P2.1 | scope / 窗口 / 漏报修复 | NOT_STARTED | - |
 | P2.2 | 规则与配置覆盖 | NOT_STARTED | - |
 | P2.3 | schema 事务及基线反馈 | NOT_STARTED | - |
@@ -158,6 +158,16 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 - 观察记录（供后续任务）：应用重启后 Streams 重新开始处理前约有 24s 空窗，而当前 readiness 只反映 DB；P1.2/P3 必须让 readiness 反映 Kafka/Streams。
 - 依赖变更后完整套件重跑：60 tests / 0 fail / 0 err / 0 skip，broker 3.9.2（`mvn-final-p11.log`）。
 - 验收资源已清理：`docker compose -p dwt-g02 down -v`，无残留卷/网络。
+
+### 2026-10-01 P1.2 配置与认证基础（PASSED）
+
+- 配置集中：`DriftwatchProperties`（`driftwatch.*`）统一绑定 detector/metrics/streams/source-health/security/source；数值范围由 Bean Validation 强制，窗口/grace/retention、异常历史窗口、来源新鲜度顺序、field-range min<=max 在启动时校验并指明 key；错误信息不含 secret。新增 grace/future-tolerance/state-retention/github late 阈值键作为 P2 契约。
+- 访问保护（§2.3）：Spring Security HTTP Basic 管理账号 + 独立 Bearer ingest token（SHA-256 常量时间比较）；浏览器修改请求经 CSRF Cookie 校验（`XSRF-TOKEN` 可读、`X-XSRF-TOKEN` 提交），摄取接口豁免 CSRF；匿名仅可见 `/actuator/health` 状态；metrics/prometheus/api-docs/dashboard 均需管理员；无账号数据库、不使用 localStorage。
+- 凭据：`selfhost` profile 要求强口令（>=16 且非示例值），缺失或过弱启动失败（exit 1，指明 key，不回显值）；空白口令在所有 profile 都失败。`dev`/`test`/`load` profile 提供轻量本地凭据，真实 GitHub 采集在测试与负载 profile 关闭（selfhost 开启）。
+- readiness 反映 DB + Kafka + Kafka Streams（`kafka`/`streams` 指标），liveness 仅 ping；应用重启后 Streams 未运行时不会误报健康。
+- 验证：单元+容器套件 86 tests / 0 fail / 0 err / 0 skip（需 Docker，`-Ddwt.requireDocker=true`）；live 环境 19/19 检查通过（401/403、health 详情隔离、ingest 只能摄取、CSRF 流程、坏 JSON 400、事件落库）；弱/缺口令 fail-fast 各以独立容器复现。证据 `.execution/runs/p12/`（summary.md、junit-summary.json、live-check-output.txt）与 `.execution/runs/p12-live/`。
+- 顺带修复：logback 只覆盖 prod/dev/default 导致 selfhost 无日志；坏 JSON 返回 500 改为 400；dashboard JS 增加 CSRF 头。
+- 经验记录：测试套件与验收 compose 栈不可同时运行（vCPU/内存竞争会导致 readiness 与落库超时）；验收脚本必须串行（P1.3）。
 
 后续每条保留：
 

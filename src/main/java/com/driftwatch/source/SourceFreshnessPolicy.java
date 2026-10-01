@@ -1,6 +1,7 @@
 package com.driftwatch.source;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.driftwatch.config.DriftwatchProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -13,10 +14,16 @@ public class SourceFreshnessPolicy {
     private final Duration rssStaleAfter;
     private final Duration pipelineStaleAfter;
 
-    public SourceFreshnessPolicy(
-            @Value("${driftwatch.source-health.default-stale-after:PT5M}") Duration defaultStaleAfter,
-            @Value("${driftwatch.source-health.rss-stale-after:PT30M}") Duration rssStaleAfter,
-            @Value("${driftwatch.source-health.pipeline-stale-after:PT24H}") Duration pipelineStaleAfter) {
+    @Autowired
+    public SourceFreshnessPolicy(DriftwatchProperties properties) {
+        this(properties.sourceHealth().defaultStaleAfter(),
+                properties.sourceHealth().rssStaleAfter(),
+                properties.sourceHealth().pipelineStaleAfter());
+    }
+
+    public SourceFreshnessPolicy(Duration defaultStaleAfter,
+                                 Duration rssStaleAfter,
+                                 Duration pipelineStaleAfter) {
         this.defaultStaleAfter = defaultStaleAfter;
         this.rssStaleAfter = rssStaleAfter;
         this.pipelineStaleAfter = pipelineStaleAfter;
