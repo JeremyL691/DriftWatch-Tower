@@ -126,8 +126,12 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
         }
 
         Map<String, String> observedFields = SchemaInferrer.infer(objectMapper.valueToTree(envelope.event().payload()));
+        // The window key carries the active baseline version (guide 5.3): when the active version
+        // changes, the new field set starts its own windows instead of adding its counts to the
+        // previous version's, and the evidence can name the version that governed the check.
+        String baselineVersion = baseline.versionId() == null ? "none" : baseline.versionId().toString();
         for (String field : expectedFields.keySet()) {
-            String key = ScopeKey.of(source, eventType, field, Long.toString(windowStartMs));
+            String key = ScopeKey.of(source, eventType, field, Long.toString(windowStartMs), baselineVersion);
             NullWindowState state = windowStore.get(key);
             if (state == null) {
                 state = new NullWindowState(windowStartMs, 0, 0, false);
@@ -147,6 +151,7 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
                 evidence.put("total_count", Math.round(updated.total()));
                 evidence.put("null_rate", updated.nullRate());
                 evidence.put("threshold", settings.nullSpikeThreshold());
+                evidence.put("baseline_version", baselineVersion);
                 evidence.put("rule_version", RuleVersions.RULES_VERSION);
                 pending.alerts.add(new ProcessedEvent.ProcessedAlert(
                         AlertType.NULL_SPIKE, Severity.WARN, source, eventType, field,

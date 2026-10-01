@@ -281,6 +281,29 @@ class GithubPollerIntegrationTest extends ContainerIntegrationTest {
     }
 
     @Test
+    void originReferenceNamesTheRawIdRepositoryPollRunAndFetchUrl() {
+        // Guide 6.2: the persisted origin reference must let an operator trace a record back to
+        // the exact request, so it carries the raw id, the repository, the poll run and the URL
+        // of the page the record came from.
+        stub.script(GithubStubServer.ScriptedResponse.withHeaders(200,
+                GithubStubServer.headers("etag", "\"origin\""),
+                GithubStubServer.array(GithubStubServer.event("7001", "PushEvent", "2026-10-01T03:00:00Z", null))));
+        pollAndAwait();
+
+        var inbox = inboxRepository.findAll().stream()
+                .filter(row -> "7001".equals(row.getGithubEventId()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(inbox.getOriginReference())
+                .startsWith("github:apache/kafka#7001@")
+                .contains("/repos/apache/kafka/events")
+                .contains("per_page=");
+        // The URL is the one actually fetched, so it follows the configured base (the stub here,
+        // api.github.com in a self-host install) rather than a hardcoded scheme.
+        assertThat(inbox.getOriginReference().split("\\|")[1]).startsWith("http");
+    }
+
+    @Test
     void liveModeIsRecordedOnceTheBootstrapCheckpointIsApplied() {
         stub.script(GithubStubServer.ScriptedResponse.withHeaders(200,
                 GithubStubServer.headers("etag", "\"v5\""),
