@@ -8,7 +8,7 @@
 // the light theme through the dashboard's theme switch when one exists.
 
 import { chromium } from 'playwright-core';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -30,8 +30,36 @@ const viewports = [
   { name: '1024', width: 1024, height: 900 },
   { name: '1440', width: 1440, height: 1000 },
 ];
-const executablePath = join(homedir(),
-  'Library/Caches/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-mac-arm64/chrome-headless-shell');
+
+// Resolve the browser portably: an explicit override, then the Playwright cache on macOS or
+// Linux, then whatever Playwright itself would find. Nothing is downloaded at capture time.
+function resolveChromium() {
+  const override = get('browser') || process.env.PLAYWRIGHT_CHROMIUM_PATH;
+  if (override) return override;
+  const candidates = [
+    join(homedir(), 'Library/Caches/ms-playwright'),
+    join(homedir(), '.cache/ms-playwright'),
+    process.env.PLAYWRIGHT_BROWSERS_PATH || '',
+  ].filter(Boolean);
+  for (const root of candidates) {
+    if (!existsSync(root)) continue;
+    for (const entry of readdirSync(root).filter((name) => name.startsWith('chromium')).sort().reverse()) {
+      for (const relative of [
+        'chrome-headless-shell-mac-arm64/chrome-headless-shell',
+        'chrome-headless-shell-mac-x64/chrome-headless-shell',
+        'chrome-headless-shell-linux64/chrome-headless-shell',
+        'chrome-linux/chrome',
+        'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
+      ]) {
+        const candidate = join(root, entry, relative);
+        if (existsSync(candidate)) return candidate;
+      }
+    }
+  }
+  return undefined; // let playwright-core use its own resolution
+}
+
+const executablePath = resolveChromium();
 
 if (!outDir) {
   console.error('--out DIR is required');
