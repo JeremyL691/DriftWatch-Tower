@@ -126,6 +126,8 @@ and the resumable 24-hour runner (`acceptance.py`).
   implementation, acceptance and release specification.
 - [Execution state](docs/EXECUTION_STATE.md): current task, gate results, evidence paths and
   recovery information.
+- [Runbook](docs/RUNBOOK.md): install, upgrade, backup/restore, dead letters, retention and
+  troubleshooting.
 - [Versions](docs/versions.md): pinned images and dependency versions.
 
 ## Known limits
