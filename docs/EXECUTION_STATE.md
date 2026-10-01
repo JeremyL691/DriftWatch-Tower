@@ -612,6 +612,15 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 
 处置：这不是代码缺陷（与 gap 分类器不同，后者是写入/读取语义自相矛盾），因此不改行为；但 24 小时证据里会出现约百条 STALE 告警，必须在已知限制里说清含义，避免被误读为采集器故障。阈值调优（为轮询型延迟源单独设定，如 PT30M/PT60M）与把新鲜度判据改为「轮询成功 + 上游窗口年龄」一起，列入发布后跟进项。`application.yml` 属冻结配置面（`config_hash` 覆盖），本轮不动。
 
+### 2026-10-01 P6.2 等待期：source health 分数被「字段本就不存在」的 null 率压低（第三个数据语义问题，已如实披露）
+
+顺着 `source_health` 行里的 `status=STALE / health_score=10.45 / null_rate=1` 查下去：
+
+- **评分函数本身是对的**：`SourceHealthCalculator` 的公式 `100 - min(dup*35,35) - min(late*25,25) - min(null*25,25) - min(alerts*5,20) - (stale?35:0)`，代入实测 `dup=0.2727`、`late=0`、`null=1`、告警≥4（封顶 20）、`stale=true` → `100-9.55-25-20-35 = 10.45`，与库中数值**逐位吻合**。
+- **问题在 nullRate 这个输入的含义**：它取最近 1 小时内 `NULL_RATE:*` 指标窗口的**最大值**；实测窗口里有 `NULL_RATE:action type=github.PushEvent value=1`（`NULL_COUNT:action=1`、`NULL_TOTAL:action=1`）。而 GitHub 的 `PushEvent` **本来就没有 action 字段**（action 属于 IssuesEvent/PullRequestEvent 等），所以这个 1.0 是 payload 结构使然，不是数据质量退化。
+- **两条路径互相矛盾**：告警路径（按基线比较字段是否由有变无）**一条 NULL_SPIKE 都没发**（本窗口告警只有 DUPLICATE_EVENT×3 与 STALE_SOURCE×6），说明检测器判定「没有退化」；而健康分数却据此扣满 25 分，且是「一个字段-窗口的 max 决定全源分数」，于是该源即使一切正常也长期被压到 60 以下（非 stale 时会被判定为 `UNHEALTHY`）。
+- **影响与处置**：不影响数据完整性、不影响任何 gate（门禁不读 health_score/null_rate），但会误导自托管者（把正常的 GitHub 源看成「不健康」）。修复需改 `src/main/java`（冻结面内），因此本轮不改；已在 README/RELEASE_NOTES 的已知限制中写明含义，并把「null 率只在基线确认存在的字段上聚合（或只用已确认字段的 max）」列入发布后跟进项，与 gap 分类器、STALE 阈值并列。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
