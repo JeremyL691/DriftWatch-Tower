@@ -5,60 +5,141 @@ A single-node data-quality inspection service built with Java 21, Spring Boot, K
 [![CI](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml/badge.svg)](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-## Current status
+DriftWatch Tower ingests events over HTTP and from the official GitHub public-events API, checks
+them against data-quality rules (duplicates, missing fields, null spikes, anomaly spikes, late
+arrivals, range/format rules and schema drift), and stores the events, alerts, incidents and
+metric projections in PostgreSQL. A static dashboard shows the live state; every mutating action
+is auditable and replayable.
 
-The current implementation is a demo MVP. REST requests publish events to Kafka; a Kafka Streams topology inspects them; a sink stores raw events, alerts, and metric projections in PostgreSQL. The application also contains schema versioning, alert acknowledgement/resolution, source-health snapshots, Prometheus counters, and a static dashboard with WebSocket updates.
+## Quick start
 
-**The release refactor is specified, but has not been implemented.** GitHub collection, scheduled source-health monitoring, delivery idempotency, dead-letter recovery, and the complete release acceptance process are future work. Incident tables and APIs exist, but automatic grouping is not connected to the sink.
-
-The 2026-09-30 audit ran the existing suites against real Kafka/PostgreSQL containers: 53 tests on local commit `8440013`, and 57 on remote commit `082fd84`, with no skips after environment compatibility adjustments. Additional boundary checks reproduced null-spike and anomaly-spike missed alerts in both versions. These counts describe those audited revisions, not a guarantee about a future checkout or release.
-
-## Refactor handoff
-
-- [Project execution guide](docs/PROJECT_EXECUTION_GUIDE.md): the single authoritative product, implementation, acceptance, and release specification.
-- [Execution state](docs/EXECUTION_STATE.md): the first unfinished task, gate results, blockers, and recovery information.
-- [Agent prompt](docs/AGENT_REFACTOR_PROMPT.md): copy the prompt into a new Agent session in goal mode.
-
-The target is an open-source self-hosted release with continuous GitHub public-event collection, reliable quality evidence, recovery tools, and a 24-hour live-data acceptance run. This is the release target; the current checkout does not provide it yet.
-
-## Current architecture
-
-![Current event flow](docs/assets/driftwatch-architecture.svg)
-
-This diagram describes the audited implementation. Schema observation currently performs database reads/writes from the topology; the execution guide specifies how that boundary changes during the refactor.
-
-## Running the current implementation
-
-Requirements: JDK 21, Docker with Compose, and available Kafka/PostgreSQL services.
-
-The existing Compose configuration uses `bitnami/kafka:3.7`. Both a manifest check and a direct pull returned `not found` during the 2026-09-30 audit. Consequently the current quick-start command below can fail on a machine without a cached image. Fixing and verifying this path is the P1 release gate.
+Requirements: Docker with Compose (4 CPU / 8 GiB RAM recommended) and a free port for the app.
 
 ```bash
-docker compose --profile app up -d --build
-curl --retry 30 --retry-connrefused --retry-delay 2 -fsS http://localhost:8080/actuator/health
-curl -X POST http://localhost:8080/api/v1/demo/run-scenario/mixed-incident
+git clone https://github.com/JeremyL691/DriftWatch-Tower.git
+cd DriftWatch-Tower
+scripts/selfhost.sh init --env-file .execution/selfhost.env   # random credentials, mode 0600
+scripts/selfhost.sh up   --env-file .execution/selfhost.env
 ```
 
-Once the services are running, open [the local dashboard](http://localhost:8080/dashboard). Alternatively, start the application with `./mvnw spring-boot:run` against compatible Kafka and PostgreSQL instances configured through Spring environment variables.
+The stack is ready when `curl -fsS http://127.0.0.1:18080/actuator/health/readiness` answers
+`{"status":"UP"}` (about 10–20 seconds on a warm image cache). Then open
+[http://127.0.0.1:18080/dashboard](http://127.0.0.1:18080/dashboard) and sign in with the admin
+username and password from the env file.
 
-## Tests and sample requests
+Send a first event with the ingest token from the same file:
 
 ```bash
-./mvnw clean test --batch-mode
+source .execution/selfhost.env
+curl -X POST http://127.0.0.1:18080/api/v1/events \
+  -H "Authorization: Bearer $DWT_INGEST_TOKEN" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{"event_id":"demo-1","source":"demo","event_type":"PaymentEvent",
+       "event_timestamp":"2026-01-01T00:00:00Z","payload":{"amount":42.5,"currency":"USD"}}'
 ```
 
-The suite includes detector/topology checks and Testcontainers integration tests. Container cases are currently skipped when Docker cannot be used. Inspect the actual skipped count; `BUILD SUCCESS` alone does not prove the integration path ran. The release refactor must make missing Docker or skipped integration tests fail the acceptance gate.
+The same request replayed with the same `Idempotency-Key` returns the original identity and
+creates no second row.
 
-[Sample events](samples/events/README.md) are synthetic request examples. Their fixed timestamps are historical, so they can trigger late-event alerts today. They are not a live exchange or GitHub integration.
+## What is collected, and how fresh it is
 
-## Current limits
+The default source is the official GitHub public-events API for `apache/kafka`, unauthenticated:
 
-- Stateful spike detection has confirmed missed-alert cases; window handling does not yet provide the release contract.
-- Duplicate checks are partition-local. The refactor defines and tests the source/event-type scope.
-- Kafka delivery and database writes are not atomic; replay can repeat rows and metric increments.
-- Source-health refresh depends on ingestion or API reads. Complete traffic silence does not independently trigger a scheduled check.
-- Authentication, application-specific failure recovery, and the public-release installation check are not implemented.
-- Browser rendering and sustained-load results must be measured during acceptance; no throughput claim is made here.
+| Property | Default | Meaning |
+|---|---|---|
+| `driftwatch.source.github.poll-interval` | 5 minutes | Delay between poll rounds; the API's `X-Poll-Interval` header is honoured when it asks for more |
+| `driftwatch.source.github.max-pages` / `page-size` | 3 × 100 | At most 300 events examined per round |
+| `driftwatch.source.github.token` | empty | Optional. Without it the unauthenticated budget is 60 requests/hour, which is why the default interval is five minutes |
+| `driftwatch.detector.late.github-threshold` | 8 hours | An event older than this when it arrives is reported as late rather than as a fresh observation |
+
+Boundaries you should expect:
+
+- **This is not realtime.** GitHub's events API itself lags by seconds to hours, and the poller
+  only looks every five minutes. The dashboard shows collector state (`last_poll_at`,
+  `last_success_at`, `next_poll_at`, upstream lag) so the delay is visible rather than implied.
+- **`304 Not Modified` and quiet rounds are normal.** They update poll health and do not move the
+  checkpoint.
+- **Gaps are recorded, never guessed.** If a poll round is truncated, loses page overlap, or the
+  collector is down longer than the API's visible window, a row is written to `source_gaps` with
+  the reason; the number of missed events is recorded as unknown rather than invented.
+- **Rate limits are respected, not worked around.** `403`/`429` responses back off using
+  `Retry-After` or the rate-limit reset, and a budget-exhausted round is recorded as a gap.
+- **Bootstrap and live are distinguished.** Events first seen when the collector starts are
+  marked `mode=BOOTSTRAP` and do not participate in realtime window evaluation; only later
+  arrivals are `mode=LIVE`.
+- **Restarts resume.** ETag, inbox identities, outbox state and checkpoints are persisted, so a
+  restart continues from the last applied round instead of re-ingesting or skipping.
+
+Retention defaults: raw events and metric windows 30 days, resolved alerts/incidents and
+recovered dead letters 90 days, source inbox identities 35 days. Unresolved alerts and
+incidents, unrecovered dead letters and pending outbox rows are never pruned.
+
+## Reliability behaviour
+
+- Ingestion is accepted only after the broker acknowledged the record (HTTP `202`). A retry with
+  the same `Idempotency-Key` returns the same `ingestion_id`.
+- The database sink retries immediately, then at 2 s, 10 s and 30 s. A record that still fails is
+  published to `dead-letter-events-v1` with its original topic/partition/offset and a stable
+  diagnostic id, and is visible and replayable through the API. Nothing is dropped silently.
+- Schema observation and drift alerting run inside the sink transaction under a PostgreSQL
+  advisory lock, so a topology thread never touches the database.
+- Alert-to-incident correlation, acknowledgement, resolution and source-health staleness are
+  idempotent and are covered by tests that assert repeated `GET`s have no side effects.
+
+## Operating
+
+```bash
+scripts/selfhost.sh status  --env-file .execution/selfhost.env
+scripts/selfhost.sh backup  --env-file .execution/selfhost.env --out backup/dwt.dump
+scripts/selfhost.sh restore --env-file .execution/selfhost.env --dump backup/dwt.dump --target-db driftwatch_restore
+scripts/selfhost.sh down    --env-file .execution/selfhost.env            # volumes kept
+scripts/selfhost.sh down    --env-file .execution/selfhost.env --volumes  # volumes removed
+```
+
+Compose projects are namespaced (`<project>_pgdata`, …), so an acceptance run can never read or
+delete the volumes of a running install. PostgreSQL and Kafka are never published to the host;
+the app binds `127.0.0.1` only. Put your own TLS reverse proxy in front for remote access.
+
+`/actuator/health` is the only anonymous endpoint and returns status only. Metrics, the API
+documentation and the dashboard require the admin account; ingestion requires the bearer token.
+
+## Verification
+
+```bash
+scripts/verify.sh preflight --out .execution/verify/preflight
+scripts/verify.sh unit      --out .execution/verify/unit    # full suite incl. real Kafka/PostgreSQL containers
+scripts/verify.sh sca       --out .execution/verify/sca     # Trivy, HIGH/CRITICAL
+scripts/verify.sh compose   --project dwt-check --env-file .execution/selfhost.env --out .execution/verify/compose
+```
+
+Every command writes a machine-readable `gate.json` plus its raw evidence into `--out`, and exits
+`0` (pass), `1` (verification failure) or `2` (external prerequisite missing). Missing Docker or
+skipped container tests fail the gate instead of quietly reducing coverage.
+
+The acceptance harness in `scripts/` also drives the browser capture (`p53-capture.mjs`), the
+load generator (`loadgen.py`, 100 events/s for 30 minutes with ingestion-ledger reconciliation)
+and the resumable 24-hour runner (`acceptance.py`).
+
+## Project documents
+
+- [Project execution guide](docs/PROJECT_EXECUTION_GUIDE.md): the authoritative product,
+  implementation, acceptance and release specification.
+- [Execution state](docs/EXECUTION_STATE.md): current task, gate results, evidence paths and
+  recovery information.
+- [Versions](docs/versions.md): pinned images and dependency versions.
+
+## Known limits
+
+- Single node, single Kafka broker, single PostgreSQL instance: this is a self-hosted inspection
+  tool, not a horizontally scaled platform.
+- The GitHub source depends on a public API that can be delayed, rate-limited or unavailable;
+  when that happens the collector records a gap and the dashboard shows the collector as lost
+  rather than reporting success.
+- Without a GitHub token the collector is limited to 60 requests/hour, which is why the default
+  poll interval is five minutes.
+- Retention deletes raw payloads after 30 days; the deduplication identity is kept longer than
+  the payload so replays remain correct, but old payload contents are not recoverable.
+- Browser support is verified on Chromium at 320/768/1024/1440 px in dark and light themes.
 
 ## License
 
