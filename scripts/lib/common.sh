@@ -21,7 +21,28 @@ require_java_21() {
   require_cmd java
   local version
   version="$(java -version 2>&1 | head -1 | sed -E 's/.*"([0-9]+).*/\1/')"
-  [ "$version" = "21" ] || die "JDK 21 is required (found java $version); set JAVA_HOME to a JDK 21 install"
+  if [ "$version" != "21" ]; then
+    # Prefer a JDK 21 install over the ambient one so acceptance runs do not depend on shell setup.
+    local candidates=(
+      "${DWT_JAVA_HOME:-}"
+      "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+      "/usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+      "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home"
+      "$HOME/.sdkman/candidates/java/21"*
+    )
+    local candidate
+    for candidate in "${candidates[@]}"; do
+      [ -n "$candidate" ] || continue
+      if [ -x "$candidate/bin/java" ] \
+         && "$candidate/bin/java" -version 2>&1 | head -1 | grep -q '"21'; then
+        export JAVA_HOME="$candidate"
+        export PATH="$candidate/bin:$PATH"
+        log "using JDK 21 at $candidate (ambient java was $version)"
+        return 0
+      fi
+    done
+    die "JDK 21 is required (found java $version); set JAVA_HOME or DWT_JAVA_HOME to a JDK 21 install"
+  fi
 }
 
 require_docker() {
