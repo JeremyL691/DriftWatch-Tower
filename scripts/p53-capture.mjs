@@ -77,8 +77,18 @@ for (const theme of themes) {
     await page.screenshot({ path: file, fullPage: true });
 
     // The live-update path must actually connect (ticket handshake), not stay disconnected.
+    // The element's class is the semantic signal; the label is only what a human reads.
     await page.waitForTimeout(1500);
-    const wsStatus = await page.locator('#wsStatus .ws-label').first().textContent().catch(() => null);
+    const wsStatus = await page.evaluate(() => {
+      const el = document.getElementById('wsStatus');
+      if (!el) return { label: null, state: 'missing' };
+      const label = el.querySelector('.ws-label');
+      return {
+        label: label ? label.textContent.trim() : null,
+        state: el.classList.contains('connected') ? 'connected'
+          : el.classList.contains('disconnected') ? 'disconnected' : 'unknown',
+      };
+    });
 
     const overflow = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,

@@ -42,9 +42,13 @@ def main() -> int:
         outline = str(keyboard.get("outlineWidth", ""))
         if not keyboard.get("focusable") or outline in ("", "0px"):
             problems.append(f"{label}: no visible focus indicator (outline={outline})")
-        ws = (page.get("wsStatus") or "").strip().lower()
-        if "connect" not in ws:
-            problems.append(f"{label}: live socket not connected (status='{page.get('wsStatus')}')")
+        ws = page.get("wsStatus") or {}
+        if isinstance(ws, dict):
+            state, label = ws.get("state"), ws.get("label")
+        else:  # older reports stored the bare label
+            state, label = None, ws
+        if state != "connected":
+            problems.append(f"{label}: live socket not connected (state={state}, label={label!r})")
 
     summary = {
         "captures": len(pages),
