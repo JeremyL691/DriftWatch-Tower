@@ -1,66 +1,69 @@
-# DriftWatch Tower — local infrastructure
+# DriftWatch Tower self-host stack.
 #
-# Run:
-#   docker compose up -d        # postgres + kafka in the background
-#   docker compose --profile app up -d   # add the Spring Boot app
+# Default exposure is loopback-only: PostgreSQL and Kafka are reachable only on the
+# compose network, and the app publishes 127.0.0.1:${DWT_APP_PORT}. Put your own TLS
+# reverse proxy in front of the app for remote access.
 #
-# Without Docker, the same services can run via Homebrew:
-#   brew services start postgresql@16
-#   brew services start kafka
+# Start with the init helper so credentials exist:
+#   scripts/selfhost.sh init --env-file .execution/selfhost.env
+#   scripts/selfhost.sh up   --env-file .execution/selfhost.env
+#
+# Local development (host tools, exposed DB/Kafka ports):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres kafka
+#
+# Images are pinned by version and digest. Do not replace them with floating tags.
 
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16.15@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
     restart: unless-stopped
     environment:
-      POSTGRES_DB: driftwatch
-      POSTGRES_USER: driftwatch
-      POSTGRES_PASSWORD: driftwatch
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${DWT_POSTGRES_DB:-driftwatch}
+      POSTGRES_USER: ${DWT_POSTGRES_USER:-driftwatch}
+      POSTGRES_PASSWORD: ${DWT_POSTGRES_PASSWORD:?set DWT_POSTGRES_PASSWORD (see .env.example and scripts/selfhost.sh init)}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U driftwatch -d driftwatch"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
       timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '1.0'
+      retries: 12
+      start_period: 10s
+    networks: [driftwatch]
 
   kafka:
-    image: bitnami/kafka:3.7
+    image: apache/kafka:3.9.2@sha256:05b4616e0702ef2729327705d54ad6b50ea70b271c4b730fabd2320789fb7b02
     restart: unless-stopped
     environment:
-      KAFKA_CFG_NODE_ID: "1"
-      KAFKA_CFG_PROCESS_ROLES: controller,broker
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:29092,EXTERNAL://:9092,CONTROLLER://:9093
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      ALLOW_PLAINTEXT_LISTENER: "yes"
-    ports:
-      - "9092:9092"
+      CLUSTER_ID: ${DWT_KAFKA_CLUSTER_ID:-MkU3OEVBNTcwNTJENDM2Qk}
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:9093,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:${DWT_KAFKA_PORT:-9092}
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # Single broker: internal topics must not require a three-node default.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      # The application creates raw-events/quality-events explicitly with three partitions.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     volumes:
-      - kafkadata:/bitnami/kafka
+      - kafkadata:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:29092 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
       timeout: 10s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '1.0'
+      retries: 12
+      start_period: 20s
+    networks: [driftwatch]
 
   app:
-    profiles: ["app"]
+    image: ${DWT_APP_IMAGE:-driftwatch-tower:local}
     build: .
     restart: unless-stopped
     depends_on:
@@ -69,24 +72,33 @@ services:
       kafka:
         condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/driftwatch
-      SPRING_DATASOURCE_USERNAME: driftwatch
-      SPRING_DATASOURCE_PASSWORD: driftwatch
+      SPRING_PROFILES_ACTIVE: ${DWT_SPRING_PROFILES:-selfhost}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DWT_POSTGRES_DB:-driftwatch}
+      SPRING_DATASOURCE_USERNAME: ${DWT_POSTGRES_USER:-driftwatch}
+      SPRING_DATASOURCE_PASSWORD: ${DWT_POSTGRES_PASSWORD:?set DWT_POSTGRES_PASSWORD (see .env.example and scripts/selfhost.sh init)}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SPRING_PROFILES_ACTIVE: prod
+      SPRING_KAFKA_STREAMS_APPLICATION_ID: driftwatch-streams-v1
+      SPRING_KAFKA_STREAMS_STATE_DIR: /var/lib/driftwatch/streams
     ports:
-      - "8080:8080"
+      - "127.0.0.1:${DWT_APP_PORT:-8080}:8080"
+    volumes:
+      - streams-state:/var/lib/driftwatch/streams
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '1.0'
+      retries: 12
+      start_period: 40s
+    networks: [driftwatch]
+
+networks:
+  driftwatch:
+    name: ${DWT_NETWORK:-driftwatch}
 
 volumes:
   pgdata:
+    name: ${DWT_PG_VOLUME:-driftwatch-pgdata}
   kafkadata:
+    name: ${DWT_KAFKA_VOLUME:-driftwatch-kafkadata}
+  streams-state:
+    name: ${DWT_STREAMS_VOLUME:-driftwatch-streams-state}

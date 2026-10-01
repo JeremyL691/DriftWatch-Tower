@@ -1,0 +1,17 @@
+# Development override for the DriftWatch Tower stack.
+#
+# Exposes PostgreSQL and Kafka on the host loopback so local tools work:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres kafka
+#   ./mvnw spring-boot:run
+#
+# Do not use this file for a self-host or release deployment; the base compose file
+# intentionally keeps the datastores off the host network.
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${DWT_PG_PORT:-5432}:5432"
+
+  kafka:
+    ports:
+      - "127.0.0.1:${DWT_KAFKA_PORT:-9092}:9092"
