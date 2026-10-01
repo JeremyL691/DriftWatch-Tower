@@ -66,6 +66,36 @@ def tree_hash(roots):
         digest.update(f"{path}\0{file_hash}\n".encode())
     return digest.hexdigest(), len(entries)
 
+def jar_content_hash(image: str) -> dict:
+    """Content identity of the application jar inside the image.
+
+    The jar's own bytes are not reproducible (archive timestamps), but its entries are: hashing
+    (name, size, CRC32) of every entry gives a digest that a rebuild from the same locked inputs
+    must reproduce. The release pipeline asserts this before publishing, so a published image
+    cannot silently contain different application bytes than the tested candidate.
+    """
+    import tempfile, zipfile
+    container = run("docker", "create", image)
+    if not container:
+        return {}
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "app.jar")
+            copied = subprocess.run(["docker", "cp", f"{container}:/app/app.jar", target],
+                                    capture_output=True, text=True)
+            if copied.returncode != 0:
+                return {}
+            digest = hashlib.sha256()
+            with zipfile.ZipFile(target) as archive:
+                for info in sorted(archive.infolist(), key=lambda entry: entry.filename):
+                    digest.update(f"{info.filename}\0{info.file_size}\0{info.CRC}\n".encode())
+            return {"jar_content_hash": digest.hexdigest(),
+                    "jar_bytes_sha256": sha256_file(target),
+                    "jar_entries": len(archive.infolist())}
+    finally:
+        subprocess.run(["docker", "rm", "-f", container], capture_output=True, text=True)
+
+
 source_hash, source_files = tree_hash(
     ["src", "pom.xml", "Dockerfile", "docker-compose.yml", "docker-compose.dev.yml", ".mvn"])
 # Gate tooling is versioned separately: the guide freezes application, dependencies, config,
@@ -101,6 +131,7 @@ manifest = {
     "image": image,
     "image_id": image_id or None,
     "image_digest": image_digest or None,
+    "content_identity": jar_content_hash(image) if image_id else {},
     "platform": {
         "os": run("uname", "-s"),
         "arch": run("uname", "-m"),
