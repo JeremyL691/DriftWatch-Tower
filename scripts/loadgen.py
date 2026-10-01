@@ -396,7 +396,10 @@ def main() -> int:
     # The harness knows which ids it offered; the database must know exactly those ids. Every
     # generated event_id carries the load- prefix, so the ledger can be compared without
     # shipping 180k literals into one statement.
-    offered_ids = {item["ingestion_id"] for item in accepted if item["ingestion_id"]}
+    # Every accepted offer of the whole run, warmup included: the warmup shares the run marker,
+    # so the database must know exactly these identities and no others.
+    offered_ids = {item["ingestion_id"] for item in warm + offers
+                   if item["status"] == 202 and item["ingestion_id"]}
     with open(os.path.join(args.out, "offered-ingestion-ids.txt"), "w") as handle:
         handle.write("\n".join(sorted(offered_ids)))
     run_ledger = json.loads(psql(args.project, args.env_file, """
