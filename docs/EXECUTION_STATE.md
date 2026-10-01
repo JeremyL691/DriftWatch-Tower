@@ -8,17 +8,17 @@
 |---|---|
 | document_revision | 1.0 |
 | handoff_date | 2026-09-30，America/Los_Angeles |
-| product_goal_status | RUNNING，P0 与 P1 完成，P2 进行中 |
-| current_phase | P2 |
-| current_task | P2.2 |
-| next_action | 规则与配置覆盖：hash 规范、数值边界、regex 启动校验、数组/嵌套 leaf、质量状态与 evaluation coverage |
+| product_goal_status | RUNNING，P0-P2 完成，P3 进行中 |
+| current_phase | P3 |
+| current_task | P3.1 |
+| next_action | P3.1：RawEnvelope 摄取、ingestion_id、幂等 receipt、原子 sink 与 way 5.4 幂等/重放对账 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（本地；尚未推送） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | dfd79c29d5228b294c93543130ba83208c786245（分支最新；P2 起为新候选基） |
+| candidate_sha | 03b6ca58（P2 完成；source_tree_hash 见下） |
 | source_tree_hash | 8c8797ad9fe505c8e12d0f797264e4cb15de7fc5c00ffddce25c61cdd023570c（src+pom+Dockerfile+compose） |
 | candidate_image_id / public_digest | 本地镜像 sha256:1a419f6a…（仅本地验证，未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
@@ -55,9 +55,9 @@
 | P1.2 | 配置和认证基础 | PASSED | 86/0/0/0；live 19/19；弱/缺生产凭证 fail-fast；见 `.execution/runs/p12/` |
 | P1.3 | 验证脚本及后台 runner | PASSED | preflight/unit/sca/compose 入口全部 PASSED；selfhost init/up/status/down/backup/restore 实测；soak runner 采样/checkpoint/连续性/恢复实测 |
 | P2.1 | scope / 窗口 / 漏报修复 | PASSED | G03 PASSED（101/0/0/0，DetectionContractTest 18 项）；G01 三例已转绿 |
-| P2.2 | 规则与配置覆盖 | RUNNING | - |
-| P2.3 | schema 事务及基线反馈 | NOT_STARTED | - |
-| P3.1 | 摄取确认、envelope、幂等 | NOT_STARTED | - |
+| P2.2 | 规则与配置覆盖 | PASSED | 规则边界/哈希规范/数组契约/OpenAPI 契约测试；126/0/0/0 |
+| P2.3 | schema 事务及基线反馈 | PASSED | G04 PASSED；ACTIVE 唯一、advisory lock、outbox 补发、激活 API；126/0/0/0 |
+| P3.1 | 摄取确认、envelope、幂等 | RUNNING | - |
 | P3.2 | retry / DLT / replay | NOT_STARTED | - |
 | P3.3 | 历史升级与回滚演练 | NOT_STARTED | - |
 | P4.1 | GitHub 持久 poller | NOT_STARTED | - |
@@ -81,7 +81,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G01 红色回归复现 | EXPECTED_FAILURE | 3 个 5.4 用例在旧实现复现（null 全缺失 / 单事件基线突增 / 乱序覆盖窗口）；`g01-red-regression.log`、`g01-cases.json` |
 | G02 全新 Compose | PASSED | 无缓存拉取+构建；容器启动后 6–19s 内全部 healthy（≤120s）；3 分区 topic、Streams changelog、状态卷、仅回环暴露；`runs/20261001T022637Z-p11-g02/` |
 | G03 检测正确性 | PASSED | SHA 5c5a2ea；PHASE-P2 gate：101 tests / 0 fail / 0 skip，DetectionContractTest 18 + QualityStreamsTopologyTest 7；`.execution/verify/p2-gate2/` |
-| G04 schema 反馈 | NOT_RUN | - |
+| G04 schema 反馈 | PASSED | SHA 03b6ca58；PHASE-P2 gate：126 tests / 0 fail / 0 skip，SchemaTransactionIntegrationTest 4 项（并发唯一 ACTIVE、outbox 崩溃补发、激活降级与同步状态）；`.execution/verify/p2-gate5/` |
 | G05 摄取与幂等 | NOT_RUN | - |
 | G06 故障与死信 | NOT_RUN | - |
 | G07 升级兼容 | NOT_RUN | - |
@@ -195,6 +195,13 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 - G03：`./scripts/verify.sh phase P2` → PASSED，101 tests / 0 fail / 0 err / 0 skip（DetectionContractTest 18 项覆盖 5.4 全部输入、边界、watermark 隔离、重投/冲突、模式跳过、scope key 不可碰撞；QualityStreamsTopologyTest 7 项原用例保留）。原 `expected-failure` 标签与 surefire 排除已移除。
 - 顺带修复：`MetricWindowProjector` 跳过非 INCLUDED 事件；`verify.sh unit/phase` 对容器启动失败做一次有记录的重试（首次日志保留为 attempt1）。
 - 观察：容器启动偶发失败（ContainerLaunchException/exit 126）在重试后消失，属环境竞争；两次运行的日志都保留。
+
+### 2026-10-01 P2.2 / P2.3 规则覆盖与 schema 事务（PASSED，G03+G04）
+
+- P2.2：非法 regex 在启动时失败并指明 `driftwatch.detector.field-format.patterns`；数值字段的非数字值改为类型证据（NOT_A_NUMBER + value_type）而不是静默跳过；所有检测告警带 rule_version；新增测试锁定数组/嵌套 leaf 契约、哈希规范化（嵌套键序、数组顺序、unicode、null）、质量状态优先级与 exclusion coverage、OpenAPI 事件 schema 与 202/400 契约。
+- P2.3：schema 观察与 drift 告警移入 sink 事务（拓扑不再访问 JPA），active leaf types 来自 Streams global store（compacted `schema-baselines-v1`）；V8 迁移增加 ACTIVE 部分唯一索引（升级时保留最早 ACTIVE、其余降级并写迁移记录）与 `baseline_outbox`；`SchemaObservationService` 用 advisory transaction lock，首个观察即 ACTIVE 并同事务写 outbox，NULL 不覆盖已确定的非空类型；`BaselineOutboxRelay` 在 broker ack 后才标 SENT，崩溃窗口内的 PENDING 行会被下一轮补发；`PUT /api/v1/schemas/{eventType}/baseline` 原子激活并降级旧 ACTIVE（不删除版本），响应报告 PUBLISHED/PENDING 而不是宣称 Streams 已应用。
+- 期间修复：激活时先 flush 降级再提升（部分唯一索引要求）；测试清理按外键顺序删除；测试 profile 为每个上下文使用独立 Streams application id（消除并发 rebalance 造成的 readiness/落库抖动）。
+- 证据：`.execution/verify/p2-gate5/`（PHASE-P2 PASSED，126 tests / 0 fail / 0 err / 0 skip，required classes 全部运行）。
 
 后续每条保留：
 
