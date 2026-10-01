@@ -563,6 +563,31 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
     out_dir = args.out or directory
     os.makedirs(out_dir, exist_ok=True)
     atomic_write_json(os.path.join(out_dir, "soak-report.json"), report)
+    # The release gate looks for a gate.json per gate; the soak verdict needs one too, written
+    # from the measured report rather than hand-entered.
+    gate = {
+        "id": "SOAK",
+        "status": "PASSED" if not problems else "FAILED",
+        "command": f"acceptance.py soak-report --run-id {args.run_id} --out {out_dir}",
+        "started_at": state.get("started_utc"),
+        "ended_at": utc_now(),
+        "exit_code": 0 if not problems else 1,
+        "evidence_paths": [os.path.join(out_dir, "soak-report.json")],
+        "git_sha": state.get("git_sha"),
+        "measurement": {
+            "planned_duration_seconds": planned,
+            "measured_seconds": measured,
+            "samples": continuity.get("samples"),
+            "max_monitor_gap_seconds": continuity.get("max_gap_seconds"),
+            "github_distinct_events": source.get("github_distinct_events"),
+            "github_live_events": source.get("github_live_events"),
+            "faults_completed": len([f for f in faults if f.get("status") == "completed"]),
+            "dlt_open": ledger.get("dlt_open"),
+            "lag_total": lag,
+        },
+        "failure_reason": "; ".join(problems) if problems else None,
+    }
+    atomic_write_json(os.path.join(out_dir, "gate.json"), gate)
     print(json.dumps(report, indent=2))
     return 1 if problems else 0
 
