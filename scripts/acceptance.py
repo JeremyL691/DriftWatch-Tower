@@ -500,6 +500,10 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
     if lag != 0:
         problems.append(f"consumer lag {lag} is not zero")
 
+    # 5b. no unplanned container restart and no exhausted disk
+    health = container_health(project, env_file)
+    problems.extend(health.pop("problems", []))
+
     # 6. last hour healthy, ignoring the planned fault windows
     fault_windows = [(parse_epoch(fault["utc"]),
                       parse_epoch(fault["utc"]) + (fault.get("outage_seconds") or 0) + 300)
@@ -579,6 +583,7 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
         "faults": faults,
         "ledger": ledger,
         "lag": {"total": lag, "detail": lag_detail},
+        "containers": health,
         "resource": resource,
         "problems": problems,
     }
@@ -606,6 +611,8 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
             "faults_completed": len([f for f in faults if f.get("status") == "completed"]),
             "dlt_open": ledger.get("dlt_open"),
             "lag_total": lag,
+            "container_restarts": {name: entry.get("restart_count")
+                                   for name, entry in health.get("containers", {}).items()},
         },
         "failure_reason": "; ".join(problems) if problems else None,
     }
@@ -634,6 +641,35 @@ def consumer_lag_total(project: str, env_file: str) -> tuple[int, list[str]]:
                     continue
                 detail.append(line.strip())
     return total, detail
+
+
+def container_health(project: str, env_file: str) -> dict:
+    """Restart counts and disk headroom: the guide requires no unplanned restart and no
+    exhausted disk. A deliberate `compose stop/start` (the planned faults) does not increment
+    RestartCount; a crash under `restart: unless-stopped` does, so this separates the two."""
+    report = {"containers": {}, "problems": []}
+    for service in ("app", "kafka", "postgres"):
+        name = f"{project}-{service}-1"
+        completed = subprocess.run(
+            ["docker", "inspect", "--format",
+             "{{.RestartCount}}|{{.State.StartedAt}}|{{.State.Status}}", name],
+            capture_output=True, text=True)
+        if completed.returncode != 0:
+            report["containers"][service] = {"error": completed.stderr.strip()[:120]}
+            continue
+        restarts, started, status = (completed.stdout.strip().split("|") + ["", ""])[:3]
+        entry = {"restart_count": int(restarts or 0), "started_at": started, "status": status}
+        report["containers"][service] = entry
+        if entry["restart_count"] > 0:
+            report["problems"].append(
+                f"{service} restarted {entry['restart_count']} time(s) outside the planned faults")
+    disk = subprocess.run(["df", "-g", REPO_ROOT], capture_output=True, text=True)
+    if disk.returncode == 0 and disk.stdout.strip():
+        free_gib = disk.stdout.strip().splitlines()[-1].split()[3]
+        report["disk_free_gib"] = int(free_gib)
+        if int(free_gib) < 5:
+            report["problems"].append(f"only {free_gib}GiB free on the run volume")
+    return report
 
 
 def psql_json(project: str, env_file: str, sql: str) -> dict | None:
