@@ -345,7 +345,9 @@ public class QualityStreamsTopology {
         @Override
         public void process(Record<String, PendingEvent> record) {
             PendingEvent p = record.value();
-            if (p.skipDetection) {
+            // Guide 4.1: BOOTSTRAP/REPLAY/SYNTHETIC only persist and observe schema; they never
+            // trigger realtime detection. Backfill is not a late arrival and not a duplicate.
+            if (p.skipDetection || !p.envelope.liveWindowEligible()) {
                 context.forward(record);
                 return;
             }
@@ -394,7 +396,8 @@ public class QualityStreamsTopology {
         @Override
         public void process(Record<String, PendingEvent> record) {
             PendingEvent p = record.value();
-            if (p.skipDetection) {
+            // Duplicate detection is a realtime window; bootstrap backfill must not populate it.
+            if (p.skipDetection || !p.envelope.liveWindowEligible()) {
                 context.forward(record);
                 return;
             }
