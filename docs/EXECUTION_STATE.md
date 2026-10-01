@@ -26,7 +26,7 @@
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | 无进行中 run：20261001T083508Z-soak24 因应用变更已作废（runner 已停止，FAILURE-NOTES.txt 记录原因），待本候选门禁全部通过后以全新 24 小时 run 重开 |
+| active_soak_run | 20261001T093737Z-soak24（RUNNING，PID 48024，dwt-soak，18087，86400s，2026-10-01T09:37:37Z 起，预计 2026-10-02T09:37:37Z 结束） |
 | external_blocker | 无 |
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
@@ -99,23 +99,23 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 
 ## 长任务与恢复字段
 
-24 小时 run 待重开（P6.2）。旧 run 保留为历史，不作证据。
+24 小时 run 进行中（P6.2）。两个作废 run 保留为历史，不作证据。
 
 | 字段 | 值 |
 |---|---|
-| run_id / run_dir | 待重开；作废的 20261001T083508Z-soak24 保留在 `.execution/soak/20261001T083508Z-soak24/` |
+| run_id / run_dir | 20261001T093737Z-soak24 / `.execution/soak/20261001T093737Z-soak24/`（作废：20261001T083508Z-soak24、20261001T093502Z-resume） |
 | compose_project / volume 所有权 | dwt-soak（自有卷 dwt-soak_pgdata、dwt-soak_kafkadata、dwt-soak_streams-state） |
 | env_file 路径 | `.execution/soak.env`（0600，仅路径，不含 secret 内容） |
 | candidate_sha / image_id / config_hash | f111aa6（应用面）/ sha256:fcafddff074783ec8096259c2fd2faa7ee93af2efee189edad6f732ca0e914e0 / 7457349d… |
-| started_at_utc / expected_end_at_utc | 待重开 |
-| runner_pid / process_start / lock | 无（旧 PID 23887 已停止） |
+| started_at_utc / expected_end_at_utc | 2026-10-01T09:37:37Z / 2026-10-02T09:37:37Z |
+| runner_pid / process_start / lock | PID 48024（runner.pid 记录进程创建时间；`runner_alive` 校验命令行与创建时间，只有 PID 不算存活） |
 | last_heartbeat_utc / checkpoint | samples.jsonl 每 30s 一行；checkpoint.json 每 5 分钟原子写 |
 | live_unique_events / new_after_bootstrap | 待结束后由 `soak-report` 从 raw_events(origin=GITHUB) 统计 |
 | source_poll 状态 / outbox / DLT / lag | 待结束后统计（要求全部归零） |
 | planned_faults / completed_faults | 3 个计划（2h app-restart、8h kafka-stop、16h db-stop），已完成 0 |
 | monitor_gap / continuity_valid | 待判定（上限 120s） |
-| exact_resume_command | 门禁通过后：`./scripts/verify.sh soak-resume --run-id 20261001T083508Z-soak24`（把作废 run 标记 FAILED 并以全新 24 小时重启），或用新 run-id 执行 `soak-start` |
-| last_failure / required_external_action | 20261001T083508Z-soak24 因 favicon/匿名图标的应用变更作废；无外部阻塞 |
+| exact_resume_command | `./scripts/verify.sh soak-status --run-id 20261001T093737Z-soak24`；runner 失联时 `./scripts/verify.sh soak-resume --run-id 20261001T093737Z-soak24`（标记旧 run FAILED 并以全新 24 小时重启，且会沿用原 project/env-file/fault-plan） |
+| last_failure / required_external_action | 无；等待到 2026-10-02T09:37:37Z |
 
 恢复顺序：读状态 -> 核对 checkout/SHA -> 查原 runner 锁和进程身份 -> 验证采样连续性 -> 继续现有任务或保留失败记录并新建 run。不能看到 PID 就启动第二套。
 
@@ -305,6 +305,12 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 - 20261001T083508Z-soak24 作废：runner 已停止（PID 23887），`.execution/soak/20261001T083508Z-soak24/FAILURE-NOTES.txt` 记录原因与时间；其 40 个采样只作历史，不作为 G16 证据，也不与新 run 拼接。
 - 受影响门禁按新候选重跑：UNIT 165/0/0/0（`.execution/verify/p61-unit3/`）、G02（`.execution/verify/p61-compose3/`，11s ready）、G12（`.execution/verify/p61-browser3/`，8/8）、G13（`.execution/verify/p61-g13d/`，0 HIGH/CRITICAL、0 secret）、G14（`.execution/verify/p61-load3/`，同一 100/s×1800s 门槛）、G15（`.execution/verify/p61-package3/`，从制品安装且镜像 id 一致）。
 - 同时把 npm lockfile 纳入版本控制：CI 需要 `npm ci` 在固定 Playwright 版本上运行，之前 lockfile 被 .gitignore 排除导致 browser job 无法安装浏览器。
+
+### 2026-10-01 P6.2 24 小时真实验收启动（RUNNING）
+
+候选 f111aa6 / 镜像 sha256:fcafddff… 的全部门禁通过后启动 run 20261001T093737Z-soak24（PID 48024，dwt-soak，18087，86400s，预计 2026-10-02T09:37:37Z 结束）。计划故障：2h app-restart、8h kafka-stop、16h db-stop；每 30s 采样 readiness/liveness/recent + 容器资源，每 5 分钟原子写 checkpoint。
+
+启动过程中修掉了一个真实的恢复路径缺陷：`soak-resume` 用 CLI 默认值而不是原 run 的 placement 启动替代 run，导致监控进程采样的是错误的端口、且没有加载故障计划（新 run 的 image 与 planned_faults 为空、readiness 全为 error）。修复后 resume 会把 project/env-file/fault-plan/duration 从原状态带过去，`soak-start` 也会在 project 为空或 env 文件缺失时直接拒绝。作废的 20261001T093502Z-resume 与 20261001T083508Z-soak24 都保留 FAILURE-NOTES.txt 并标记 FAILED，不与新 run 拼接。
 
 后续每条保留：
 
