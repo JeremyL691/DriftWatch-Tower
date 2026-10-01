@@ -444,6 +444,11 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 
 同轮按 §12 第 7 条做了一次所有权清理：删掉自己遗留的验收容器 `p37-app-18081`（镜像 driftwatch-tower:local，占 591MiB，已运行 10 小时）、其网络 `dwt-p37_driftwatch` 与 P1.3 夹具卷 `dwt-p13b_*`；保留 `dwt-trivy-cache`（收尾期 G13 复跑要用）与正在运行的 `dwt-soak_*`。用户自己的 `cpamp` 栈未触碰。
 
+同轮还发现并修复两处「发布时才会暴露」的门禁缺陷（都在工具层，不影响冻结应用面）：
+
+4. **`release-check.sh` 的证据绑定只是记录、没有牙齿**：它把每个 gate 的 `git_sha` 写进 `gate-evidence.json`，却从不与发布修订比对，因此过期于代码的门禁报告也能通过——正是指南 §11.2 禁止的情况。现在它解析 tag 指向的提交，并对每个 gate 用 `git diff --quiet <gate_sha> <released_sha> -- <冻结应用面 roots>` 断言应用面一致，不一致即 RELEASE FAILED。用当前证据实测：G00/G02/G12-G15 与发布面一致，**G03-G11 绑定的应用面确实不同**（653a7e39/7217ff67/fbba4d05/4b111417/6bf026de），必须靠收尾程序第 3 步重跑——这条检查把「必须重跑」从说明变成了强制。
+5. **`evidence-pack.sh` 会打包过期证据**：browser/security/package 三个目录名是写死的旧名（`*-browser4`、`*-g13e`、`*-package4`），而已验收的是 `p61-browser10`、`p61-g13h`、`p61-package-final3`，于是发布包会附上**修 a11y/对比度之前的旧浏览器截图**与旧扫描摘要；soak 目录还按目录 mtime 选择，可能选中作为历史保留的失败 run。现在每个证据目录都由「该 gate id 的最新 gate.json」推导（回退到最新匹配），soak run id 直接读自已验收报告里的 `run_id`。已用 `--run-id rehearsal` 彩排：browser/load/security/package 四个文件与各自已验收 gate 的证据**逐字节相同**，8 张截图齐全、0 凭据泄漏。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
