@@ -359,7 +359,6 @@ def main() -> int:
           'accepted_unconfirmed', (select count(*) from ingestion_receipts where publish_state<>'CONFIRMED'),
           'processed', (select count(*) from processed_receipts),
           'raw', (select count(*) from raw_events),
-          'raw_for_this_run', (select count(*) from raw_events where ingestion_id like 'ing%' and source='%s'),
           'alerts', (select count(*) from quality_alerts),
           'dlt_open', (select count(*) from dead_letter_records where recovery_state='OPEN'),
           'dlt_total', (select count(*) from dead_letter_records),
@@ -374,7 +373,7 @@ def main() -> int:
              where not exists (select 1 from raw_events e where e.ingestion_id = p.ingestion_id)),
           'open_dlt_ids', (select coalesce(json_agg(ingestion_id), '[]'::json)
                            from dead_letter_records where recovery_state='OPEN')
-        )""" % args.source.replace("'", "''")))
+        )"""))
     report["ledger"] = ledger
 
     # The harness knows which ids it offered; the database must know exactly those ids. Every
