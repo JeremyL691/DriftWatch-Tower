@@ -2,12 +2,26 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
+## 本聊天接管记录 (2026-10-01 12:50 PDT)
+
+工具进展：26 项防误发布回归通过；G16 报告增加账本读取、OOM、磁盘、内存采样、未知 lag 及结束十分钟清零的失败关闭检查。只读结束观察进程 PID39749（13:15:07 PDT）负责及时正式报告；登记在 `.execution/finalize/finish-watch.pid.json`。这不构成 G16/G17 通过证据。
+
+- 旧 ZCode 自动化 `automation-82c729b4` 已通过界面暂停，显示“已暂停”。ZCode 无效 JSON 被误判为目标完成保留为历史，不作为完成证据。
+- 当前 Codex heartbeat: `driftwatch-v1`，每小时静默继续，仅恢复、失败、完成或需外部操作时通知。
+- 工作开始时 `codex/release-v1` @ `d83b6a4b1b980cca2b000f4317175de3427ceee8` 干净。冻结应用、配置和依赖保持不变。
+- runner PID 5002、创建时间 Thu Oct 1 11:24:03 2026、命令 run-id、容器镜像及新采样一致；有效窗口为 `20261001T182403Z-soak24`。13:24/19:24/次日03:24 PDT 为三次故障，次日11:24 PDT 后判定 G16。
+- 本窗口故障前快照 `.execution/soak/20261001T182403Z-soak24/prefault-takeover.json`: BOOTSTRAP 1轮/96事件，LIVE 15轮/23事件，inbox119，pending0，failures0，READY。故障后必须与同一窗口比较。
+- 当前事实入口: [收尾执行计划](RELEASE_FINISH_PLAN.md)。发布工具唯一证据绑定为 `.execution/finalize/release-context.json`；G02/G15/G16 的 final 路径尚未生成，不能视为通过。
+- G16 未完成；P7.1/P7.2/P7.3 未完成。历史发布工具按 mtime 选报告的说明已废弃。公开镜像可见性使用 GitHub 官方界面，不存在 visibility PATCH API。
+
+以下原入口与记录保留为历史，遇到收尾程序冲突以本接管记录和收尾执行计划为准。
+
 ## 当前入口
 
 | 字段 | 当前值 |
 |---|---|
-| document_revision | 1.0 |
-| handoff_date | 2026-09-30，America/Los_Angeles |
+| document_revision | 1.1 |
+| handoff_date | 2026-10-01，本聊天接管，America/Los_Angeles |
 | product_goal_status | RUNNING，P0-P6.1 完成，P6.2 进行中：候选 573154b9（适配器字段路径 + 320px 布局修复）上 UNIT/P2/P3/P4/P5/P5b/P5c/P6/load/package **全部 PASSED**，第九个 24 小时窗口正在运行 |
 | current_phase | P6 |
 | current_task | P6.2 |
@@ -27,33 +41,21 @@
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
 | active_soak_run | **`20261001T182403Z-soak24`（RUNNING）**：2026-10-01T18:24:03Z 启动，PID 5002（`caffeinate -i -w 5002`），86400s，预计 **2026-10-02T18:24:03Z** 结束；`state.json` 记录 `git_sha=20f948be`、镜像 `sha256:2901be88…`（= 冻结候选），app 容器同一镜像且 healthy；故障计划 2h app-restart / 8h kafka-stop / 16h db-stop；启动后 bootstrap 轮已入库真实事件、readiness 200。其余历史 run（含 20261001T145553Z-soak24）均 FAILED，仅作证据保留 |
-| external_blocker | **预先识别的外部依赖（尚未阻塞，预计在 P7.2 出现）**：GHCR 包首次发布默认 private，而本机 `gh` 凭据作用域为 `gist, read:org, repo, workflow`（无 `read/write:packages`，实测 `gh api /user/packages` 403），环境中也没有 packages 作用域的 token（GH_TOKEN/GITHUB_TOKEN/GHCR_TOKEN/CR_PAT 全部 absent），工作流的 `GITHUB_TOKEN` 能 push 但通常不能改可见性。因此 `release.yml` 的「Make the package public」PATCH **可能失败**，紧随其后的「匿名按 digest 拉取」会如实失败并使发布 FAILED（此时镜像与 tag 已推送、Release 尚未创建，失败模式干净）。恢复（一次性）：打开 `https://github.com/users/JeremyL691/packages/container/driftwatch-tower/settings` → Danger Zone → Change visibility → Public；或用具 `write:packages` 的 token 执行 `gh api --method PATCH /user/packages/container/driftwatch-tower -f visibility=public`；然后重跑 `./scripts/verify.sh release --out .execution/verify/p7-release --version v1.0.0 --pr 1`（工作流可重入）。用户可提前点击以消除该依赖 |
+| external_blocker | 尚未实际阻塞。首次 GHCR 推送后需在 GitHub 包设置将包设为 Public，再核验匿名 digest 拉取；官方界面动作由本聊天接管。不存在 visibility PATCH API；无须为该无效操作申请 PAT。 |
 
-> **给每小时自动化/接手者的醒目标记**：`automation-82c729b4` 的提示词仍写死旧 run id `20261001T145553Z-soak24`（已 FAILED）、旧候选 `8a798a6e`、旧 content identity `e574ffcf…`、旧制品目录 `p61-package-final3` 与旧 manifest `p61-freeze`。**当前有效 run 是 `20261001T182403Z-soak24`，候选 `573154b9`（HEAD 其后代），content identity `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`，制品目录 `.execution/verify/p7-package2`，manifest `.execution/runs/p7-freeze/manifest.json`。** 自动化提示词无法在本会话修改（本会话工具集只有 CronList，无 CronUpdate/CronCreate；automations 存于服务端，不在本地 DB）——但它在本会话中执行、携带完整历史，因此执行时**必须**以本标记与本节为准：不要为旧 run id 启动新窗口（`soak-start` 也会因存在存活 runner 而拒绝），改用动态发现：读 `.execution/soak/*/state.json`，取 **`status=RUNNING` 且其 `runner.pid` 进程仍存活**（`kill -0 <pid>`）的那个 run id（注意存在陈旧排练目录 `p13-resume2`，状态写着 RUNNING 但 pid 早已退出，不能只看状态字段），并把上表「active_soak_run」的值当作当前 run。实测两小时内的投递提示词先后写死了两个不同的旧 run id（`20261001T145553Z-soak24`、`20261001T093737Z-soak24`）与旧候选 `f111aa6`，而服务端存储的提示词文本并未变化——即**投递文本本身不可信**，一律以本节标记与动态发现为准。用户可在 Automations 页面把提示词中的旧值一次性替换为上述新值。
+> **接管规则**：旧 ZCode 自动化已暂停。本聊天 heartbeat 以执行计划和 release context 为准；同时验证 PID、创建时间、命令、采样更新、项目与镜像。不得根据旧投递文字或单个 RUNNING 状态启动第二个窗口。
 
 > **陷阱警告（防止误记）**：旧 run `20261001T145553Z-soak24` 的 `faults.jsonl` 里**已有一条 completed 的 2h 故障**（它死于字段路径缺陷前的自身计划）。它是**旧窗口**的证据，**不能**用来给当前窗口做「重启恢复对比」。当前窗口的三次故障时间：2h → **2026-10-01T20:24:03Z**、8h → **2026-10-02T02:24:03Z**、16h → **2026-10-02T10:24:03Z**；只有在 `.execution/soak/20261001T182403Z-soak24/faults.jsonl` 里看到对应故障 `completed` 之后，才可用 `scripts/poller-state.sh --project dwt-soak --env-file .execution/soak.env` 与 `.execution/verify/p61-soak-prefault-baseline.json`（已更新为本窗口的故障前基线：BOOTSTRAP 1 / 96 事件 / inbox 96 / failures 0）做对比，并把**前后两组数字**写进状态文件。在 20:24:03Z 之前，当前窗口**没有任何**故障证据，不得记录任何「故障后」数字。
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
 
-## 收尾程序（G16 之后，按序执行，勿跳步）
+## 收尾程序
 
-以下值取自 `.execution/runs/p61-freeze/manifest.json` 与当前 run，勿手抄：
+按 [RELEASE_FINISH_PLAN.md](RELEASE_FINISH_PLAN.md) 执行。历史程序已迁至 [历史交接](HISTORICAL_RELEASE_HANDOFF.md)，不得再使用其中旧 manifest、mtime 门禁选择、无效 visibility PATCH 或源码安装路径。
 
-- candidate（应用面）: `573154b9b7db0cb78a6db1ad10bd09c8df12fe57`（字段路径 + 320px 布局修复）
-- 镜像（本地，未发布）: `sha256:2901be88df52de693b892825700ab8101fd72efb7bb944ad639b6018ad77d0d3`
-- `content_identity.jar_content_hash`: `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`
-- 当前 24 小时 run: run 8（由 `.execution/p7-gate-chain.sh` 在新候选上自动启动；第 7 个 run 20261001T145553Z-soak24 因字段路径缺陷作废，见事件记录）
-- 最终制品目录: `.execution/verify/p7-package/artifacts`（新候选；旧 `p61-package-final3` 属已废弃的 8a798a6e）
+正式预检: `python3 scripts/release-context.py --context .execution/finalize/release-context.json`。正式证据打包: `./scripts/evidence-pack.sh --context .execution/finalize/release-context.json --out .execution/evidence/final-release --run-id final-release`。
 
-1. `./scripts/verify.sh soak-report --run-id <run 8 的 run-id> --out .execution/verify/p7-soak` → 判定 G16 并写出 `gate.json`(SOAK)。有问题就记录并修复后重开完整 24 小时，不拼接。
-1b. 判定完成后释放验收资源（指南 §12 第 7 条的所有权清理，必须在打包前做，打包会起自己的 compose 项目）：`docker compose -p dwt-soak --env-file .execution/soak.env down -v`（报告在判定前已读完数据库，证据已落盘到 `.execution/`，卷是该验收项目自有的测试卷）；`caffeinate -i -w <runner pid>` 随 runner 结束自动退出；确认 `docker ps` 只剩用户自己的栈、`docker volume ls` 只剩 `dwt-trivy-cache`（保留给收尾期的 G13 复跑）。
-2. 通过后更新本文件（G16/P6.2 PASSED、实测数字与证据路径），提交并推送 `codex/release-v1`。
-3. 阶段门禁已在新候选上复跑（后台链，输出 `p7-P2`…`p7-P5b`、`p7-P5c`、`p7-P6`、`p7-load`、`p7-package`）；若需重跑：`for ph in P2 P3 P4 P5 P5b; do ./scripts/verify.sh phase $ph --project dwt-soak --env-file .execution/soak.env --out .execution/verify/p7-$ph; done`（每个脚本跑一次完整套件，约 35 分钟；只依赖 Docker，不需要运行中的栈）。若某个门禁失败且**唯一**失败用例是 `DeadLetterIntegrationTest.malformedRecordIsDeadLetteredAndDoesNotBlockLaterRecords`（已知隔离竞态），该门禁可**重跑一次**并记为已知 flaky（附断言原文）；其它原因的失败都是真失败，必须记录并修复或如实上报，不得跳过。理由：指南 §11.2 要求发布验证「同一候选的 manifest/gate 证据」并拒绝「过期于代码变更」的报告，而这五个门禁的记录仍绑定在更早的 SHA 上（实测：G03/G04=653a7e39、G05-G07=7217ff67、G08/G09=fbba4d05、G10=4b111417、G11=6bf026de，应用面与发布面不同）；`verify.sh release` 会检查每个 gate id 的最新记录，重跑后整套证据都绑定到冻结候选。**`release-check.sh` 现在会强制这一点**：它取 tag 指向的提交，对每个 gate 用 `git diff --quiet <gate_sha> <released_sha> -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 断言应用面一致，不一致即 RELEASE 门禁 FAILED（此前只记录 git_sha、不校验，等于没有牙齿）。
-4. 合并 PR：`gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 `573154b9`（或其后代）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`（不绕过必需检查）；合并后确认 main 含该候选树：`git fetch origin main` 后 `git diff <main-sha> 573154b9 -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 为空。**已知不稳定测试**：`DeadLetterIntegrationTest.malformedRecordIsDeadLetteredAndDoesNotBlockLaterRecords` 有测试隔离竞态（详见事件记录），CI 与 P3 门禁都可能偶发在此红；遇到时**重跑一次**并注明「已知 flaky（隔离竞态）+ 失败断言」，仍要求全绿后才合并，不得跳过或绕过。
-5. 发布：`release.yml` 只有在默认分支上才会注册，所以合并后再用**合并后 main 的 SHA** 作为 candidate_sha（它含冻结应用面，是真正被发布的修订；比 573154b9 更准确）：`gh workflow run release.yml --ref main -f version=v1.0.0 -f candidate_sha=$(git rev-parse origin/main) -f content_identity=1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`，然后 `gh run watch`。该 job 用同一锁定输入重建并比对 content identity（不一致即拒绝推送；已在原生 amd64 CI 上核验与冻结值逐字节一致；**未提供 content_identity 时直接拒绝发布**，包括 tag push 触发），推送 `v1.0.0` 与 `sha-<candidate_sha 前 12 位>`、尝试把 package 设为 public、在干净 Docker config 中匿名拉取 digest、创建指向该 SHA 的 Release（正文含 image@digest，供第 7 步取用）。匿名拉取失败即 package 非 public：记录确切错误与恢复动作（GitHub UI 或具 `write:packages` 的 token），不得当作成功。
-6. 附件：先 `./scripts/verify.sh package --out .execution/verify/p7-package --image driftwatch-tower:local --version v1.0.0 --manifest .execution/runs/p7-freeze/manifest.json`（必须等 soak 栈结束、无验收栈运行时再做，打包会起自己的 compose 项目）；再 `./scripts/evidence-pack.sh --out .execution/evidence --run-id p7-release`；然后 `./scripts/upload-release-assets.sh --version v1.0.0 --artifacts .execution/verify/p7-package/artifacts --evidence .execution/evidence --digest sha256:...`（digest 取自 Release 正文）。
-7. 匿名核验：`./scripts/verify.sh release --out .execution/verify/p7-release --version v1.0.0 --pr 1`。
-8. 最终报告写回本文件：Release URL、image@digest、源码 SHA、证据路径、性能条件与已知限制；同步 `docs/RELEASE_NOTES.md` 的 digest 行。
+G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compose / final-package。上传必须指定具体 evidence tar 文件，不能按目录时间挑包。发布安装: `./scripts/verify.sh release --context .execution/finalize/release-context.json --out .execution/verify/final-release --version v1.0.0 --pr 1`。
 
 ## 历史审核快照
 
@@ -104,7 +106,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 |---|---|---|
 | G00 基线 | PASSED（已随候选 791c75f 重跑） | Java 21.0.12.1 + Docker 29.5.3；165 tests / 0 fail / 0 err / 0 skip；`.execution/verify/p61-unit2/` |
 | G01 红色回归复现 | EXPECTED_FAILURE | 3 个 5.4 用例在旧实现复现（null 全缺失 / 单事件基线突增 / 乱序覆盖窗口）；`g01-red-regression.log`、`g01-cases.json` |
-| G02 全新 Compose | PASSED（已随候选 791c75f 重跑） | 全新项目 dwt-p61 用冻结镜像启动；container-start-to-ready 11s（≤120s）；raw/quality 各 3 分区、pg/kafka 无宿主端口、摄取 smoke 202 且落库；`.execution/verify/p61-compose2/` |
+| G02 Compose | NOT_STARTED | 历史 p61-compose10 属旧应用；G16 后冻结镜像全新项目/卷重跑 `.execution/verify/final-compose` |
 | G03 检测正确性 | PASSED（已随候选 791c75f 重跑） | UNIT gate 165 tests / 0 fail / 0 err / 0 skip，含 DetectionContractTest 21、QualityStreamsTopologyTest 7；`.execution/verify/p61-unit2/` |
 | G04 schema 反馈 | PASSED（已随候选 791c75f 重跑） | UNIT gate 165 tests / 0 fail / 0 err / 0 skip，SchemaTransactionIntegrationTest 4 项实际运行；`.execution/verify/p61-unit2/` |
 | G05 摄取与幂等 | PASSED（最新 PHASE-P3 证据 7217ff67 已覆盖其用例） | SHA 45d18bce；PHASE-P3 gate：132 tests / 0 fail / 0 skip，IdempotencyIntegrationTest 5 + PreAckFailureTest 1 + KafkaIngestionIntegrationTest 1；`.execution/verify/p3-gate1/` |
@@ -117,9 +119,9 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G12 浏览器与四断点 | PASSED（已随候选 791c75f 重跑） | SHA 791c75f；PHASE-P5c gate：320/768/1024/1440 × dark/light 共 8 张真实截图全部 200、0 console 错误、无页面级横向溢出、focus outline 2px、WebSocket state=connected（ticket 握手）；`.execution/verify/p61-browser2/`（after-report.json + g12-summary.json），P5.3 对照 `.execution/verify/p5c-gate6/`、before `.execution/runs/p53-before/` |
 | G13 安全与漏洞 | PASSED | SHA 791c75f；Trivy 0.58.1，DB UpdatedAt 2026-10-01T01:24:14Z；依赖树与运行时镜像 0 HIGH/CRITICAL，镜像与 tracked 树 0 secret，镜像内无凭证文件；`.execution/verify/p61-g13c/` |
 | G14 100/s、30分钟 | PASSED | SHA 791c75f（镜像 sha256:4f064add…）；180000/180000 offer 于 1800.0s 内发出（100.0/s），accepted 180000、failed 0；ack p95 12.4ms（≤1s，p99 43ms）、commit p95 134ms（≤5s，180000 样本，直方图差分）；账本 180100 accepted = 180100 processed = 180100 raw、0 未确认、0 DLT、0 孤儿；三组 consumer lag 归零用时 31.3s；资源曲线 263 点/容器（app 峰值 864MiB、pg 280MiB、kafka 1015MiB）；`.execution/verify/p61-load2/` |
-| G15 候选包安装 | PASSED | SHA 791c75f；从制品安装（不构建）：镜像导出 tar sha256 校验一致、docker load 后 id 与冻结 id 相同、SBOM CycloneDX、checksums 覆盖全部制品；全新 project/volume/env（18082）启动后匿名 health 200、管理员 API 200、Bearer 摄取 202 且落库、重启后 readiness 恢复；`.execution/verify/p61-package2/` |
-| G16 连续24小时 | RUNNING | 第 7 个 run 因「字段路径缺陷」（真实接入丢失类型专属证据、NULL_SPIKE 假告警）作废；修复 `e8315ac9` 已冻结并复跑门禁，run 8 将随后启动。`soak-report` 已按指南 11.1 实现，内存判据与指南口径一致，采样节奏误杀已修 |
-| G17 公开发布/匿名安装 | NOT_RUN | - |
+| G15 制品安装 | RUNNING | 当前应用 p7-package2 有历史通过证据；收尾工具/文档更新后须重生成并验收 final-package 的原始 bundle 字节 |
+| G16 24h | RUNNING | 有效 run 20261001T182403Z-soak24；正式报告 `.execution/verify/final-soak/soak-report.json` 尚未生成 |
+| G17 公开独立安装 | NOT_STARTED | `.execution/verify/final-release`，必须使用明确 context、匿名附件及公开 digest |
 
 ## 长任务与恢复字段
 

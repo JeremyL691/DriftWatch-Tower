@@ -15,7 +15,7 @@ OUT_DIR=""
 ARTIFACTS=""
 VERSION="v1.0.0"
 PORT=18082
-PROJECT="dwt-package-check"
+PROJECT="dwt-package-check-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 while [ $# -gt 0 ]; do
   case "$1" in
     --out) OUT_DIR="$2"; shift 2 ;;
@@ -78,6 +78,14 @@ chmod 600 "$env_file"
 } >> "$env_file"
 
 cp "$work/docker-compose.yml" "$work/docker-compose.install.yml"
+[ -z "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")" ] && \
+[ -z "$(docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT")" ] || fail "install project already owns resources; choose a new project"
+cleanup_install() {
+  docker compose -p "$PROJECT" --env-file "$env_file" -f "$work/docker-compose.install.yml" logs --no-color > "$OUT_DIR/compose-logs.txt" 2>&1 || true
+  docker compose -p "$PROJECT" --env-file "$env_file" -f "$work/docker-compose.install.yml" down -v > "$OUT_DIR/compose-down.log" 2>&1 || true
+}
+trap cleanup_install EXIT
+
 docker compose -p "$PROJECT" --env-file "$env_file" -f "$work/docker-compose.install.yml" up -d \
   > "$OUT_DIR/compose-up.log" 2>&1 || fail "compose up from the bundle failed; see $OUT_DIR/compose-up.log"
 
@@ -102,11 +110,13 @@ ingest_code="$(curl -s -o "$OUT_DIR/ingest-response.json" -w '%{http_code}' \
 ingestion_id="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("ingestion_id",""))' \
   "$OUT_DIR/ingest-response.json" 2>/dev/null || true)"
 
+[[ "$ingestion_id" =~ ^[a-f0-9-]{36}$ ]] || fail "invalid or missing ingestion_id"
 processed=0
 for _ in $(seq 1 30); do
   count="$(docker compose -p "$PROJECT" --env-file "$env_file" exec -T postgres sh -c \
-    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "select count(*) from raw_events"' 2>/dev/null | tr -d '[:space:]')"
-  if [ "${count:-0}" -ge 1 ]; then processed=1; break; fi
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "$1"' sh \
+    "select count(*) from raw_events r join processed_receipts p using (ingestion_id) where r.ingestion_id='$ingestion_id'" 2>/dev/null | tr -d '[:space:]')"
+  if [ "${count:-0}" -eq 1 ]; then processed=1; break; fi
   sleep 2
 done
 
@@ -120,10 +130,10 @@ for _ in $(seq 1 60); do
 done
 
 python3 - "$OUT_DIR" "$PROJECT" "$env_file" "$work" "$expected_image_id" "$status_anon" \
-        "$status_auth" "$ingest_code" "$processed" "$recovered" "$ingestion_id" <<'PY'
-import json, subprocess, sys
+        "$status_auth" "$ingest_code" "$processed" "$recovered" "$ingestion_id" "$ARTIFACTS/driftwatch-tower-${VERSION}-bundle.tar.gz" <<'PY'
+import hashlib, json, pathlib, subprocess, sys
 (out_dir, project, env_file, work, image_id, status_anon, status_auth, ingest_code,
- processed, recovered, ingestion_id) = sys.argv[1:12]
+ processed, recovered, ingestion_id, bundle_tar) = sys.argv[1:13]
 
 def compose(*args):
     return subprocess.run(["docker", "compose", "-p", project, "--env-file", env_file,
@@ -135,6 +145,7 @@ inspect = subprocess.run(["docker", "inspect", "--format", "{{.Image}}", running
                          capture_output=True, text=True).stdout.strip()
 
 summary = {
+    "bundle_sha256": hashlib.sha256(pathlib.Path(bundle_tar).read_bytes()).hexdigest(),
     "image_id_expected": image_id,
     "image_id_running": inspect,
     "image_identity_match": inspect == image_id,
@@ -163,13 +174,10 @@ summary["problems"] = problems
 with open(f"{out_dir}/install-summary.json", "w") as handle:
     json.dump(summary, handle, indent=2)
 print(json.dumps(summary, indent=2))
+sys.exit(1 if problems else 0)
 PY
 check_exit=$?
 
-docker compose -p "$PROJECT" --env-file "$env_file" -f "$work/docker-compose.install.yml" \
-  logs --no-color > "$OUT_DIR/compose-logs.txt" 2>&1 || true
-docker compose -p "$PROJECT" --env-file "$env_file" -f "$work/docker-compose.install.yml" down -v \
-  > "$OUT_DIR/compose-down.log" 2>&1 || true
 
 if [ "$check_exit" -eq 0 ]; then
   write_gate "$OUT_DIR" PACKAGE PASSED "package-check.sh --out $OUT_DIR" "$started" "$(utc_now)" 0 \
