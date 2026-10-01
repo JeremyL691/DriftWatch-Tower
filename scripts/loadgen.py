@@ -115,7 +115,12 @@ def histogram_p95(before: dict[str, float], after: dict[str, float], metric: str
                 continue
             delta = value - before.get(series, 0.0)
             buckets.append((float(bound), delta))
-    total = after.get(metric + "_count", 0.0) - before.get(metric + "_count", 0.0)
+    def count_of(snapshot: dict[str, float]) -> float:
+        # The exported series name carries an application label, so match by prefix.
+        return sum(value for series, value in snapshot.items()
+                   if series == metric + "_count" or series.startswith(metric + "_count{"))
+
+    total = count_of(after) - count_of(before)
     if total <= 0 or not buckets:
         return None, int(total)
     buckets.sort()
@@ -125,17 +130,18 @@ def histogram_p95(before: dict[str, float], after: dict[str, float], metric: str
     return None, int(total)
 
 
-def compose(project: str, env_file: str, *args: str, timeout: int = 120) -> str:
+def compose(project: str, env_file: str, *args: str, timeout: int = 120, stdin: str | None = None) -> str:
     command = ["docker", "compose", "-p", project, "--env-file", env_file, *args]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, input=stdin)
     if result.returncode != 0:
         raise RuntimeError(f"{' '.join(command)} failed: {result.stderr.strip()[:300]}")
     return result.stdout
 
 
 def psql(project: str, env_file: str, sql: str) -> str:
+    """SQL travels on stdin: quoting it into a shell argument mangles newlines and quotes."""
     return compose(project, env_file, "exec", "-T", "postgres", "sh", "-c",
-                   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc ' + json.dumps(sql)).strip()
+                   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA', stdin=sql).strip()
 
 
 def consumer_lag(project: str, env_file: str, groups: list[str]) -> tuple[int, list[str]]:
@@ -197,6 +203,7 @@ def main() -> int:
 
     os.makedirs(args.out, exist_ok=True)
     target_offers = args.rate * args.duration
+    run_marker = "load-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     credentials = base64.b64encode(f"{args.user}:{args.password}".encode()).decode()
     client = Client(args.base, args.ingest_token)
     report: dict = {
@@ -226,7 +233,9 @@ def main() -> int:
                                        "{{.Name}} {{.Status}}").strip()
 
     def event_body(index: int) -> tuple[bytes, str, str]:
-        event_id = f"load-{index}-{uuid.uuid4().hex[:12]}"
+        # The idempotency key is unique across the whole run (warmup included): reusing a key
+        # with different content is a 409 by contract, and that is the server being right.
+        event_id = f"{run_marker}-{index}-{uuid.uuid4().hex[:12]}"
         payload = {
             "event_id": event_id,
             "source": args.source,
@@ -240,7 +249,7 @@ def main() -> int:
                 "channel": ["web", "mobile", "partner"][index % 3],
             },
         }
-        return json.dumps(payload).encode(), event_id, f"load-{index}"
+        return json.dumps(payload).encode(), event_id, f"{run_marker}-{index}"
 
     def offer(index: int) -> dict:
         body, event_id, key = event_body(index)
@@ -248,22 +257,29 @@ def main() -> int:
         return {"index": index, "event_id": event_id, "latency": elapsed, "status": status,
                 "ingestion_id": parsed.get("ingestion_id"), "error": parsed.get("error")}
 
-    def run_phase(count: int, rate: int, sink: list, latch: dict, label: str) -> float:
+    def run_phase(count: int, rate: int, sink: list, latch: dict, label: str,
+                  start_index: int = 0) -> float:
         """Dispatches `count` offers paced at `rate` per second; returns the elapsed seconds."""
         started = time.perf_counter()
         lateness = []
+        dispatched = []
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             futures = []
-            for index in range(count):
-                target = started + index / rate
+            for offset in range(count):
+                target = started + offset / rate
                 now = time.perf_counter()
                 if target > now:
                     time.sleep(target - now)
                 lateness.append(time.perf_counter() - target)
-                futures.append(pool.submit(offer, index))
+                dispatched.append(time.perf_counter())
+                futures.append(pool.submit(offer, start_index + offset))
             for future in futures:
                 sink.append(future.result())
-        elapsed = time.perf_counter() - started
+        # The achieved rate is measured over the dispatch span (first offer to one interval past
+        # the last), so the tail latency of the final request cannot flatter or dent the number.
+        span = (dispatched[-1] - dispatched[0]) + 1.0 / rate if dispatched else 0.0
+        latch.setdefault(label, {})["dispatch_span_seconds"] = round(span, 3)
+        elapsed = span or (time.perf_counter() - started)
         latch[label] = {"dispatch_lateness_p95": round(statistics.quantiles(lateness, n=20)[18], 4)
                         if len(lateness) > 20 else round(max(lateness or [0]), 4)}
         return elapsed
@@ -271,7 +287,8 @@ def main() -> int:
     # --- warmup ----------------------------------------------------------------------------
     warm: list = []
     warm_latch: dict = {}
-    run_phase(args.warmup * max(1, args.rate // 10), max(1, args.rate // 10), warm, warm_latch, "warmup")
+    warmup_offers = args.warmup * max(1, args.rate // 10)
+    run_phase(warmup_offers, max(1, args.rate // 10), warm, warm_latch, "warmup")
     report["warmup"] = {
         "offers": len(warm),
         "accepted": sum(1 for item in warm if item["status"] == 202),
@@ -291,7 +308,7 @@ def main() -> int:
     offers: list = []
     latch: dict = {}
     window_started = utc_now()
-    elapsed = run_phase(target_offers, args.rate, offers, latch, "window")
+    elapsed = run_phase(target_offers, args.rate, offers, latch, "window", start_index=warmup_offers)
     window_ended = utc_now()
     after = prometheus_snapshot(args.base, credentials)
     stop_curve.set()
@@ -384,15 +401,15 @@ def main() -> int:
         handle.write("\n".join(sorted(offered_ids)))
     run_ledger = json.loads(psql(args.project, args.env_file, """
         select json_build_object(
-          'accepted_in_db', (select count(*) from ingestion_receipts where event_id like 'load-%'),
-          'raw_in_db', (select count(*) from raw_events where event_id like 'load-%'),
+          'accepted_in_db', (select count(*) from ingestion_receipts where event_id like '@@MARKER@@-%'),
+          'raw_in_db', (select count(*) from raw_events where event_id like '@@MARKER@@-%'),
           'processed_in_db', (select count(*) from processed_receipts p
                               join raw_events e on e.ingestion_id = p.ingestion_id
-                              where e.event_id like 'load-%'),
+                              where e.event_id like '@@MARKER@@-%'),
           'alerts_in_db', (select count(*) from quality_alerts a
                            join raw_events e on e.ingestion_id = a.ingestion_id
-                           where e.event_id like 'load-%')
-        )"""))
+                           where e.event_id like '@@MARKER@@-%')
+        )""".replace("@@MARKER@@", run_marker)))
     report["offered_ids"] = {"count": len(offered_ids), **run_ledger}
     unmatched = abs(run_ledger.get("accepted_in_db", 0) - len(offered_ids))
 
@@ -426,6 +443,7 @@ def main() -> int:
     if unmatched:
         problems.append(f"{unmatched} offered ingestion ids are unknown to the database")
 
+    report["problems"] = problems
     with open(os.path.join(args.out, "load-report.json"), "w") as handle:
         json.dump(report, handle, indent=2)
     print(json.dumps({key: report[key] for key in
