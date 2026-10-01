@@ -83,6 +83,12 @@ new database.
   as "the public API can no longer serve that range for re-reading", not as "these events were
   lost" — the ingestion ledger, deduplication and replay are unaffected, and the follow-up release
   corrects the classifier. This is visible as `open_gaps` on `GET /api/v1/sources/collectors`.
+- `STALE_SOURCE` alerts are frequent for the GitHub source by design of its threshold, not because
+  the collector is failing. Freshness defaults to five minutes, and the public events API publishes
+  in bursts that can lag by minutes to hours, so the source legitimately moves healthy → STALE
+  whenever nothing new has been observed in that window; each alert marks one such transition
+  (polling itself keeps succeeding, and the alert carries `WARN`). A follow-up release tunes the
+  threshold for delayed polled sources.
 - Retention removes raw payloads after 30 days while keeping the deduplication identity longer.
 - The dashboard is verified on Chromium at four widths in two themes; other engines are not part
   of the acceptance matrix.
