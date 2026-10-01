@@ -533,6 +533,10 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 - 修复：改为 `reverse=True`（最新优先），与 docstring 一致；判据本身（required 类必须真跑且 `tests - skipped > 0`、全局不得有 failures/errors/skips、无报告即失败）保持不变。
 - 双向实测（合成两份同名类的报告）：旧报告 2 failures + 新报告干净 → 现在取新的、`problems` 为空、exit 0；反过来旧报告干净 + 新报告 1 failure → exit 1 并如实报 `totals contain failures`。即既不再误杀，也不会误放。
 
+### 2026-10-01 P6.2 等待期：续跑机制实测（不是假设）
+
+收尾程序自动化不能只当约定：实测每小时检查任务确实在跑——`automation-82c729b4` 的 `lastRunAt = 2026-10-01T15:00:06Z`（每小时第 6 秒触发，runCount=6）、`nextRunAt = 2026-10-01T16:00:00Z`，与 `0 * * * *` 的设定一致。即：即使没有人工介入，2h 故障后的重启恢复对比、窗口结束时的 `soak-report` 判定、P2-P5b 复跑、合并、发布与匿名核验都会按序被推进；任务内同时写入了断点（run id、fault 基线路径、每步命令与前置条件），接手者无需依赖会话记忆。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
