@@ -77,13 +77,13 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 
 | Gate | 状态 | 绑定 SHA / 配置 / 证据 |
 |---|---|---|
-| G00 基线 | PASSED | Java 21.0.12.1 + Docker 29.5.3；60 tests / 0 fail / 0 err / 0 skip；`.execution/runs/20261001T020542Z-p02-baseline/` |
+| G00 基线 | PASSED（入口证据绑定 P1.3 SHA，P6.1 冻结候选时重跑） | Java 21.0.12.1 + Docker 29.5.3；60 tests / 0 fail / 0 err / 0 skip；`.execution/runs/20261001T020542Z-p02-baseline/` |
 | G01 红色回归复现 | EXPECTED_FAILURE | 3 个 5.4 用例在旧实现复现（null 全缺失 / 单事件基线突增 / 乱序覆盖窗口）；`g01-red-regression.log`、`g01-cases.json` |
-| G02 全新 Compose | PASSED | 无缓存拉取+构建；容器启动后 6–19s 内全部 healthy（≤120s）；3 分区 topic、Streams changelog、状态卷、仅回环暴露；`runs/20261001T022637Z-p11-g02/` |
-| G03 检测正确性 | PASSED | 已随候选重新绑定：SHA 653a7e3（含 bb13ab9 应用代码）；PHASE-P2 gate 126 tests / 0 fail / 0 skip；`.execution/verify/p2-gate6/` |
+| G02 全新 Compose | PASSED（入口证据绑定 P1.3 SHA，P6.1 冻结候选时重跑） | 无缓存拉取+构建；容器启动后 6–19s 内全部 healthy（≤120s）；3 分区 topic、Streams changelog、状态卷、仅回环暴露；`runs/20261001T022637Z-p11-g02/` |
+| G03 检测正确性 | PASSED（PHASE-P2 入口证据绑定 653a7e3，P6.1 重跑） | 已随候选重新绑定：SHA 653a7e3（含 bb13ab9 应用代码）；PHASE-P2 gate 126 tests / 0 fail / 0 skip；`.execution/verify/p2-gate6/` |
 | G04 schema 反馈 | PASSED | 已随候选重新绑定：SHA 653a7e3；PHASE-P2 gate 126 tests / 0 fail / 0 skip，SchemaTransactionIntegrationTest 4 项；`.execution/verify/p2-gate6/` |
-| G05 摄取与幂等 | PASSED | SHA 45d18bce；PHASE-P3 gate：132 tests / 0 fail / 0 skip，IdempotencyIntegrationTest 5 + PreAckFailureTest 1 + KafkaIngestionIntegrationTest 1；`.execution/verify/p3-gate1/` |
-| G06 故障与死信 | PASSED | SHA b5c10c0a；PHASE-P3 gate 141 tests / 0 fail / 0 skip（DeadLetterIntegrationTest 5、SinkRetryTest 4）；现场演练：60s 停机被重试吸收且无死信、200s 停机产生死信并在恢复后投影与重放（各一次副作用）；`.execution/runs/p32-drill/` |
+| G05 摄取与幂等 | PASSED（最新 PHASE-P3 证据 7217ff67 已覆盖其用例） | SHA 45d18bce；PHASE-P3 gate：132 tests / 0 fail / 0 skip，IdempotencyIntegrationTest 5 + PreAckFailureTest 1 + KafkaIngestionIntegrationTest 1；`.execution/verify/p3-gate1/` |
+| G06 故障与死信 | PASSED（最新 PHASE-P3 证据 7217ff67 已覆盖其用例） | SHA b5c10c0a；PHASE-P3 gate 141 tests / 0 fail / 0 skip（DeadLetterIntegrationTest 5、SinkRetryTest 4）；现场演练：60s 停机被重试吸收且无死信、200s 停机产生死信并在恢复后投影与重放（各一次副作用）；`.execution/runs/p32-drill/` |
 | G07 升级兼容 | PASSED | SHA 7217ff67；PHASE-P3 gate 141 tests / 0 fail / 0 skip；演练：V1-V7 checksum 不变、5 条旧行保留且可查（legacy-db 身份）、2 条真实 backlog 桥接（稳定 legacy-kafka 身份）、仅回滚镜像被 Flyway 拒绝而「备份恢复 + 旧镜像」可用；`.execution/runs/p33-upgrade/` |
 | G08 来源协议 | NOT_RUN | - |
 | G09 官方真实源 | NOT_RUN | - |
