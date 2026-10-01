@@ -556,22 +556,28 @@ def cmd_soak_report(args: argparse.Namespace) -> int:
             "last_hour_mean_mib": late_mean,
             "cold_start_mib": memory[0][1],
         })
-        if early_mean and late_mean:
-            growth = late_mean - early_mean
-            allowed = max(early_mean * 0.20, 128.0)
-            resource.update({"growth_mib": round(growth, 1), "allowed_mib": round(allowed, 1)})
-            if plateau_mean:
-                plateau_growth = late_mean - plateau_mean
+        # The guide compares the hours 1-2 mean with the last hour, so that is what the gate
+        # uses; the 0-2h figure (which includes the cold start) is reported alongside it as a
+        # stricter observation rather than as the pass/fail criterion.
+        if late_mean and (plateau_mean or early_mean):
+            reference = plateau_mean if plateau_mean else early_mean
+            reference_label = "hours 1-2" if plateau_mean else "first two hours (no hour-1-2 samples)"
+            growth = late_mean - reference
+            allowed = max(reference * 0.20, 128.0)
+            resource.update({
+                "reference_label": reference_label,
+                "growth_mib": round(growth, 1),
+                "allowed_mib": round(allowed, 1),
+            })
+            if early_mean:
                 resource.update({
-                    "plateau_growth_mib": round(plateau_growth, 1),
-                    "plateau_allowed_mib": round(max(plateau_mean * 0.20, 128.0), 1),
+                    "strict_growth_vs_cold_start_mib": round(late_mean - early_mean, 1),
+                    "strict_allowed_mib": round(max(early_mean * 0.20, 128.0), 1),
                 })
             if growth > allowed:
                 problems.append(
-                    f"app memory grew {growth:.1f}MiB against the first two hours "
-                    f"(allowed {allowed:.1f}MiB); hours 1-2 mean was "
-                    f"{plateau_mean:.1f}MiB" if plateau_mean else
-                    f"app memory grew {growth:.1f}MiB (allowed {allowed:.1f}MiB)")
+                    f"app memory grew {growth:.1f}MiB against the {reference_label} mean "
+                    f"({reference:.1f}MiB), allowed {allowed:.1f}MiB")
 
     report = {
         "run_id": args.run_id,
