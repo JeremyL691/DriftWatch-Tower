@@ -113,10 +113,20 @@ fi
 
 # --- 2. the pull request was merged -----------------------------------------------------------
 if [ -n "$PR_NUMBER" ]; then
-  gh pr view "$PR_NUMBER" --json state,headRefOid,mergeCommit,url > "$OUT_DIR/pull-request.json" 2>&1 \
+  gh pr view "$PR_NUMBER" --json state,headRefOid,mergeCommit,url,statusCheckRollup > "$OUT_DIR/pull-request.json" 2>&1 \
     || problems+=("could not read pull request $PR_NUMBER")
   state="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("state"))' "$OUT_DIR/pull-request.json" 2>/dev/null)"
   [ "$state" = "MERGED" ] || problems+=("pull request $PR_NUMBER is $state, not MERGED")
+  python3 - "$OUT_DIR/pull-request.json" "$CONTEXT" <<'PYCI'
+import json,sys
+pr=json.load(open(sys.argv[1]));context=json.load(open(sys.argv[2]))
+required={'Unit and topology','Real Kafka and PostgreSQL integration','Migration, retry and dead letter','Image and SCA','Dashboard at four viewports'}
+assert pr['headRefOid']==context['pr_head_sha'], 'PR head does not match accepted CI head'
+checks={c['name']:c for c in pr.get('statusCheckRollup') or []}
+assert all(name in checks and checks[name].get('conclusion')=='SUCCESS' and checks[name].get('status')=='COMPLETED' for name in required), 'five exact-head CI jobs are not successful'
+PYCI
+  [ $? -eq 0 ] || problems+=("exact-head five-job CI not verified")
+
 else
   problems+=("no --pr given: the merged pull request was not verified")
 fi
