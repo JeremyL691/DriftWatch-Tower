@@ -8,22 +8,24 @@
 |---|---|
 | document_revision | 1.0 |
 | handoff_date | 2026-09-30，America/Los_Angeles |
-| product_goal_status | READY，代码重构尚未开始 |
+| product_goal_status | RUNNING，P0.1 已完成，P0.2 进行中 |
 | current_phase | P0 |
-| current_task | P0.1 |
-| next_action | 保护这次文档交接和用户变更，查询远端并建立重构分支 |
-| local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a |
-| remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，历史快照，执行时重新核验 |
-| execution_branch | 尚未创建；预定 codex/release-v1 |
-| execution_base_sha | 未确定 |
+| current_task | P0.2 |
+| next_action | 安装/使用 Java 21 干净构建，复跑基线并加入 5.4 节红色回归用例 |
+| local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
+| remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验，即为 execution_base_sha |
+| execution_branch | codex/release-v1（本地已创建；尚未推送） |
+| execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
+| handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
+| original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
 | candidate_sha / source_tree_hash | 未确定 |
 | candidate_image_id / public_digest | 未确定 |
-| target_release | v1.0.0；执行时按指南核验 tag 冲突 |
-| docs_delivery_status | VERIFIED，本轮文档交付核验通过 |
+| target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
+| docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
 | active_soak_run | 无；24 小时验收尚未启动 |
-| external_blocker | 当前文档交付没有；产品执行的前提须 P0/P1 重新检查 |
+| external_blocker | Java 21 未安装（本机仅 Java 25/11）；正在安装 Homebrew openjdk@21，不影响 P0.1 |
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
 
@@ -46,8 +48,8 @@
 
 | Task | 内容 | 状态 | 证据 / 说明 |
 |---|---|---|---|
-| P0.1 | 保护交接、对齐远端 | NOT_STARTED | 下一任务 |
-| P0.2 | 基线与红色回归 | NOT_STARTED | 历史结果不能代替重跑 |
+| P0.1 | 保护交接、对齐远端 | PASSED | codex/release-v1 @ 0a2bb07，base 082fd84；见 2026-09-30 运行记录 |
+| P0.2 | 基线与红色回归 | RUNNING | 历史结果不能代替重跑 |
 | P1.1 | 可重复部署、固定依赖 | NOT_STARTED | - |
 | P1.2 | 配置和认证基础 | NOT_STARTED | - |
 | P1.3 | 验证脚本及后台 runner | NOT_STARTED | 指南命令目前待实现 |
@@ -117,7 +119,20 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 
 ## 运行记录与阻塞
 
-当前没有产品执行记录。后续每条保留：
+### 2026-09-30 P0.1 保护交接并对齐远端（PASSED）
+
+- 绑定 SHA：base 082fd84d7fabee7d94e05b4dba842f0995a3775e，交接提交 0a2bb07b45fb44576a5a6e909fdf836e6557e14c。
+- 命令与结果：
+  - `git status --short`：dirty 集合仅为批准文档交接（README、samples/events/README.md、SVG、5 个已批准删除、3 个新文档），无业务代码或用户其他变更。
+  - `git fetch origin`：本地 main 落后 origin/main 3 个提交（9990316、5317f3f、082fd84），无领先提交。
+  - 分支 `codex/release-v1` 自 8440013 创建，提交交接（1967034），`git rebase origin/main` 后冲突处理：README 采用交接版本；docs/README.md、docs/assets/dashboard-preview.svg、docs/sample-incident-report.md 维持删除；SVG 与远端一致自动合并。
+  - `git diff --stat 1967034 0a2bb07 -- README.md docs samples`：空，交接文档逐字节一致。
+  - 保护：`backup/handoff-worktree-20260930` -> 1967034（rebase 前完整工作树，可恢复）。
+  - `git ls-remote origin refs/heads/main`：082fd84…；`git ls-remote --tags origin`：仅 v0.1.0，v1.0.0 无冲突。
+- 未执行：推送、24 小时任务、发布。工作树 clean。
+- 环境：Homebrew openjdk@21 已安装，供 P0.2 使用；Docker 29.5.3、Compose v5.1.4、Python 3.14.7、gh 2.101.0（ADMIN）。
+
+后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
 - 失败原因和下一动作；旧失败不覆盖成新通过。
