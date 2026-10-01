@@ -196,6 +196,7 @@ def main() -> int:
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
+    target_offers = args.rate * args.duration
     credentials = base64.b64encode(f"{args.user}:{args.password}".encode()).decode()
     client = Client(args.base, args.ingest_token)
     report: dict = {
@@ -204,7 +205,7 @@ def main() -> int:
         "base_url": args.base,
         "target_rate": args.rate,
         "target_duration_seconds": args.duration,
-        "target_offers": args.rate * args.duration,
+        "target_offers": target_offers,
         "source": args.source,
         "event_type": args.event_type,
         "warmup_seconds": args.warmup,
@@ -290,7 +291,7 @@ def main() -> int:
     offers: list = []
     latch: dict = {}
     window_started = utc_now()
-    elapsed = run_phase(args.target_offers, args.rate, offers, latch, "window")
+    elapsed = run_phase(target_offers, args.rate, offers, latch, "window")
     window_ended = utc_now()
     after = prometheus_snapshot(args.base, credentials)
     stop_curve.set()
@@ -401,11 +402,11 @@ def main() -> int:
     report["finished_at_utc"] = utc_now()
 
     problems = []
-    if len(offers) != args.target_offers:
-        problems.append(f"offered {len(offers)} of {args.target_offers} target events")
+    if len(offers) != target_offers:
+        problems.append(f"offered {len(offers)} of {target_offers} target events")
     if report["window"]["achieved_rate"] < args.rate * 0.99:
         problems.append(f"achieved rate {report['window']['achieved_rate']}/s below target {args.rate}/s")
-    if len(failed) > args.target_offers * 0.01:
+    if len(failed) > target_offers * 0.01:
         problems.append(f"{len(failed)} of {len(offers)} offers failed")
     if ack_p95 > 1.0:
         problems.append(f"ack p95 {ack_p95:.3f}s above 1s")
