@@ -18,10 +18,10 @@
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | e8315ac9（应用面；P6.2 修复 GitHub 适配器字段路径后重新冻结，门禁复跑中） |
-| source_tree_hash | 36cf3255292c1c435949e3a366efec4e946fcb31f0f0790b795be44034734b8d（见 `.execution/runs/p7-freeze/manifest.json`；204 文件，比上一冻结多出新增的 `GithubEventConverterTest`） |
+| candidate_sha | 573154b9（应用面；GitHub 适配器字段路径 + 320px 布局两处修复后冻结，门禁复跑中） |
+| source_tree_hash | bb6d14e7c7c02ed0f3aa26073c206f99976aa0ec493440b72a0d9a013b1483b7（见 `.execution/runs/p7-freeze/manifest.json`；204 文件） |
 | config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
-| candidate_image_id / public_digest | 本地镜像 sha256:e94fd4698ac040baf4259068f403336ee4e126922c61cbfe468cb51c3347033a（未发布；`content_identity.jar_content_hash` = e2029fc2c98b58ea3b5e2b0bf842b8b525439ac6592797c883dd0f23ef08e3fc，取代旧的 e574ffcf…；发布断言使用新值） |
+| candidate_image_id / public_digest | 本地镜像 sha256:2901be88df52de693b892825700ab8101fd72efb7bb944ad639b6018ad77d0d3（未发布；`content_identity.jar_content_hash` = 1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d；发布断言使用该值） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
@@ -35,9 +35,9 @@
 
 以下值取自 `.execution/runs/p61-freeze/manifest.json` 与当前 run，勿手抄：
 
-- candidate（应用面）: `e8315ac901a2c91d89459d2f9964620fba9bb6ab`（GitHub 适配器字段路径修复）
-- 镜像（本地，未发布）: `sha256:e94fd4698ac040baf4259068f403336ee4e126922c61cbfe468cb51c3347033a`
-- `content_identity.jar_content_hash`: `e2029fc2c98b58ea3b5e2b0bf842b8b525439ac6592797c883dd0f23ef08e3fc`
+- candidate（应用面）: `573154b9b7db0cb78a6db1ad10bd09c8df12fe57`（字段路径 + 320px 布局修复）
+- 镜像（本地，未发布）: `sha256:2901be88df52de693b892825700ab8101fd72efb7bb944ad639b6018ad77d0d3`
+- `content_identity.jar_content_hash`: `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`
 - 当前 24 小时 run: run 8（由 `.execution/p7-gate-chain.sh` 在新候选上自动启动；第 7 个 run 20261001T145553Z-soak24 因字段路径缺陷作废，见事件记录）
 - 最终制品目录: `.execution/verify/p7-package/artifacts`（新候选；旧 `p61-package-final3` 属已废弃的 8a798a6e）
 
@@ -45,8 +45,8 @@
 1b. 判定完成后释放验收资源（指南 §12 第 7 条的所有权清理，必须在打包前做，打包会起自己的 compose 项目）：`docker compose -p dwt-soak --env-file .execution/soak.env down -v`（报告在判定前已读完数据库，证据已落盘到 `.execution/`，卷是该验收项目自有的测试卷）；`caffeinate -i -w <runner pid>` 随 runner 结束自动退出；确认 `docker ps` 只剩用户自己的栈、`docker volume ls` 只剩 `dwt-trivy-cache`（保留给收尾期的 G13 复跑）。
 2. 通过后更新本文件（G16/P6.2 PASSED、实测数字与证据路径），提交并推送 `codex/release-v1`。
 3. 阶段门禁已在新候选上复跑（后台链，输出 `p7-P2`…`p7-P5b`、`p7-P5c`、`p7-P6`、`p7-load`、`p7-package`）；若需重跑：`for ph in P2 P3 P4 P5 P5b; do ./scripts/verify.sh phase $ph --project dwt-soak --env-file .execution/soak.env --out .execution/verify/p7-$ph; done`（每个脚本跑一次完整套件，约 35 分钟；只依赖 Docker，不需要运行中的栈）。若某个门禁失败且**唯一**失败用例是 `DeadLetterIntegrationTest.malformedRecordIsDeadLetteredAndDoesNotBlockLaterRecords`（已知隔离竞态），该门禁可**重跑一次**并记为已知 flaky（附断言原文）；其它原因的失败都是真失败，必须记录并修复或如实上报，不得跳过。理由：指南 §11.2 要求发布验证「同一候选的 manifest/gate 证据」并拒绝「过期于代码变更」的报告，而这五个门禁的记录仍绑定在更早的 SHA 上（实测：G03/G04=653a7e39、G05-G07=7217ff67、G08/G09=fbba4d05、G10=4b111417、G11=6bf026de，应用面与发布面不同）；`verify.sh release` 会检查每个 gate id 的最新记录，重跑后整套证据都绑定到冻结候选。**`release-check.sh` 现在会强制这一点**：它取 tag 指向的提交，对每个 gate 用 `git diff --quiet <gate_sha> <released_sha> -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 断言应用面一致，不一致即 RELEASE 门禁 FAILED（此前只记录 git_sha、不校验，等于没有牙齿）。
-4. 合并 PR：`gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 `e8315ac9`（或其后代）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`（不绕过必需检查）；合并后确认 main 含该候选树：`git fetch origin main` 后 `git diff <main-sha> e8315ac9 -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 为空。**已知不稳定测试**：`DeadLetterIntegrationTest.malformedRecordIsDeadLetteredAndDoesNotBlockLaterRecords` 有测试隔离竞态（详见事件记录），CI 与 P3 门禁都可能偶发在此红；遇到时**重跑一次**并注明「已知 flaky（隔离竞态）+ 失败断言」，仍要求全绿后才合并，不得跳过或绕过。
-5. 发布：`release.yml` 只有在默认分支上才会注册，所以合并后再用**合并后 main 的 SHA** 作为 candidate_sha（它含冻结应用面，是真正被发布的修订；比 e8315ac9 更准确）：`gh workflow run release.yml --ref main -f version=v1.0.0 -f candidate_sha=$(git rev-parse origin/main) -f content_identity=e2029fc2c98b58ea3b5e2b0bf842b8b525439ac6592797c883dd0f23ef08e3fc`，然后 `gh run watch`。该 job 用同一锁定输入重建并比对 content identity（不一致即拒绝推送；已在原生 amd64 CI 上核验与冻结值逐字节一致；**未提供 content_identity 时直接拒绝发布**，包括 tag push 触发），推送 `v1.0.0` 与 `sha-<candidate_sha 前 12 位>`、尝试把 package 设为 public、在干净 Docker config 中匿名拉取 digest、创建指向该 SHA 的 Release（正文含 image@digest，供第 7 步取用）。匿名拉取失败即 package 非 public：记录确切错误与恢复动作（GitHub UI 或具 `write:packages` 的 token），不得当作成功。
+4. 合并 PR：`gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 `573154b9`（或其后代）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`（不绕过必需检查）；合并后确认 main 含该候选树：`git fetch origin main` 后 `git diff <main-sha> 573154b9 -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 为空。**已知不稳定测试**：`DeadLetterIntegrationTest.malformedRecordIsDeadLetteredAndDoesNotBlockLaterRecords` 有测试隔离竞态（详见事件记录），CI 与 P3 门禁都可能偶发在此红；遇到时**重跑一次**并注明「已知 flaky（隔离竞态）+ 失败断言」，仍要求全绿后才合并，不得跳过或绕过。
+5. 发布：`release.yml` 只有在默认分支上才会注册，所以合并后再用**合并后 main 的 SHA** 作为 candidate_sha（它含冻结应用面，是真正被发布的修订；比 573154b9 更准确）：`gh workflow run release.yml --ref main -f version=v1.0.0 -f candidate_sha=$(git rev-parse origin/main) -f content_identity=1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`，然后 `gh run watch`。该 job 用同一锁定输入重建并比对 content identity（不一致即拒绝推送；已在原生 amd64 CI 上核验与冻结值逐字节一致；**未提供 content_identity 时直接拒绝发布**，包括 tag push 触发），推送 `v1.0.0` 与 `sha-<candidate_sha 前 12 位>`、尝试把 package 设为 public、在干净 Docker config 中匿名拉取 digest、创建指向该 SHA 的 Release（正文含 image@digest，供第 7 步取用）。匿名拉取失败即 package 非 public：记录确切错误与恢复动作（GitHub UI 或具 `write:packages` 的 token），不得当作成功。
 6. 附件：先 `./scripts/verify.sh package --out .execution/verify/p7-package --image driftwatch-tower:local --version v1.0.0 --manifest .execution/runs/p7-freeze/manifest.json`（必须等 soak 栈结束、无验收栈运行时再做，打包会起自己的 compose 项目）；再 `./scripts/evidence-pack.sh --out .execution/evidence --run-id p7-release`；然后 `./scripts/upload-release-assets.sh --version v1.0.0 --artifacts .execution/verify/p7-package/artifacts --evidence .execution/evidence --digest sha256:...`（digest 取自 Release 正文）。
 7. 匿名核验：`./scripts/verify.sh release --out .execution/verify/p7-release --version v1.0.0 --pr 1`。
 8. 最终报告写回本文件：Release URL、image@digest、源码 SHA、证据路径、性能条件与已知限制；同步 `docs/RELEASE_NOTES.md` 的 digest 行。
@@ -126,7 +126,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | run_id / run_dir | 20261001T145553Z-soak24 / `.execution/soak/20261001T145553Z-soak24/`（作废的候选 run：20261001T083508Z-soak24、20261001T093502Z-resume、20261001T093737Z-soak24、20261001T103023Z-soak24、20261001T114957Z-soak24、20261001T124728Z-soak24（遗留 runner，2026-10-01T14:49Z 已停止并标 FAILED）、20261001T134438Z-soak24（被 124728Z 的非计划 app 重启打断，2026-10-01T14:52Z 停止并标 FAILED）；`.execution/soak/p13-*` 与 20261001T03* 是 P1.3 runner 测试夹具，非验收 run，其中 p13-resume2 的 state 仍写 RUNNING 是当时故意 kill runner 的测试遗留，`ps` 已确认当前只有 1 个 acceptance.py runner 进程） |
 | compose_project / volume 所有权 | dwt-soak（自有卷 dwt-soak_pgdata、dwt-soak_kafkadata、dwt-soak_streams-state） |
 | env_file 路径 | `.execution/soak.env`（0600，仅路径，不含 secret 内容） |
-| candidate_sha / image_id / config_hash | e8315ac9（应用面）/ sha256:e94fd4698ac040baf…（完整值见 `.execution/runs/p7-freeze/manifest.json`）/ 7457349d… |
+| candidate_sha / image_id / config_hash | 573154b9（应用面）/ sha256:2901be88df52de69…（完整值见 `.execution/runs/p7-freeze/manifest.json`）/ 7457349d… |
 | started_at_utc / expected_end_at_utc | 2026-10-01T14:55:53Z / 2026-10-02T14:55:53Z |
 | runner_pid / process_start / lock | PID 42061（runner.pid 记录进程创建时间；`runner_alive` 校验命令行与创建时间；`caffeinate -i -w 42061` 绑定其生命周期防休眠） |
 | last_heartbeat_utc / checkpoint | samples.jsonl 每 30s 一行；checkpoint.json 每 5 分钟原子写 |
@@ -721,6 +721,20 @@ Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): s
 
 
 **待办（下一个人工轮次）**：每小时自动化 `automation-82c729b4` 的提示词仍引用旧 run id `20261001T145553Z-soak24`、旧制品目录 `p61-package-final3` 与旧 content identity `e574ffcf…`；本次是在自动化自身运行中，工具不允许自我更新。下一次非自动化轮次必须把它改为：动态发现 RUNNING 的 run、制品目录 `.execution/verify/p7-package`、content identity `e2029fc2…`、候选 `e8315ac9`。
+
+### 2026-10-01 P6.2 等待期：320px 布局的真实溢出（确定性 91px）与修复
+
+修复字段路径缺陷后复跑门禁时，P5c 报告 **320px 视口确定性溢出 91px**（`scrollWidth 411` vs `clientWidth 320`，**明暗两主题完全相同**，因此不是字体度量问题，而是固定内容宽度）。排查过程与证据：
+
+- 复现：直接跑 `scripts/p53-capture.mjs`（与门禁同一工具）稳定复现 411px；而未登录/未连 socket 的手工加载是 320px —— 说明是**内容**触发的。
+- 定位：用同一流程（Basic 头、colorScheme、等 socket 连接后测量）列出所有超出视口的元素：`.subpanel` 382px、`.subpanel-head`/`.timeline`/`.timeline-item` 348px，文本是 `github.PullRequestReviewCommentEvent · github:apache/kafka` —— **时间线（Recent Events / Latest Detector Activity）里的长不可断 token** 把布局撑开；表格单元格同理。
+- 影响：真实内容（GitHub 事件类型名、id、时间戳）在窄屏下必然出现，属于确定性布局缺陷；此前接受过的抓取之所以通过，是因为当时的数据里没有这么长的 token（零余量，靠运气）。
+- 修复（commit `573154b9`，仅 CSS）：
+  - `th, td { overflow-wrap: anywhere }` —— 表格里的长 token 换行；
+  - `.subpanel/.timeline/.timeline-item/.subpanel-head { min-width: 0; overflow-wrap: anywhere }` —— 时间线容器可收缩且可断行。
+- 复验：重建镜像、重建 app 后重跑同一抓取，**8 个抓取全部 `scrollWidth == clientWidth`**（320/320、768/768、1024/1024、1440/1440，两主题），`problems: None`，a11y 违规 0。先前「320px 零余量」的已知限制因此解除（README/RELEASE_NOTES 的相应限制文字将随之更新）。
+
+第三次冻结（当前候选）：`.execution/runs/p7-freeze/manifest.json` —— `git_sha=573154b9`、`source_tree_hash=bb6d14e7c7c02ed0…`（204 文件）、`image_id=sha256:2901be88df52de693b892825700ab8101fd72efb7bb944ad639b6018ad77d0d3`、**`content_identity=e2029fc2…`→`1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`**。本地验收环境镜像 pin 同步更新。门禁链（P2→P3→P4→P5→P5b→P5c→P6→UNIT→load→package）已在新候选上重跑，随后自动启动新的 24 小时窗口。
 
 后续每条保留：
 
