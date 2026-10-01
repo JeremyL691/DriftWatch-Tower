@@ -360,6 +360,10 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 
 对照指南第 12 节逐条核对 Release 附件时发现：`package-release.sh` 只把 `docker-compose.yml`、`.env.example`、`selfhost.sh`、`common.sh`、`PROJECT_EXECUTION_GUIDE.md` 与 `README.md` 放进 bundle，**没有放 `docs/RUNBOOK.md` 和 `docs/RELEASE_NOTES.md`**——而第 12 节第 5 条要求的「安装/升级/备份恢复说明和已知限制」正写在这两份文档里，只下载 Release 的安装者会拿不到。已修：bundle 现在包含这两份文档。收尾程序第 5 步相应改为先用最终脚本重跑 `verify.sh package` 再上传，且明确该步必须等 soak 栈结束后执行（打包会起自己的 compose 项目，指南禁止与验收栈并行以免资源竞争）。
 
+### 2026-10-01 P6.2 等待期：CI action 固定到完整 SHA
+
+按指南第 4 节「CI actions 固定完整 SHA」逐条核对两个 workflow，发现此前用的是浮动的 `@v4` 主版本标签——上游重新打标签会悄悄改变发布流水线实际执行的代码，正是该条要防的。已把 `actions/checkout`、`actions/setup-java`、`actions/setup-node`、`actions/upload-artifact` 全部固定到解析出的提交 SHA（版本号保留为行尾注释），两个 workflow 共 14 处 `uses:` 均已固定。推送后 CI 在新 head c5cf8d6 上全绿，证明固定的 SHA 可用。
+
 后续每条保留：
 
 - UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
