@@ -18,15 +18,15 @@
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | f111aa6（应用面；P6.1 冻结并全部门禁通过） |
-| source_tree_hash | c135751738414d58713b30e84a5c10ccc8febccfa2957bac4bbf5b18edf4965a（src+pom+Dockerfile+compose+.mvn；工具链单独记 tooling_tree_hash） |
+| candidate_sha | 75e6a10（应用面；P6.1 冻结并全部门禁通过） |
+| source_tree_hash | f85b04310b5d9f3a…（完整值见 `.execution/runs/p61-freeze/manifest.json`；src+pom+Dockerfile+compose+.mvn，工具链单独记 tooling_tree_hash） |
 | config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
-| candidate_image_id / public_digest | 本地镜像 sha256:fcafddff074783ec8096259c2fd2faa7ee93af2efee189edad6f732ca0e914e0（未发布） |
+| candidate_image_id / public_digest | 本地镜像 sha256:1f915abc95127ae1…（完整值见 freeze manifest；未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | 20261001T093737Z-soak24（RUNNING，PID 48024，dwt-soak，18087，86400s，2026-10-01T09:37:37Z 起，预计 2026-10-02T09:37:37Z 结束） |
+| active_soak_run | 无（20261001T093737Z-soak24 因 BOOTSTRAP 检测缺陷修复而作废；门禁重跑通过后以全新 24 小时 run 重开） |
 | external_blocker | 无 |
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
@@ -106,16 +106,16 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | run_id / run_dir | 20261001T093737Z-soak24 / `.execution/soak/20261001T093737Z-soak24/`（作废：20261001T083508Z-soak24、20261001T093502Z-resume） |
 | compose_project / volume 所有权 | dwt-soak（自有卷 dwt-soak_pgdata、dwt-soak_kafkadata、dwt-soak_streams-state） |
 | env_file 路径 | `.execution/soak.env`（0600，仅路径，不含 secret 内容） |
-| candidate_sha / image_id / config_hash | f111aa6（应用面）/ sha256:fcafddff074783ec8096259c2fd2faa7ee93af2efee189edad6f732ca0e914e0 / 7457349d… |
-| started_at_utc / expected_end_at_utc | 2026-10-01T09:37:37Z / 2026-10-02T09:37:37Z |
-| runner_pid / process_start / lock | PID 48024（runner.pid 记录进程创建时间；`runner_alive` 校验命令行与创建时间，只有 PID 不算存活） |
+| candidate_sha / image_id / config_hash | 75e6a10（应用面）/ sha256:1f915abc95127ae1… / 7457349d… |
+| started_at_utc / expected_end_at_utc | 待重开 |
+| runner_pid / process_start / lock | 无（旧 PID 48024 已停止） |
 | last_heartbeat_utc / checkpoint | samples.jsonl 每 30s 一行；checkpoint.json 每 5 分钟原子写 |
 | live_unique_events / new_after_bootstrap | 待结束后由 `soak-report` 从 raw_events(origin=GITHUB) 统计 |
 | source_poll 状态 / outbox / DLT / lag | 待结束后统计（要求全部归零） |
 | planned_faults / completed_faults | 3 个计划（2h app-restart、8h kafka-stop、16h db-stop），已完成 0 |
 | monitor_gap / continuity_valid | 待判定（上限 120s） |
 | exact_resume_command | `./scripts/verify.sh soak-status --run-id 20261001T093737Z-soak24`；runner 失联时 `./scripts/verify.sh soak-resume --run-id 20261001T093737Z-soak24`（标记旧 run FAILED 并以全新 24 小时重启，且会沿用原 project/env-file/fault-plan） |
-| last_failure / required_external_action | 无；等待到 2026-10-02T09:37:37Z |
+| last_failure / required_external_action | 20261001T093737Z-soak24 因 BOOTSTRAP 实时检测缺陷修复而作废；无外部阻塞 |
 
 恢复顺序：读状态 -> 核对 checkout/SHA -> 查原 runner 锁和进程身份 -> 验证采样连续性 -> 继续现有任务或保留失败记录并新建 run。不能看到 PID 就启动第二套。
 
@@ -311,6 +311,16 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 候选 f111aa6 / 镜像 sha256:fcafddff… 的全部门禁通过后启动 run 20261001T093737Z-soak24（PID 48024，dwt-soak，18087，86400s，预计 2026-10-02T09:37:37Z 结束）。计划故障：2h app-restart、8h kafka-stop、16h db-stop；每 30s 采样 readiness/liveness/recent + 容器资源，每 5 分钟原子写 checkpoint。
 
 启动过程中修掉了一个真实的恢复路径缺陷：`soak-resume` 用 CLI 默认值而不是原 run 的 placement 启动替代 run，导致监控进程采样的是错误的端口、且没有加载故障计划（新 run 的 image 与 planned_faults 为空、readiness 全为 error）。修复后 resume 会把 project/env-file/fault-plan/duration 从原状态带过去，`soak-start` 也会在 project 为空或 env 文件缺失时直接拒绝。作废的 20261001T093502Z-resume 与 20261001T083508Z-soak24 都保留 FAILURE-NOTES.txt 并标记 FAILED，不与新 run 拼接。
+
+### 2026-10-01 P6.2 第二次作废与修复：BOOTSTRAP 不得触发实时检测
+
+第二次 24 小时 run 运行到 15 分钟时，`soak-report` 的预演（对部分数据跑一遍判定逻辑，提前验证代码路径）暴露出一个真实的契约违背：299 条 BOOTSTRAP 事件产生了 298 条 LATE_EVENT(WARN) 与 203 条 DUPLICATE_EVENT(INFO)，而 WARN 会开 incident——新装实例一上线就有约 300 个 incident 和 500 条告警，全部来自回填历史数据。指南 4.1 明确「BOOTSTRAP 默认只持久化/观察 schema，不触发实时窗口」。
+
+根因：`DetectorProcessor`（late/range/format）与 `DuplicateProcessor` 只检查 `skipDetection`（重投/冲突），没有检查 `liveWindowEligible()`；两个 spike 处理器此前已正确处理 SKIPPED_MODE。修复：两处都加上 mode 门控，只有 LIVE 参与实时检测；回填仍然持久化、仍然观察 schema、window_evaluation 仍记 SKIPPED_MODE。新增契约测试 `bootstrapBackfillTriggersNoRealtimeDetector`（旧事件 + 重复 payload + 越界值，全部以 BOOTSTRAP 注入，断言 3 条都保留、告警为空、状态 OK）。
+
+验证：修复后新栈摄取 300 条真实 GitHub 事件 → `quality_alerts` 计数 0（修复前 503），dashboard summary `alertsLast24h=0`、`unhealthySources=0`。套件 166 tests / 0 fail / 0 err / 0 skip（`.execution/verify/p61-unit4/`）。
+
+按指南重跑受影响门禁：G02（`.execution/verify/p61-compose4/`）、G12（`.execution/verify/p61-browser4/`）、G13（`.execution/verify/p61-g13e/`）、G14（`.execution/verify/p61-load4/`）、G15（`.execution/verify/p61-package4/`），随后以全新 24 小时 run 重开。作废的 20261001T093737Z-soak24 已标记 FAILED 并留 FAILURE-NOTES.txt。
 
 后续每条保留：
 
