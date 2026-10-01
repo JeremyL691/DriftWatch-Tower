@@ -18,15 +18,15 @@
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 791c75f（应用面；P6.1 冻结并全部门禁通过。其后的提交只改 scripts/CI/docs，未触及应用面） |
-| source_tree_hash | 5375a9d0853c915f73a007309985c1dcbc9568c60898387d76688322388b8fa2（src+pom+Dockerfile+compose+.mvn，199 个文件；工具链单独记 tooling_tree_hash） |
+| candidate_sha | f111aa6（应用面；P6.1 冻结并全部门禁通过） |
+| source_tree_hash | c135751738414d58713b30e84a5c10ccc8febccfa2957bac4bbf5b18edf4965a（src+pom+Dockerfile+compose+.mvn；工具链单独记 tooling_tree_hash） |
 | config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
-| candidate_image_id / public_digest | 本地镜像 sha256:4f064addf44b7febf4a8f1ae01efb0740695f14f7644b1c216ec7e9526d71248（未发布） |
+| candidate_image_id / public_digest | 本地镜像 sha256:fcafddff074783ec8096259c2fd2faa7ee93af2efee189edad6f732ca0e914e0（未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | 20261001T083508Z-soak24（RUNNING，PID 23887，dwt-soak，18087，86400s，2026-10-01T08:35:08Z 起） |
+| active_soak_run | 无进行中 run：20261001T083508Z-soak24 因应用变更已作废（runner 已停止，FAILURE-NOTES.txt 记录原因），待本候选门禁全部通过后以全新 24 小时 run 重开 |
 | external_blocker | 无 |
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
@@ -99,23 +99,23 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 
 ## 长任务与恢复字段
 
-24 小时 run 进行中（P6.2）。旧失败 run 保留不覆盖。
+24 小时 run 待重开（P6.2）。旧 run 保留为历史，不作证据。
 
 | 字段 | 值 |
 |---|---|
-| run_id / run_dir | 20261001T083508Z-soak24 / `.execution/soak/20261001T083508Z-soak24/` |
+| run_id / run_dir | 待重开；作废的 20261001T083508Z-soak24 保留在 `.execution/soak/20261001T083508Z-soak24/` |
 | compose_project / volume 所有权 | dwt-soak（自有卷 dwt-soak_pgdata、dwt-soak_kafkadata、dwt-soak_streams-state） |
 | env_file 路径 | `.execution/soak.env`（0600，仅路径，不含 secret 内容） |
-| candidate_sha / image_id / config_hash | 791c75f（应用面）/ sha256:4f064addf44b7febf4a8f1ae01efb0740695f14f7644b1c216ec7e9526d71248 / 7457349d… |
-| started_at_utc / expected_end_at_utc | 2026-10-01T08:35:08Z / 2026-10-02T08:35:08Z |
-| runner_pid / process_start / lock | PID 23887（`.execution/soak/…/runner.pid` 记录进程创建时间；`runner_alive` 同时校验命令行与创建时间） |
+| candidate_sha / image_id / config_hash | f111aa6（应用面）/ sha256:fcafddff074783ec8096259c2fd2faa7ee93af2efee189edad6f732ca0e914e0 / 7457349d… |
+| started_at_utc / expected_end_at_utc | 待重开 |
+| runner_pid / process_start / lock | 无（旧 PID 23887 已停止） |
 | last_heartbeat_utc / checkpoint | samples.jsonl 每 30s 一行；checkpoint.json 每 5 分钟原子写 |
 | live_unique_events / new_after_bootstrap | 待结束后由 `soak-report` 从 raw_events(origin=GITHUB) 统计 |
 | source_poll 状态 / outbox / DLT / lag | 待结束后统计（要求全部归零） |
 | planned_faults / completed_faults | 3 个计划（2h app-restart、8h kafka-stop、16h db-stop），已完成 0 |
 | monitor_gap / continuity_valid | 待判定（上限 120s） |
-| exact_resume_command | `./scripts/verify.sh soak-status --run-id 20261001T083508Z-soak24`；若 runner 失联则 `./scripts/verify.sh soak-resume --run-id 20261001T083508Z-soak24`（会把旧 run 标记 FAILED 并以全新 24 小时重启） |
-| last_failure / required_external_action | 无；等待到 2026-10-02T08:35:08Z |
+| exact_resume_command | 门禁通过后：`./scripts/verify.sh soak-resume --run-id 20261001T083508Z-soak24`（把作废 run 标记 FAILED 并以全新 24 小时重启），或用新 run-id 执行 `soak-start` |
+| last_failure / required_external_action | 20261001T083508Z-soak24 因 favicon/匿名图标的应用变更作废；无外部阻塞 |
 
 恢复顺序：读状态 -> 核对 checkout/SHA -> 查原 runner 锁和进程身份 -> 验证采样连续性 -> 继续现有任务或保留失败记录并新建 run。不能看到 PID 就启动第二套。
 
@@ -293,6 +293,18 @@ G14 负载与真实缺陷修复：第一次 100/s × 1800s 运行失败并保留
 G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出 tar 的 sha256 与 manifest 一致、docker load 后 id 等于冻结 id、SBOM 为 CycloneDX、checksums 覆盖全部制品；在全新 project/volume/env（18082）启动后匿名 health 200、管理员 API 200、Bearer 摄取 202 且落库、重启后 readiness 恢复（`.execution/verify/p61-package2/`）。
 
 期间还完成：CI 拆成 unit / integration / fault-migration / image(SCA+secret) / browser 五个 job，默认 `permissions: contents: read`；release 工作流（tag 或手动触发）在推送前断言 content identity，仅发布 job 拥有 contents/packages write；README 重写为发布版，明确来源、延迟、缺口与限流边界；`soak-report` 子命令按指南 11.1 逐条判定 G16。
+
+### 2026-10-01 P6.1 补充：候选重建（favicon 与匿名图标）
+
+首次冻结候选 791c75f 的全部门禁（G00/G02/G03/G04/G12/G13/G14/G15）通过后，CI 的 browser job 在 Linux 上失败，报每个页面 1 个 console 错误（403）。本地 macOS headless shell 不请求站点图标，因此本地 8/8 全绿而 CI 必红——这正是"CI 短门槛"要抓的东西。诊断：`/favicon.ico` 命中受保护根路径被拒（实测 401，Linux Chromium 记为 403），且仓库根本没有图标文件。
+
+修复：新增 16×16 favicon.ico 与 32×32 apple-touch-icon.png（脚本生成，无外部依赖），页面声明 `<link rel="icon">`，SecurityConfig 把这两个公共资源加入匿名放行（`/api/**` 仍然需要管理员）。修复后本地 G02/G12 重新通过，CI 五个 job 全绿（run 36839799355，head f111aa6）。
+
+候选随之重建：应用面 SHA f111aa6、source_tree_hash c1357517…、镜像 sha256:fcafddff…、content_identity.jar_content_hash c18b2a5c…（462 entries）。按指南"应用有变更必须重跑受影响门禁并重开 24 小时 run"：
+
+- 20261001T083508Z-soak24 作废：runner 已停止（PID 23887），`.execution/soak/20261001T083508Z-soak24/FAILURE-NOTES.txt` 记录原因与时间；其 40 个采样只作历史，不作为 G16 证据，也不与新 run 拼接。
+- 受影响门禁按新候选重跑：UNIT 165/0/0/0（`.execution/verify/p61-unit3/`）、G02（`.execution/verify/p61-compose3/`，11s ready）、G12（`.execution/verify/p61-browser3/`，8/8）、G13（`.execution/verify/p61-g13d/`，0 HIGH/CRITICAL、0 secret）、G14（`.execution/verify/p61-load3/`，同一 100/s×1800s 门槛）、G15（`.execution/verify/p61-package3/`，从制品安装且镜像 id 一致）。
+- 同时把 npm lockfile 纳入版本控制：CI 需要 `npm ci` 在固定 Playwright 版本上运行，之前 lockfile 被 .gitignore 排除导致 browser job 无法安装浏览器。
 
 后续每条保留：
 
