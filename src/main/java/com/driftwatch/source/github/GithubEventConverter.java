@@ -45,8 +45,14 @@ public class GithubEventConverter {
         String upstreamType = raw.path("type").asText("UNKNOWN");
         String createdAtText = raw.path("created_at").asText(null);
         Instant createdAt = createdAtText == null ? Instant.now() : Instant.parse(createdAtText);
-        String action = raw.path("action").isMissingNode() || raw.path("action").isNull()
-                ? null : raw.path("action").asText(null);
+        // GitHub's events API carries every type-specific field inside `payload`; only id, type,
+        // actor, repo, public and created_at are top-level. Reading them from the root silently
+        // produced nulls for every ingested event of a real run (action null for all 334 events,
+        // including types where GitHub always sends it), which in turn made NULL_SPIKE fire on
+        // those permanently-null columns.
+        JsonNode payloadNode = raw.path("payload");
+        String action = payloadNode.path("action").isMissingNode() || payloadNode.path("action").isNull()
+                ? null : payloadNode.path("action").asText(null);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("repository", repositoryName(raw, repository));
@@ -58,15 +64,15 @@ public class GithubEventConverter {
         payload.put("public", raw.path("public").isBoolean() ? raw.path("public").asBoolean() : null);
         payload.put("action", action);
         // Type-specific structural evidence only.
-        putIfPresent(payload, "issue_number", raw.path("issue").path("number"));
-        putIfPresent(payload, "pull_request_number", raw.path("pull_request").path("number"));
-        putIfPresent(payload, "ref", raw.path("ref"));
-        putIfPresent(payload, "head", raw.path("head"));
-        putIfPresent(payload, "push_id", raw.path("push_id"));
-        putIfPresent(payload, "release_id", raw.path("release").path("id"));
-        putIfPresent(payload, "release_tag", raw.path("release").path("tag_name"));
-        putIfPresent(payload, "forkee_id", raw.path("forkee").path("id"));
-        putIfPresent(payload, "member_id", raw.path("member").path("id"));
+        putIfPresent(payload, "issue_number", payloadNode.path("issue").path("number"));
+        putIfPresent(payload, "pull_request_number", payloadNode.path("pull_request").path("number"));
+        putIfPresent(payload, "ref", payloadNode.path("ref"));
+        putIfPresent(payload, "head", payloadNode.path("head"));
+        putIfPresent(payload, "push_id", payloadNode.path("push_id"));
+        putIfPresent(payload, "release_id", payloadNode.path("release").path("id"));
+        putIfPresent(payload, "release_tag", payloadNode.path("release").path("tag_name"));
+        putIfPresent(payload, "forkee_id", payloadNode.path("forkee").path("id"));
+        putIfPresent(payload, "member_id", payloadNode.path("member").path("id"));
 
         String eventType = "github." + upstreamType;
         String eventId = "github:" + rawId;
