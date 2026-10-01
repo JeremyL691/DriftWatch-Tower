@@ -94,7 +94,8 @@ class QualityEventSinkTest {
                 webSocket,
                 dltPublisher,
                 new ObjectMapper().findAndRegisterModules(),
-                meterRegistry
+                meterRegistry,
+                mock(com.driftwatch.operations.DriftwatchMetrics.class)
         );
 
         sink.onProcessed(processed);
