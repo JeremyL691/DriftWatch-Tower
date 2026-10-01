@@ -69,7 +69,19 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build application image
-        run: docker build --tag driftwatch-tower:ci .
+        # Maven Central occasionally answers 5xx while the build resolves dependencies (observed
+        # 2026-10-01: 502 Bad Gateway on net.bytebuddy:byte-buddy-parent). Retry the transient
+        # failure; Docker reuses the layers that completed and a genuine build error still fails.
+        run: |
+          for attempt in 1 2 3; do
+            if docker build --tag driftwatch-tower:ci .; then
+              exit 0
+            fi
+            echo "::warning::image build attempt $attempt failed; retrying in $((attempt * 20))s"
+            sleep $((attempt * 20))
+          done
+          echo "::error::image build failed after 3 attempts"
+          exit 1
       - name: Report the application content identity
         # The release pipeline refuses to publish an image whose rebuilt application bytes differ
         # from the accepted candidate. Printing the value here makes that comparison checkable on
