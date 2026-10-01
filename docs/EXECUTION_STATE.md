@@ -14,18 +14,18 @@
 - 当前事实入口: [收尾执行计划](RELEASE_FINISH_PLAN.md)。发布工具唯一证据绑定为 `.execution/finalize/release-context.json`；G02/G15/G16 的 final 路径尚未生成，不能视为通过。
 - G16 未完成；P7.1/P7.2/P7.3 未完成。历史发布工具按 mtime 选报告的说明已废弃。公开镜像可见性使用 GitHub 官方界面，不存在 visibility PATCH API。
 
-以下原入口与记录保留为历史，遇到收尾程序冲突以本接管记录和收尾执行计划为准。
+当前表格已按 release context 对齐。替换前的旧入口、任务、门禁与恢复表逐字保存在 [历史状态表](HISTORICAL_EXECUTION_TABLES.md)；下方有日期的运行记录继续保留为历史。
 
 ## 当前入口
 
 | 字段 | 当前值 |
 |---|---|
-| document_revision | 1.1 |
+| document_revision | 1.2 |
 | handoff_date | 2026-10-01，本聊天接管，America/Los_Angeles |
-| product_goal_status | RUNNING，P0-P6.1 完成，P6.2 进行中：候选 573154b9（适配器字段路径 + 320px 布局修复）上 UNIT/P2/P3/P4/P5/P5b/P5c/P6/load/package **全部 PASSED**，第九个 24 小时窗口正在运行 |
+| product_goal_status | RUNNING；冻结应用 573154b9 的短门禁已通过；G16 进行中，最终 G02/G15 尚待重跑，P7 尚未完成 |
 | current_phase | P6 |
 | current_task | P6.2 |
-| next_action | 监控 run `20261001T182403Z-soak24`（2h/8h/16h 三次计划故障，结束时 `./scripts/verify.sh soak-report --run-id 20261001T182403Z-soak24 --out .execution/verify/p7-soak` 判定 G16），通过后按「收尾程序」合并 PR #1、发布 Release/GHCR 并匿名核验 |
+| next_action | 以 release context 监测当前 run；完成监视器写入 `.execution/verify/final-soak` 后先正式核验 G16，再串行 final-compose / final-package、最终提交五项 CI、合并、预发布及 G17 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（已推送到 origin；PR #1 已开） |
@@ -96,8 +96,8 @@ G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compos
 | P5.1 | incident / scheduler | PASSED | G10 PASSED（163/0/0/0；IncidentLifecycle 6、Scheduler 2、CollectorStatus 3）；`.execution/verify/p5-gate3/` |
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
 | P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
-| P6.1 | 冻结候选、短门槛、负载 | PASSED | G13/G14/G15 PASSED；冻结 SHA 791c75f、镜像 sha256:4f064add…；100/s×1800s 全部指标达标；见 `.execution/runs/p61-freeze/`、`.execution/verify/p61-load2/`、`.execution/verify/p61-package2/` |
-| P6.2 | 24 小时真实验收 | RUNNING | 第 7 个 run `20261001T145553Z-soak24` 已 FAILED（字段路径缺陷使检测证据无效，2h 故障与重启恢复对比有效并保留）；新候选 `e8315ac9` 的门禁复跑进行中，完成后自动启动 run 8 |
+| P6.1 | 冻结候选、短门槛、负载 | RUNNING | 当前冻结应用 573154b9；G13/G14 已通过，旧候选与旧 bundle 不代替 final G02/G15，G16 后重跑 |
+| P6.2 | 24 小时真实验收 | RUNNING | 有效 run 20261001T182403Z-soak24，PID5002；正式报告 final-soak 尚未生成，历史失败均保留 |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
 | P7.2 | 公共 Release / GHCR | NOT_STARTED | - |
 | P7.3 | 匿名安装及最终报告 | NOT_STARTED | - |
@@ -108,21 +108,21 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 
 | Gate | 状态 | 绑定 SHA / 配置 / 证据 |
 |---|---|---|
-| G00 基线 | PASSED（已随候选 791c75f 重跑） | Java 21.0.12.1 + Docker 29.5.3；165 tests / 0 fail / 0 err / 0 skip；`.execution/verify/p61-unit2/` |
+| G00 基线 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-unit/gate.json` |
 | G01 红色回归复现 | EXPECTED_FAILURE | 3 个 5.4 用例在旧实现复现（null 全缺失 / 单事件基线突增 / 乱序覆盖窗口）；`g01-red-regression.log`、`g01-cases.json` |
 | G02 Compose | NOT_STARTED | 历史 p61-compose10 属旧应用；G16 后冻结镜像全新项目/卷重跑 `.execution/verify/final-compose` |
-| G03 检测正确性 | PASSED（已随候选 791c75f 重跑） | UNIT gate 165 tests / 0 fail / 0 err / 0 skip，含 DetectionContractTest 21、QualityStreamsTopologyTest 7；`.execution/verify/p61-unit2/` |
-| G04 schema 反馈 | PASSED（已随候选 791c75f 重跑） | UNIT gate 165 tests / 0 fail / 0 err / 0 skip，SchemaTransactionIntegrationTest 4 项实际运行；`.execution/verify/p61-unit2/` |
-| G05 摄取与幂等 | PASSED（最新 PHASE-P3 证据 7217ff67 已覆盖其用例） | SHA 45d18bce；PHASE-P3 gate：132 tests / 0 fail / 0 skip，IdempotencyIntegrationTest 5 + PreAckFailureTest 1 + KafkaIngestionIntegrationTest 1；`.execution/verify/p3-gate1/` |
-| G06 故障与死信 | PASSED（最新 PHASE-P3 证据 7217ff67 已覆盖其用例） | SHA b5c10c0a；PHASE-P3 gate 141 tests / 0 fail / 0 skip（DeadLetterIntegrationTest 5、SinkRetryTest 4）；现场演练：60s 停机被重试吸收且无死信、200s 停机产生死信并在恢复后投影与重放（各一次副作用）；`.execution/runs/p32-drill/` |
-| G07 升级兼容 | PASSED | SHA 7217ff67；PHASE-P3 gate 141 tests / 0 fail / 0 skip；演练：V1-V7 checksum 不变、5 条旧行保留且可查（legacy-db 身份）、2 条真实 backlog 桥接（稳定 legacy-kafka 身份）、仅回滚镜像被 Flyway 拒绝而「备份恢复 + 旧镜像」可用；`.execution/runs/p33-upgrade/` |
-| G08 来源协议 | PASSED | SHA fbba4d05；PHASE-P4 gate 152 tests / 0 fail / 0 skip；GithubPollerIntegrationTest 11 项覆盖 304/403+Retry-After/429/401/404/500+恢复/超时/坏 JSON/跨页重叠/bootstrap 与 live 模式/重启恢复；`.execution/verify/p4-gate1/` |
-| G09 官方真实源 | PASSED | 官方 api.github.com 无 token；bootstrap 199 条真实事件（mode=BOOTSTRAP、SKIPPED_MODE）、启动后新增 16162901734（mode=LIVE）经 inbox→outbox→Kafka→receipt→raw→API 全链路、重启后检查点保持不重摄；`.execution/runs/p42-smoke/` |
-| G10 操作闭环 | PASSED | SHA 4b111417；PHASE-P5 gate 163 tests / 0 fail / 0 skip；incident 关联并发唯一、resolve 语义与自动解决、ack 幂等/409、静默 scheduler 单次转换、GET 无副作用；`.execution/verify/p5-gate3/` |
-| G11 保留与恢复 | PASSED | SHA 6bf026de；PHASE-P5b gate 165 tests / 0 fail / 0 skip；pg_dump → 全新专用卷恢复计数一致（raw=4/alerts=1/schema=1/receipts=4）、保留策略保护未解决证据、指标面无身份标签；`.execution/runs/p52-drill/` |
-| G12 浏览器与四断点 | PASSED（已随候选 791c75f 重跑） | SHA 791c75f；PHASE-P5c gate：320/768/1024/1440 × dark/light 共 8 张真实截图全部 200、0 console 错误、无页面级横向溢出、focus outline 2px、WebSocket state=connected（ticket 握手）；`.execution/verify/p61-browser2/`（after-report.json + g12-summary.json），P5.3 对照 `.execution/verify/p5c-gate6/`、before `.execution/runs/p53-before/` |
-| G13 安全与漏洞 | PASSED | SHA 791c75f；Trivy 0.58.1，DB UpdatedAt 2026-10-01T01:24:14Z；依赖树与运行时镜像 0 HIGH/CRITICAL，镜像与 tracked 树 0 secret，镜像内无凭证文件；`.execution/verify/p61-g13c/` |
-| G14 100/s、30分钟 | PASSED | SHA 791c75f（镜像 sha256:4f064add…）；180000/180000 offer 于 1800.0s 内发出（100.0/s），accepted 180000、failed 0；ack p95 12.4ms（≤1s，p99 43ms）、commit p95 134ms（≤5s，180000 样本，直方图差分）；账本 180100 accepted = 180100 processed = 180100 raw、0 未确认、0 DLT、0 孤儿；三组 consumer lag 归零用时 31.3s；资源曲线 263 点/容器（app 峰值 864MiB、pg 280MiB、kafka 1015MiB）；`.execution/verify/p61-load2/` |
+| G03 检测正确性 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P2/gate.json` |
+| G04 schema 反馈 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P2/gate.json` |
+| G05 摄取与幂等 | PASSED | 记录提交 `20f948be` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P3/gate.json` |
+| G06 故障与死信 | PASSED | 记录提交 `20f948be` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P3/gate.json` |
+| G07 升级兼容 | PASSED | 记录提交 `20f948be` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P3/gate.json` |
+| G08 来源协议 | PASSED | 记录提交 `20f948be` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P4/gate.json` |
+| G09 官方真实源 | PASSED | 记录提交 `20f948be` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P4/gate.json` |
+| G10 操作闭环 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P5/gate.json` |
+| G11 保留与恢复 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P5b/gate.json` |
+| G12 浏览器与四断点 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P5c/gate.json` |
+| G13 安全与漏洞 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P6/gate.json` |
+| G14 100/s、30分钟 | PASSED | 记录提交 `c1b0b517` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-load/gate.json` |
 | G15 制品安装 | RUNNING | 当前应用 p7-package2 有历史通过证据；收尾工具/文档更新后须重生成并验收 final-package 的原始 bundle 字节 |
 | G16 24h | RUNNING | 有效 run 20261001T182403Z-soak24；正式报告 `.execution/verify/final-soak/soak-report.json` 尚未生成 |
 | G17 公开独立安装 | NOT_STARTED | `.execution/verify/final-release`，必须使用明确 context、匿名附件及公开 digest |
@@ -133,19 +133,19 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 
 | 字段 | 值 |
 |---|---|
-| run_id / run_dir | 20261001T145553Z-soak24 / `.execution/soak/20261001T145553Z-soak24/`（作废的候选 run：20261001T083508Z-soak24、20261001T093502Z-resume、20261001T093737Z-soak24、20261001T103023Z-soak24、20261001T114957Z-soak24、20261001T124728Z-soak24（遗留 runner，2026-10-01T14:49Z 已停止并标 FAILED）、20261001T134438Z-soak24（被 124728Z 的非计划 app 重启打断，2026-10-01T14:52Z 停止并标 FAILED）；`.execution/soak/p13-*` 与 20261001T03* 是 P1.3 runner 测试夹具，非验收 run，其中 p13-resume2 的 state 仍写 RUNNING 是当时故意 kill runner 的测试遗留，`ps` 已确认当前只有 1 个 acceptance.py runner 进程） |
+| run_id / run_dir | 20261001T182403Z-soak24 / `.execution/soak/20261001T182403Z-soak24/`；旧失败窗口与测试夹具保留为历史，不能据其 RUNNING 标签启动或恢复 |
 | compose_project / volume 所有权 | dwt-soak（自有卷 dwt-soak_pgdata、dwt-soak_kafkadata、dwt-soak_streams-state） |
 | env_file 路径 | `.execution/soak.env`（0600，仅路径，不含 secret 内容） |
 | candidate_sha / image_id / config_hash | 573154b9（应用面）/ sha256:2901be88df52de69…（完整值见 `.execution/runs/p7-freeze/manifest.json`）/ 7457349d… |
-| started_at_utc / expected_end_at_utc | 2026-10-01T14:55:53Z / 2026-10-02T14:55:53Z |
-| runner_pid / process_start / lock | PID 42061（runner.pid 记录进程创建时间；`runner_alive` 校验命令行与创建时间；`caffeinate -i -w 42061` 绑定其生命周期防休眠） |
+| started_at_utc / expected_end_at_utc | 2026-10-01T18:24:03Z / 2026-10-02T18:24:03Z（洛杉矶 10 月 2 日 11:24 后判定） |
+| runner_pid / process_start / lock | PID 5002，Thu Oct 1 11:24:03 2026；逐次核验命令、创建时间、采样及冻结容器身份；独立完成监视器 PID39749，Thu Oct 1 13:15:07 2026 |
 | last_heartbeat_utc / checkpoint | samples.jsonl 每 30s 一行；checkpoint.json 每 5 分钟原子写 |
 | live_unique_events / new_after_bootstrap | 待结束后由 `soak-report` 从 raw_events(origin=GITHUB) 统计 |
-| source_poll 状态 / outbox / DLT / lag | 待结束后统计（要求全部归零） |
-| planned_faults / completed_faults | 3 个计划（2h app-restart、8h kafka-stop、16h db-stop），已完成 0 |
+| source_poll 状态 / outbox / DLT / lag | 最新有效观测见 context 的 observation 文件；最终归零与一致性必须由 G16 报告判定，不能用中途正常状态代替 |
+| planned_faults / completed_faults | 3 次计划；app-restart 已完成（32.6s outage，10.2s readiness）；Kafka 洛杉矶19:24、PostgreSQL 次日03:24 尚待执行 |
 | monitor_gap / continuity_valid | 待判定（上限 120s） |
-| exact_resume_command | `./scripts/verify.sh soak-status --run-id 20261001T145553Z-soak24`；runner 失联时 `./scripts/verify.sh soak-resume --run-id 20261001T145553Z-soak24`（标记旧 run FAILED 并以全新 24 小时重启，沿用原 project/env-file/fault-plan；重启后记得重新 `caffeinate -i -w <新 PID>`） |
-| last_failure / required_external_action | 2026-10-01T14:47:55Z 遗留 runner（20261001T124728Z-soak24，旧候选）向本窗口注入非计划 app 重启 → 已停止该 runner 并把两个 run 标 FAILED、重开完整窗口；无外部阻塞。等待到 2026-10-02T14:55:53Z |
+| exact_resume_command | 先执行 `python3 scripts/soak-observe.py --context .execution/finalize/release-context.json`；若无活 runner，核对指定 run 的 state/result 和完成报告。仅确认连续性无效并核实归属后，保留 FAILED 再按执行指南启动完整新窗口；不得直接恢复旧编号 |
+| last_failure / required_external_action | 当前窗口无新失败，无需用户操作；历史失败详见运行记录与历史表。首次 GHCR 推送后官方界面可见性设置由本聊天接管 |
 
 恢复顺序：读状态 -> 核对 checkout/SHA -> 查原 runner 锁和进程身份 -> 验证采样连续性 -> 继续现有任务或保留失败记录并新建 run。不能看到 PID 就启动第二套。
 
