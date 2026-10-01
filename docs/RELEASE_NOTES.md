@@ -97,11 +97,18 @@ new database.
   (polling itself keeps succeeding, and the alert carries `WARN`). A follow-up release tunes the
   threshold for delayed polled sources.
 - Retention removes raw payloads after 30 days while keeping the deduplication identity longer.
-- The dashboard is verified on Chromium at four widths in two themes; other engines are not part
-  of the acceptance matrix. That verification ran on macOS, where the 320 px layout fits with no
-  margin at all — Chromium on Linux with fallback fonts can therefore overflow horizontally by
-  about 11 px in the light theme (measured in CI: scrollWidth 331 against clientWidth 320). No
-  console errors and no accessibility violations accompany it; the follow-up release makes the
-  narrow layout robust to font metrics.
+- `LATE_EVENT` compares `received_at` against the event's own timestamp with a five-minute threshold
+  (guide 5.2), and the public events feed can surface an event for the first time long after it was
+  created. During the acceptance run one event created `2026-09-30T13:29:32Z` was first received
+  `2026-10-01T18:45:32Z` (lateness 105,360 s); because non-INFO alerts open an incident per source
+  and event type (guide 7.2), that single event opened one incident. Read these as "the feed made
+  this visible late", not as collector delay — the ingestion ledger, deduplication and replay are
+  unaffected. A follow-up release classifies first-seen-but-old events separately from delayed
+  delivery.
+- The dashboard is verified on Chromium at four widths (320/768/1024/1440 px) in two themes; other
+  engines are not part of the acceptance matrix. The timeline and tables wrap long unbreakable
+  tokens (`overflow-wrap: anywhere` with `min-width: 0`), which is what lets the 320 px layout fit
+  when real event text is present; the capture gate asserts `scrollWidth == clientWidth` on every
+  capture, and the CI browser job exercises the same check on Linux, where fallback fonts are wider.
 - Kafka Streams state is single-instance; a future multi-instance deployment would need
   repartitioning decisions that this release deliberately does not make.
