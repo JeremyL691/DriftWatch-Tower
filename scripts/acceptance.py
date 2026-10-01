@@ -32,6 +32,7 @@ import os
 import shutil
 import signal
 import subprocess
+import threading
 import sys
 import tempfile
 import time
@@ -244,8 +245,19 @@ def runner(args: argparse.Namespace) -> int:
                     continue
                 if elapsed >= float(planned["at_seconds"]):
                     executed.add(key)
-                    outcome = execute_fault(args.project, state["env_file"], planned["action"], app_port)
-                    append_jsonl(os.path.join(directory, "faults.jsonl"), outcome)
+                    # The fault runs in its own thread: execute_fault blocks for the outage plus
+                    # the recovery wait, and a slow recovery would otherwise stop the monitor for
+                    # longer than the continuity limit, invalidating the run for the wrong reason.
+                    # Sampling continues while the fault is injected and measured.
+                    def _fault(action=planned["action"]):
+                        try:
+                            outcome = execute_fault(args.project, state["env_file"], action, app_port)
+                        except Exception as error:  # pragma: no cover - defensive
+                            outcome = {"action": action, "utc": utc_now(), "status": "error",
+                                       "error": f"{error.__class__.__name__}: {error}"}
+                        append_jsonl(os.path.join(directory, "faults.jsonl"), outcome)
+
+                    threading.Thread(target=_fault, daemon=True).start()
             if time.monotonic() - last_checkpoint >= CHECKPOINT_INTERVAL_SECONDS:
                 atomic_write_json(os.path.join(directory, "checkpoint.json"), {
                     "run_id": args.run_id,
