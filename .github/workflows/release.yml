@@ -95,6 +95,34 @@ jobs:
           digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY/$IMAGE_NAME:$version" | cut -d@ -f2)
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
+      - name: Make the package public
+        # A new GHCR package can default to private. Try to set it public here; the pull below is
+        # the real test, and a failure is reported rather than hidden.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          package="${IMAGE_NAME##*/}"
+          if gh api --method PATCH "/user/packages/container/$package" \
+               -f visibility=public > /tmp/visibility.json 2>&1; then
+            echo "package visibility set to public"
+          else
+            echo "::warning::could not change package visibility with the workflow token:"
+            cat /tmp/visibility.json
+          fi
+
+      - name: Verify an anonymous pull by digest
+        run: |
+          digest="${{ steps.push.outputs.digest }}"
+          clean="$(mktemp -d)"
+          if DOCKER_CONFIG="$clean" docker pull "$REGISTRY/$IMAGE_NAME@$digest" > /tmp/anon-pull.txt 2>&1; then
+            echo "anonymous pull by digest succeeded"
+          else
+            echo "::error::anonymous pull by digest failed; the package is not public"
+            cat /tmp/anon-pull.txt
+            exit 1
+          fi
+          rm -rf "$clean"
+
       - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
