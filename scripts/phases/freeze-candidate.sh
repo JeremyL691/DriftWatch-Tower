@@ -35,6 +35,11 @@ repo, out_dir, image, started = sys.argv[1:5]
 def run(*args, cwd=repo):
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True).stdout.strip()
 
+def run_any(*args, cwd=repo):
+    """Some tools (java -version) report on stderr; the identity matters either way."""
+    result = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+    return (result.stdout + result.stderr).strip()
+
 def sha256_file(path):
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
@@ -103,7 +108,7 @@ manifest = {
         "disk_free": run("df", "-h", repo).splitlines()[-1].split()[3] if run("df", "-h", repo) else None,
     },
     "tools": {
-        "java": run("java", "-version").splitlines()[0] if run("java", "-version") else None,
+        "java": (run_any("java", "-version").splitlines() or [None])[0],
         "docker": run("docker", "version", "--format", "{{.Server.Version}}"),
         "compose": run("docker", "compose", "version"),
         "python": run("python3", "--version"),
