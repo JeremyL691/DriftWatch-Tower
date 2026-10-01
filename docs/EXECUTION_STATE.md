@@ -9,16 +9,16 @@
 | document_revision | 1.0 |
 | handoff_date | 2026-09-30，America/Los_Angeles |
 | product_goal_status | RUNNING，P0-P2 完成，P3 进行中 |
-| current_phase | P3 |
-| current_task | P3.3 |
-| next_action | P3.3：V1-V7 checksum 校验、旧版本夹具、drain/bridge 与回滚演练（G07），只操作验收卷 |
+| current_phase | P4 |
+| current_task | P4.1 |
+| next_action | P4.1：GitHub poller（ETag/X-Poll-Interval、inbox/outbox、lease、candidate/applied 检查点、缺口与退避）与 G08 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（本地；尚未推送） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | b5c10c0a（P3.2 完成；P3.3 未完成，仍不能作为发布候选） |
+| candidate_sha | 7217ff67（P3 完成；P4-P7 未完成，仍不能作为发布候选） |
 | source_tree_hash | 8c8797ad9fe505c8e12d0f797264e4cb15de7fc5c00ffddce25c61cdd023570c（src+pom+Dockerfile+compose） |
 | candidate_image_id / public_digest | 本地镜像 sha256:1a419f6a…（仅本地验证，未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
@@ -59,8 +59,8 @@
 | P2.3 | schema 事务及基线反馈 | PASSED | G04 PASSED；ACTIVE 唯一、advisory lock、outbox 补发、激活 API；126/0/0/0 |
 | P3.1 | 摄取确认、envelope、幂等 | PASSED | G05 PASSED（132/0/0/0）；见 `.execution/verify/p3-gate1/` |
 | P3.2 | retry / DLT / replay | PASSED | G06 PASSED（141/0/0/0 + 现场停机演练）；见 `.execution/verify/p3-gate3/`、`.execution/runs/p32-drill/` |
-| P3.3 | 历史升级与回滚演练 | RUNNING | - |
-| P4.1 | GitHub 持久 poller | NOT_STARTED | - |
+| P3.3 | 历史升级与回滚演练 | PASSED | G07 PASSED；真实旧版本镜像 + 升级/桥接/回滚演练；`.execution/runs/p33-upgrade/` |
+| P4.1 | GitHub 持久 poller | RUNNING | - |
 | P4.2 | 官方真实数据全链路 | NOT_STARTED | - |
 | P5.1 | incident / scheduler | NOT_STARTED | - |
 | P5.2 | 指标、保留、备份恢复 | NOT_STARTED | - |
@@ -84,7 +84,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G04 schema 反馈 | PASSED | 已随候选重新绑定：SHA 653a7e3；PHASE-P2 gate 126 tests / 0 fail / 0 skip，SchemaTransactionIntegrationTest 4 项；`.execution/verify/p2-gate6/` |
 | G05 摄取与幂等 | PASSED | SHA 45d18bce；PHASE-P3 gate：132 tests / 0 fail / 0 skip，IdempotencyIntegrationTest 5 + PreAckFailureTest 1 + KafkaIngestionIntegrationTest 1；`.execution/verify/p3-gate1/` |
 | G06 故障与死信 | PASSED | SHA b5c10c0a；PHASE-P3 gate 141 tests / 0 fail / 0 skip（DeadLetterIntegrationTest 5、SinkRetryTest 4）；现场演练：60s 停机被重试吸收且无死信、200s 停机产生死信并在恢复后投影与重放（各一次副作用）；`.execution/runs/p32-drill/` |
-| G07 升级兼容 | NOT_RUN | - |
+| G07 升级兼容 | PASSED | SHA 7217ff67；PHASE-P3 gate 141 tests / 0 fail / 0 skip；演练：V1-V7 checksum 不变、5 条旧行保留且可查（legacy-db 身份）、2 条真实 backlog 桥接（稳定 legacy-kafka 身份）、仅回滚镜像被 Flyway 拒绝而「备份恢复 + 旧镜像」可用；`.execution/runs/p33-upgrade/` |
 | G08 来源协议 | NOT_RUN | - |
 | G09 官方真实源 | NOT_RUN | - |
 | G10 操作闭环 | NOT_RUN | - |
@@ -234,6 +234,16 @@ P3.1 之后仍需完成（下一动作）：
 - 测试与现场证据：SinkRetryTest（重试/死信/DLT 发布失败/重复 receipt）与 DeadLetterIntegrationTest（坏记录、版本不受支持、幂等投影、SINK 与 STREAM 重放）；`verify.sh phase P3` PASSED（141/0/0/0，SHA b5c10c0a）。现场演练 `.execution/runs/p32-drill/`：60s Postgres 停机被重试吸收（raw=1、无死信、无半提交）；200s 停机后产生 1 条 SINK 死信，恢复后投影成功，重放后 raw=1、receipt=1、DLT=REPLAYED、open=0，重复重放不增加副作用（attempts=2）。
 - 期间修复的真实缺陷：① 预约 Idempotency-Key 使用 merge 语义，并发下会覆盖获胜者的 receipt 并发放两个身份（改为严格 persist+flush，G05 并发用例由偶发失败转为稳定通过）；② Spring Kafka 默认错误处理在重试耗尽后跳过记录，会让 DB 不可用期间的事件与死信被静默丢弃（改为固定退避无限重试，Kafka 保持为持久恢复来源）；③ ERROR dispatch 被授权规则拒绝，导致真实错误以 401 呈现（改为放行 ERROR dispatch）。
 - 说明：Hikari 连接超时 30s 使一次尝试本身可耗时约 30s，因此重试的实际覆盖窗口约 2 分钟；60s 级停机由重试吸收，更长停机走死信路径（两者均有实测）。
+
+### 2026-10-01 P3.3 历史升级、桥接与回滚演练（PASSED，G07）
+
+演练脚本 `.execution/scripts/p33-upgrade-drill.sh`，只使用验收项目 `dwt-p37` 与其自有卷、端口 18081/18082；证据目录 `.execution/runs/p33-upgrade/`。
+
+- 旧版本夹具：从 base commit `082fd84` 构建 `driftwatch-tower:legacy`（真实重构前镜像），在旧 API 上摄取 5 条 legacy 事件；记录 `raw-events` 每分区 end offset（0:5,1:0,2:0）与 `flyway_schema_history` 中 V1-V7 的 checksum。
+- 备份与升级：`pg_dump -Fc` 备份旧库；新镜像挂同一库/卷启动 → 应用 V8-V10（migrations=10），V1-V7 checksum 与升级前完全一致（旧迁移未被改动）。
+- 历史保留：升级后 raw_events 仍为 5 行，全部带 `legacy-db:<pk>` 稳定身份，新 API `GET /api/v1/events/recent` 仍可查询；未 purge 任何旧数据或告警。
+- 真实 backlog 桥接：停机期间向旧 `raw-events` 追加 2 条记录（offset 0:5-6），运行一次性 `LegacyBridge`（配置门控、报告写盘）→ 2 条以 `legacy-kafka:raw-events:0:5/6` 派生稳定身份进入新管道；重复运行不会重复副作用（同一 offset 恒等同一 ingestion_id）。
+- 回滚演练：① 仅回滚镜像（旧镜像对新 schema）→ Flyway 报错 4 条，证明「只回滚镜像」被禁止；② 把备份恢复到新数据库并启动旧镜像 → readiness 正常、旧数据可查（restored_rows=5）。演练卷已清理，未触碰用户卷。
 
 后续每条保留：
 
