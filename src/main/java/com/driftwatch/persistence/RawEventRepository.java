@@ -21,4 +21,6 @@ public interface RawEventRepository extends JpaRepository<RawEventEntity, Long> 
 
     @org.springframework.data.jpa.repository.Query("select distinct r.source from RawEventEntity r order by r.source asc")
     java.util.List<String> findDistinctSources();
+
+    java.util.Optional<RawEventEntity> findByIngestionId(String ingestionId);
 }

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -35,10 +36,17 @@ public class EventController {
 
     private final IngestionService ingestionService;
     private final RawEventService service;
+    private final com.driftwatch.persistence.RawEventRepository rawEventRepository;
+    private final com.driftwatch.persistence.QualityAlertRepository alertRepository;
 
-    public EventController(IngestionService ingestionService, RawEventService service) {
+    public EventController(IngestionService ingestionService,
+                           RawEventService service,
+                           com.driftwatch.persistence.RawEventRepository rawEventRepository,
+                           com.driftwatch.persistence.QualityAlertRepository alertRepository) {
         this.ingestionService = ingestionService;
         this.service = service;
+        this.rawEventRepository = rawEventRepository;
+        this.alertRepository = alertRepository;
     }
 
     @Operation(summary = "Ingest one data event",
@@ -94,6 +102,35 @@ public class EventController {
         body.put("status", outcome.failedIndexes().isEmpty() ? "accepted" : "partially_accepted");
         return ResponseEntity.status(outcome.failedIndexes().isEmpty() ? HttpStatus.ACCEPTED
                 : HttpStatus.MULTI_STATUS).body(body);
+    }
+
+    /**
+     * One ingestion with its detection evidence and window evaluation (guide 4.5). The business
+     * event id is not unique, so the internal ingestion id is the lookup key.
+     */
+    @io.swagger.v3.oas.annotations.Operation(summary = "Fetch one ingestion by ingestion id")
+    @GetMapping("/{ingestionId}")
+    public ResponseEntity<Map<String, Object>> byIngestionId(@PathVariable String ingestionId) {
+        return rawEventRepository.findByIngestionId(ingestionId)
+                .map(raw -> {
+                    Map<String, Object> body = new LinkedHashMap<>();
+                    body.put("ingestion_id", raw.getIngestionId());
+                    body.put("event_id", raw.getEventId());
+                    body.put("source", raw.getSource());
+                    body.put("event_type", raw.getEventType());
+                    body.put("event_timestamp", raw.getEventTimestamp());
+                    body.put("received_at", raw.getReceivedAt());
+                    body.put("quality_status", raw.getQualityStatus());
+                    body.put("origin", raw.getOrigin());
+                    body.put("mode", raw.getMode());
+                    body.put("payload", raw.getPayloadJson());
+                    body.put("baseline_status", raw.getBaselineStatus());
+                    body.put("window_evaluation", raw.getWindowEvaluation());
+                    body.put("alerts", alertRepository.findByIngestionIdOrderByCreatedAtAsc(ingestionId).stream()
+                            .map(AlertResponse::from).toList());
+                    return ResponseEntity.ok(body);
+                })
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/recent")
