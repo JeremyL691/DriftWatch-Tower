@@ -11,7 +11,7 @@
 | product_goal_status | RUNNING，P0-P6.1 完成（G00-G15 在候选 8a798a6e 上全部 PASSED），P6.2 进行中 |
 | current_phase | P6 |
 | current_task | P6.2 |
-| next_action | P6.2：等待 run 20261001T134438Z-soak24 结束（2026-10-02T13:44:38Z），然后按下方「收尾程序」执行 G16 判定与 P7 发布 |
+| next_action | P6.2：等待 run 20261001T145553Z-soak24 结束（2026-10-02T14:55:53Z），然后按下方「收尾程序」执行 G16 判定与 P7 发布 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（已推送到 origin；PR #1 已开） |
@@ -19,14 +19,14 @@
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
 | candidate_sha | 8a798a6e（应用面；P6.1 冻结并全部门禁通过） |
-| source_tree_hash | f85b04310b5d9f3a…（完整值见 `.execution/runs/p61-freeze/manifest.json`；src+pom+Dockerfile+compose+.mvn，工具链单独记 tooling_tree_hash） |
+| source_tree_hash | d5ca0f55ab8689824e5a4e50919ca7f1ca90fae123d9f96f56cb935023fd7370（完整值见 `.execution/runs/p61-freeze/manifest.json`；src+pom+Dockerfile+compose+.mvn，工具链单独记 tooling_tree_hash）。2026-10-01T15:00Z 用同一算法在当前工作树重算一致（203 文件），且 `git diff 8a798a6e..HEAD -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 为空——冻结后所有提交只动 `.github/workflows`、`docs`、`scripts` |
 | config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
 | candidate_image_id / public_digest | 本地镜像 sha256:aeb1c9f9ccd68ca352bd2a6cb93751203e3cbd9f78c14db15e175b87c178ce83（未发布；`content_identity.jar_content_hash` = e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a，已实测可由同源重建复现） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | 20261001T134438Z-soak24（RUNNING，PID 18174，dwt-soak，18087，86400s，2026-10-01T13:44:38Z 起，预计 2026-10-02T13:44:38Z 结束；`caffeinate -i -w 18174` 持有防休眠断言） |
+| active_soak_run | 20261001T145553Z-soak24（RUNNING，PID 42061，dwt-soak，18087，86400s，2026-10-01T14:55:53Z 起，预计 2026-10-02T14:55:53Z 结束；`caffeinate -i -w 42061` 持有防休眠断言）。这是第 7 个 run：第 6 个 run 20261001T134438Z-soak24 因环境干扰在第 1.06 小时作废（见下方 2026-10-01 事件记录），未拼接 |
 | external_blocker | 无 |
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
@@ -38,10 +38,10 @@
 - candidate（应用面）: `8a798a6e7396f2a267cc26e1519bf987c7f13ff3`
 - 镜像（本地，未发布）: `sha256:aeb1c9f9ccd68ca352bd2a6cb93751203e3cbd9f78c14db15e175b87c178ce83`
 - `content_identity.jar_content_hash`: `e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a`
-- 当前 24 小时 run: `20261001T134438Z-soak24`（2026-10-01T13:44:38Z 起，预计 2026-10-02T13:44:38Z 结束）
+- 当前 24 小时 run: `20261001T145553Z-soak24`（2026-10-01T14:55:53Z 起，预计 2026-10-02T14:55:53Z 结束；第 6 个 run 20261001T134438Z-soak24 因环境干扰作废，见事件记录）
 - 最终制品目录: `.execution/verify/p61-package-final3/artifacts`
 
-1. `./scripts/verify.sh soak-report --run-id 20261001T134438Z-soak24 --out .execution/verify/p61-soak` → 判定 G16 并写出 `gate.json`(SOAK)。有问题就记录并修复后重开完整 24 小时，不拼接。
+1. `./scripts/verify.sh soak-report --run-id 20261001T145553Z-soak24 --out .execution/verify/p61-soak` → 判定 G16 并写出 `gate.json`(SOAK)。有问题就记录并修复后重开完整 24 小时，不拼接。
 2. 通过后更新本文件（G16/P6.2 PASSED、实测数字与证据路径），提交并推送 `codex/release-v1`。
 3. 把阶段门禁重新绑定到冻结候选：`for ph in P2 P3 P4 P5 P5b; do ./scripts/verify.sh phase $ph --project dwt-soak --env-file .execution/soak.env --out .execution/verify/p7-$ph; done`（每个脚本跑一次完整套件，约 35 分钟；只依赖 Docker，不需要运行中的栈）。理由：指南 §11.2 要求发布验证「同一候选的 manifest/gate 证据」并拒绝「过期于代码变更」的报告，而这五个门禁的记录仍绑定在更早的 SHA 上；`verify.sh release` 会检查每个 gate id 的最新记录，重跑后整套证据都绑定到冻结候选。
 4. 合并 PR：`gh pr view 1 --json state,headRefOid,mergeable` 确认 head 为 `8a798a6e`（或其后代）、MERGEABLE、五个 CI job 全绿，再 `gh pr merge 1 --merge`（不绕过必需检查）；合并后确认 main 含该候选树。
@@ -86,7 +86,7 @@
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
 | P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
 | P6.1 | 冻结候选、短门槛、负载 | PASSED | G13/G14/G15 PASSED；冻结 SHA 791c75f、镜像 sha256:4f064add…；100/s×1800s 全部指标达标；见 `.execution/runs/p61-freeze/`、`.execution/verify/p61-load2/`、`.execution/verify/p61-package2/` |
-| P6.2 | 24 小时真实验收 | RUNNING | run 20261001T134438Z-soak24（PID 18174，镜像 sha256:aeb1c9f9…，2026-10-01T13:44:38Z 起，预计 2026-10-02T13:44:38Z 结束）；2h/8h/16h 受控故障已排程；G16 待结束后用 `soak-report` 判定 |
+| P6.2 | 24 小时真实验收 | RUNNING | run 20261001T145553Z-soak24（PID 42061，镜像 sha256:aeb1c9f9…，2026-10-01T14:55:53Z 起，预计 2026-10-02T14:55:53Z 结束）；2h/8h/16h 受控故障已排程；G16 待结束后用 `soak-report` 判定。前一个 run 20261001T134438Z-soak24 在第 1.06 小时被遗留 runner 干扰（非计划 app 重启），已留 FAILED 记录并重开完整窗口 |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
 | P7.2 | 公共 Release / GHCR | NOT_STARTED | - |
 | P7.3 | 匿名安装及最终报告 | NOT_STARTED | - |
@@ -113,28 +113,28 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G13 安全与漏洞 | PASSED | SHA 791c75f；Trivy 0.58.1，DB UpdatedAt 2026-10-01T01:24:14Z；依赖树与运行时镜像 0 HIGH/CRITICAL，镜像与 tracked 树 0 secret，镜像内无凭证文件；`.execution/verify/p61-g13c/` |
 | G14 100/s、30分钟 | PASSED | SHA 791c75f（镜像 sha256:4f064add…）；180000/180000 offer 于 1800.0s 内发出（100.0/s），accepted 180000、failed 0；ack p95 12.4ms（≤1s，p99 43ms）、commit p95 134ms（≤5s，180000 样本，直方图差分）；账本 180100 accepted = 180100 processed = 180100 raw、0 未确认、0 DLT、0 孤儿；三组 consumer lag 归零用时 31.3s；资源曲线 263 点/容器（app 峰值 864MiB、pg 280MiB、kafka 1015MiB）；`.execution/verify/p61-load2/` |
 | G15 候选包安装 | PASSED | SHA 791c75f；从制品安装（不构建）：镜像导出 tar sha256 校验一致、docker load 后 id 与冻结 id 相同、SBOM CycloneDX、checksums 覆盖全部制品；全新 project/volume/env（18082）启动后匿名 health 200、管理员 API 200、Bearer 摄取 202 且落库、重启后 readiness 恢复；`.execution/verify/p61-package2/` |
-| G16 连续24小时 | RUNNING | run 20261001T134438Z-soak24 进行中（第 6 个 run；前 5 个因规格审计发现的应用变更作废并留 FAILURE-NOTES）；启动后 299 条真实 GitHub 事件、告警 1（来自 LIVE 事件）、incident 0、DLT 0、gap 0；`soak-report` 已按指南 11.1 实现，且内存判据已与指南口径（第 1-2 小时 vs 最后 1 小时）对齐 |
+| G16 连续24小时 | RUNNING | run 20261001T145553Z-soak24 进行中（第 7 个 run；前 6 个中 5 个因规格审计发现的应用变更作废并留 FAILURE-NOTES，第 6 个 20261001T134438Z-soak24 因遗留 runner 在 14:47:55Z 注入非计划 app 重启而作废，见事件记录）；新窗口启动后 300 条真实 GitHub 事件已落库（bootstrap 轮）、readiness 200；`soak-report` 已按指南 11.1 实现，且内存判据已与指南口径（第 1-2 小时 vs 最后 1 小时）对齐 |
 | G17 公开发布/匿名安装 | NOT_RUN | - |
 
 ## 长任务与恢复字段
 
-24 小时 run 进行中（P6.2）。两个作废 run 保留为历史，不作证据。
+24 小时 run 进行中（P6.2）。已作废的 run 保留为历史，不作证据。
 
 | 字段 | 值 |
 |---|---|
-| run_id / run_dir | 20261001T134438Z-soak24 / `.execution/soak/20261001T134438Z-soak24/`（作废的候选 run：20261001T083508Z-soak24、20261001T093502Z-resume、20261001T093737Z-soak24、20261001T103023Z-soak24、20261001T114957Z-soak24、20261001T124728Z-soak24；`.execution/soak/p13-*` 与 20261001T03* 是 P1.3 runner 测试夹具，非验收 run，其中 p13-resume2 的 state 仍写 RUNNING 是当时故意 kill runner 的测试遗留，`ps` 已确认当前只有 1 个 acceptance.py runner 进程） |
+| run_id / run_dir | 20261001T145553Z-soak24 / `.execution/soak/20261001T145553Z-soak24/`（作废的候选 run：20261001T083508Z-soak24、20261001T093502Z-resume、20261001T093737Z-soak24、20261001T103023Z-soak24、20261001T114957Z-soak24、20261001T124728Z-soak24（遗留 runner，2026-10-01T14:49Z 已停止并标 FAILED）、20261001T134438Z-soak24（被 124728Z 的非计划 app 重启打断，2026-10-01T14:52Z 停止并标 FAILED）；`.execution/soak/p13-*` 与 20261001T03* 是 P1.3 runner 测试夹具，非验收 run，其中 p13-resume2 的 state 仍写 RUNNING 是当时故意 kill runner 的测试遗留，`ps` 已确认当前只有 1 个 acceptance.py runner 进程） |
 | compose_project / volume 所有权 | dwt-soak（自有卷 dwt-soak_pgdata、dwt-soak_kafkadata、dwt-soak_streams-state） |
 | env_file 路径 | `.execution/soak.env`（0600，仅路径，不含 secret 内容） |
 | candidate_sha / image_id / config_hash | 8a798a6e（应用面）/ sha256:aeb1c9f9ccd68ca352b…（完整值见 freeze manifest）/ 7457349d… |
-| started_at_utc / expected_end_at_utc | 2026-10-01T13:44:38Z / 2026-10-02T13:44:38Z |
-| runner_pid / process_start / lock | PID 18174（runner.pid 记录进程创建时间；`runner_alive` 校验命令行与创建时间；`caffeinate -i -w 18174` 绑定其生命周期防休眠） |
+| started_at_utc / expected_end_at_utc | 2026-10-01T14:55:53Z / 2026-10-02T14:55:53Z |
+| runner_pid / process_start / lock | PID 42061（runner.pid 记录进程创建时间；`runner_alive` 校验命令行与创建时间；`caffeinate -i -w 42061` 绑定其生命周期防休眠） |
 | last_heartbeat_utc / checkpoint | samples.jsonl 每 30s 一行；checkpoint.json 每 5 分钟原子写 |
 | live_unique_events / new_after_bootstrap | 待结束后由 `soak-report` 从 raw_events(origin=GITHUB) 统计 |
 | source_poll 状态 / outbox / DLT / lag | 待结束后统计（要求全部归零） |
 | planned_faults / completed_faults | 3 个计划（2h app-restart、8h kafka-stop、16h db-stop），已完成 0 |
 | monitor_gap / continuity_valid | 待判定（上限 120s） |
-| exact_resume_command | `./scripts/verify.sh soak-status --run-id 20261001T134438Z-soak24`；runner 失联时 `./scripts/verify.sh soak-resume --run-id 20261001T134438Z-soak24`（标记旧 run FAILED 并以全新 24 小时重启，沿用原 project/env-file/fault-plan；重启后记得重新 `caffeinate -i -w <新 PID>`） |
-| last_failure / required_external_action | 无；等待到 2026-10-02T13:44:38Z |
+| exact_resume_command | `./scripts/verify.sh soak-status --run-id 20261001T145553Z-soak24`；runner 失联时 `./scripts/verify.sh soak-resume --run-id 20261001T145553Z-soak24`（标记旧 run FAILED 并以全新 24 小时重启，沿用原 project/env-file/fault-plan；重启后记得重新 `caffeinate -i -w <新 PID>`） |
+| last_failure / required_external_action | 2026-10-01T14:47:55Z 遗留 runner（20261001T124728Z-soak24，旧候选）向本窗口注入非计划 app 重启 → 已停止该 runner 并把两个 run 标 FAILED、重开完整窗口；无外部阻塞。等待到 2026-10-02T14:55:53Z |
 
 恢复顺序：读状态 -> 核对 checkout/SHA -> 查原 runner 锁和进程身份 -> 验证采样连续性 -> 继续现有任务或保留失败记录并新建 run。不能看到 PID 就启动第二套。
 
@@ -414,6 +414,23 @@ G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出
 本机用 QEMU 模拟 amd64 构建失败（`mvnw dependency:go-offline` 解 tar 失败，属模拟层问题，CI 原生 amd64 构建是成功的），因此改为让 CI 自己报告：在 `image` job 中新增一步，构建后从镜像内取出 `/app/app.jar` 计算同一算法（entry 的 name/size/CRC 摘要）并打印 + 上传为 `content-identity` 附件。
 
 结果（run a53fcd3，head a53fcd36）：CI 原生 amd64 计算值 `e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a` 与冻结候选值**逐字节相同**。结论：跨架构重建可复现（Dockerfile 用 digest 固定 Temurin 21 构建阶段，javac 输出与宿主架构无关），发布流水线的身份断言会通过。
+
+### 2026-10-01 P6.2 第六个 run 作废：遗留 runner 干扰（第 7 次启动）
+
+等待期例行核对时发现异常：app 容器 `StartedAt=2026-10-01T14:48:27Z`，而 kafka/postgres 是 13:44:25Z（run 20261001T134438Z-soak24 的启动时刻）。`docker inspect` 显示 `RestartCount=0`、`ExitCode=0`、`FinishedAt=14:47:56Z`，`docker events` 显示 14:47:56 kill→stop→die、14:48:27 start——是一次优雅的 `compose stop/start`，不是崩溃。
+
+根因：`ps` 发现**两个** acceptance.py runner。PID 95382 属于更早的 run `20261001T124728Z-soak24`（12:47:29Z 启动，绑定上一候选 378d7cf8 / 镜像 a8fa82cb），在冻结候选接管 compose 项目 `dwt-soak` 后**没有被停掉**；它的 2h 计划故障按自己的 elapsed 在 14:47:55Z 触发，对**共享的** app 容器执行了 app-restart（`faults.jsonl`：status completed、outage 32.5s、recovery 10.1s）。两个 runner 共用一个 compose 项目。
+
+危险点：G16 的 `container_health` 只数 `RestartCount`（优雅 stop/start 不增加），所以这次干扰对判定**不可见**；而该 runner 的 8h kafka-stop（20:47Z）与 16h db-stop（04:47Z）还会继续打进新窗口。
+
+处理（不掩盖、不拼接）：
+
+1. 14:49Z 停止 PID 95382；`ps` 复核只剩 1 个 runner。
+2. `20261001T124728Z-soak24` 标 FAILED（被取代且绑定旧候选）；`20261001T134438Z-soak24` 标 FAILED（环境干扰），samples/faults/checkpoint 全部保留作证据，`result.json` 记 measured 3900s / 86400s，不删除、不改造。
+3. 工具修复（commit 57baf06，仅 `scripts/`）：`soak-start` 在存在其它存活 runner 时拒绝启动并列出 run_id/PID；`runner` 启动时与**每次注入故障前**都校验 app 容器镜像 id 是否等于本 run 记录的镜像，不等则记 `skipped-environment-changed` 并让 run FAILED——宁可失败也不去动别人的环境。
+4. 启动前复核制品：镜像 `driftwatch-tower:local` = sha256:aeb1c9f9…，jar content identity `e574ffcf…` 与冻结值一致；当前工作树 source_tree_hash 重算 = `d5ca0f55…`（203 文件）与 manifest 一致；`git diff 8a798a6e..HEAD -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 为空（冻结后提交只动 `.github/workflows`、`docs`、`scripts`）。
+5. 重建环境：`docker compose -p dwt-soak --env-file .execution/soak.env down -v`（仅该验收项目自有测试卷）再 `up -d --wait`，三容器 healthy、app `RestartCount=0`、readiness 200。
+6. 启动第 7 个 run `20261001T145553Z-soak24`（PID 42061，86400s，预计 2026-10-02T14:55:53Z 结束，`caffeinate -i -w 42061`）。启动后约 1 分钟 bootstrap 轮已落库 300 条真实 GitHub 事件、readiness 200。run 记录的 `git_sha=1213d3b8`（启动时 HEAD），工具修复 57baf06 在启动后数分钟提交；应用面与冻结候选逐字节相同，因此该窗口仍覆盖冻结制品。
 
 后续每条保留：
 
