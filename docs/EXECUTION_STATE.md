@@ -10,15 +10,15 @@
 | handoff_date | 2026-09-30，America/Los_Angeles |
 | product_goal_status | RUNNING，P0-P2 完成，P3 进行中 |
 | current_phase | P3 |
-| current_task | P3.2 |
-| next_action | P3.2：bytes 入口校验 + 有限 sink 重试 + Kafka DLT（dead-letter-events-v1）+ 投影与运维重放，随后跑 G06 |
+| current_task | P3.3 |
+| next_action | P3.3：V1-V7 checksum 校验、旧版本夹具、drain/bridge 与回滚演练（G07），只操作验收卷 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（本地；尚未推送） |
 | execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
 | handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
 | original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 45d18bce（P3.1 完成；P3.2/P3.3 未完成，仍不能作为发布候选） |
+| candidate_sha | b5c10c0a（P3.2 完成；P3.3 未完成，仍不能作为发布候选） |
 | source_tree_hash | 8c8797ad9fe505c8e12d0f797264e4cb15de7fc5c00ffddce25c61cdd023570c（src+pom+Dockerfile+compose） |
 | candidate_image_id / public_digest | 本地镜像 sha256:1a419f6a…（仅本地验证，未发布） |
 | target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
@@ -58,8 +58,8 @@
 | P2.2 | 规则与配置覆盖 | PASSED | 规则边界/哈希规范/数组契约/OpenAPI 契约测试；126/0/0/0 |
 | P2.3 | schema 事务及基线反馈 | PASSED | G04 PASSED；ACTIVE 唯一、advisory lock、outbox 补发、激活 API；126/0/0/0 |
 | P3.1 | 摄取确认、envelope、幂等 | PASSED | G05 PASSED（132/0/0/0）；见 `.execution/verify/p3-gate1/` |
-| P3.2 | retry / DLT / replay | RUNNING | - |
-| P3.3 | 历史升级与回滚演练 | NOT_STARTED | - |
+| P3.2 | retry / DLT / replay | PASSED | G06 PASSED（141/0/0/0 + 现场停机演练）；见 `.execution/verify/p3-gate3/`、`.execution/runs/p32-drill/` |
+| P3.3 | 历史升级与回滚演练 | RUNNING | - |
 | P4.1 | GitHub 持久 poller | NOT_STARTED | - |
 | P4.2 | 官方真实数据全链路 | NOT_STARTED | - |
 | P5.1 | incident / scheduler | NOT_STARTED | - |
@@ -83,7 +83,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G03 检测正确性 | PASSED | 已随候选重新绑定：SHA 653a7e3（含 bb13ab9 应用代码）；PHASE-P2 gate 126 tests / 0 fail / 0 skip；`.execution/verify/p2-gate6/` |
 | G04 schema 反馈 | PASSED | 已随候选重新绑定：SHA 653a7e3；PHASE-P2 gate 126 tests / 0 fail / 0 skip，SchemaTransactionIntegrationTest 4 项；`.execution/verify/p2-gate6/` |
 | G05 摄取与幂等 | PASSED | SHA 45d18bce；PHASE-P3 gate：132 tests / 0 fail / 0 skip，IdempotencyIntegrationTest 5 + PreAckFailureTest 1 + KafkaIngestionIntegrationTest 1；`.execution/verify/p3-gate1/` |
-| G06 故障与死信 | NOT_RUN | - |
+| G06 故障与死信 | PASSED | SHA b5c10c0a；PHASE-P3 gate 141 tests / 0 fail / 0 skip（DeadLetterIntegrationTest 5、SinkRetryTest 4）；现场演练：60s 停机被重试吸收且无死信、200s 停机产生死信并在恢复后投影与重放（各一次副作用）；`.execution/runs/p32-drill/` |
 | G07 升级兼容 | NOT_RUN | - |
 | G08 来源协议 | NOT_RUN | - |
 | G09 官方真实源 | NOT_RUN | - |
@@ -225,6 +225,15 @@ P3.1 之后仍需完成（下一动作）：
 2. 补 `GET /api/v1/events/{ingestionId}`（§4.5）返回该次摄取的 event、检测结果与 window_evaluation，并在 API 契约测试中断言。
 3. 批量 4MiB 总大小限制与「重试只发送未确认项」的显式用例；随后运行 `verify.sh phase P3`（阶段脚本尚未创建）并把 G05 置为 PASSED。
 4. 24 小时验收、P4-P7 均未开始；G05-G17 仍为 NOT_RUN。
+
+### 2026-10-01 P3.2 重试、死信与运维重放（PASSED，G06）
+
+- bytes 入口：`raw-events-v1` 以 bytes 消费并显式解析；坏记录或 `contract_version` 不受支持时进入 `dead-letter-events-v1`，携带原 topic/partition/offset 与稳定 diagnostic id，后续正常记录不受影响；解析边界使用全新 headers，避免外来 `__TypeId__` 污染死信 topic。
+- 有限 sink 重试：立即、2s、10s、30s 共 4 次；持久失败后发布 DLT，只有 broker ack 后才跳过原记录；DLT 发布失败则抛错让 offset 不推进。成功计数与 WebSocket 广播移到提交之后；持久化拆到 `SinkPersistenceService` 使每次重试都是新事务。
+- DLT 投影与管理：`dead_letter_records` 按 diagnostic id 幂等写入；`GET /api/v1/dead-letters`、`GET /{id}`、`POST /{id}/replay` 分别支持过滤、详情+恢复历史与重放；重放按失败阶段重新进入（SINK→quality-events-v1 保留原 ProcessedEvent；STREAM/SOURCE→raw-events-v1 保留原 envelope），每次返回新的 replay_attempt_id。
+- 测试与现场证据：SinkRetryTest（重试/死信/DLT 发布失败/重复 receipt）与 DeadLetterIntegrationTest（坏记录、版本不受支持、幂等投影、SINK 与 STREAM 重放）；`verify.sh phase P3` PASSED（141/0/0/0，SHA b5c10c0a）。现场演练 `.execution/runs/p32-drill/`：60s Postgres 停机被重试吸收（raw=1、无死信、无半提交）；200s 停机后产生 1 条 SINK 死信，恢复后投影成功，重放后 raw=1、receipt=1、DLT=REPLAYED、open=0，重复重放不增加副作用（attempts=2）。
+- 期间修复的真实缺陷：① 预约 Idempotency-Key 使用 merge 语义，并发下会覆盖获胜者的 receipt 并发放两个身份（改为严格 persist+flush，G05 并发用例由偶发失败转为稳定通过）；② Spring Kafka 默认错误处理在重试耗尽后跳过记录，会让 DB 不可用期间的事件与死信被静默丢弃（改为固定退避无限重试，Kafka 保持为持久恢复来源）；③ ERROR dispatch 被授权规则拒绝，导致真实错误以 401 呈现（改为放行 ERROR dispatch）。
+- 说明：Hikari 连接超时 30s 使一次尝试本身可耗时约 30s，因此重试的实际覆盖窗口约 2 分钟；60s 级停机由重试吸收，更长停机走死信路径（两者均有实测）。
 
 后续每条保留：
 
