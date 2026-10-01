@@ -37,3 +37,7 @@ HELP.md
 # Python bytecode from local script checks
 __pycache__/
 *.pyc
+
+# Node dev-test dependencies (Playwright for browser acceptance)
+node_modules/
+package-lock.json
