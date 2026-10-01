@@ -179,13 +179,23 @@ def sample_once(project: str, env_file: str, app_port: str, admin: tuple[str, st
     return sample
 
 
-def execute_fault(project: str, env_file: str, action: str, app_port: str) -> dict:
-    """Runs one controlled fault and measures the outage and recovery."""
+def execute_fault(project: str, env_file: str, action: str, app_port: str,
+                  expected_image: str | None = None) -> dict:
+    """Runs one controlled fault and measures the outage and recovery.
+
+    The compose project is shared state: before touching a service this checks that the
+    running app container still carries the image this run was started against. A leftover
+    runner from an earlier run would otherwise stop the services of the current one and
+    corrupt both runs' evidence."""
     started = utc_now()
     start_monotonic = time.monotonic()
     service = {"app-restart": "app", "kafka-stop": "kafka", "db-stop": "postgres"}.get(action)
     if service is None:
         return {"action": action, "utc": started, "status": "unsupported"}
+    current_image = identify_image(project).get("image_id")
+    if expected_image and current_image != expected_image:
+        return {"action": action, "utc": started, "status": "skipped-environment-changed",
+                "expected_image": expected_image, "current_image": current_image}
     try:
         compose(project, env_file, "stop", service)
         time.sleep(30)  # target outage <= 60s
@@ -216,6 +226,22 @@ def runner(args: argparse.Namespace) -> int:
     if state is None:
         print(f"no state for run {args.run_id}", file=sys.stderr)
         return 2
+    expected_image = (state.get("image") or {}).get("image_id")
+    current_image = identify_image(args.project).get("image_id")
+    if expected_image and current_image != expected_image:
+        # The compose project belongs to a different candidate now: this run cannot observe or
+        # fault the environment it was started against, so it fails instead of damaging it.
+        reason = (f"environment replaced: app image is {current_image}, "
+                  f"run expects {expected_image}")
+        atomic_write_json(os.path.join(directory, "state.json"),
+                          {**state, "status": "FAILED", "failure_reason": reason,
+                           "finished_utc": utc_now()})
+        atomic_write_json(os.path.join(directory, "result.json"), {
+            "run_id": args.run_id, "status": "FAILED", "failure_reason": reason,
+            "measured_seconds": 0, "sample_count": 0, "git_sha": state.get("git_sha"),
+            "image": state.get("image"), "finished_utc": utc_now()})
+        print(f"run {args.run_id} refused to start: {reason}", file=sys.stderr)
+        return 1
     duration = float(state["duration_seconds"])
     app_port = str(state.get("app_port", "18080"))
     env = load_env(state["env_file"])
@@ -227,6 +253,7 @@ def runner(args: argparse.Namespace) -> int:
     sample_count = 0
     status = "PASSED"
     failure_reason = None
+    fault_failure: list[str] = []
 
     atomic_write_json(os.path.join(directory, "state.json"), {**state, "status": "RUNNING",
                                                              "runner_started_utc": utc_now()})
@@ -251,13 +278,22 @@ def runner(args: argparse.Namespace) -> int:
                     # Sampling continues while the fault is injected and measured.
                     def _fault(action=planned["action"]):
                         try:
-                            outcome = execute_fault(args.project, state["env_file"], action, app_port)
+                            outcome = execute_fault(args.project, state["env_file"], action, app_port,
+                                                    expected_image)
                         except Exception as error:  # pragma: no cover - defensive
                             outcome = {"action": action, "utc": utc_now(), "status": "error",
                                        "error": f"{error.__class__.__name__}: {error}"}
                         append_jsonl(os.path.join(directory, "faults.jsonl"), outcome)
+                        if outcome.get("status") != "completed":
+                            fault_failure.append(f"fault {action} ended {outcome.get('status')}")
 
                     threading.Thread(target=_fault, daemon=True).start()
+            if fault_failure:
+                # A planned fault that did not complete makes the window unusable: the run
+                # stops here and is kept as a failure instead of being stitched together.
+                status = "FAILED"
+                failure_reason = "; ".join(fault_failure)
+                break
             if time.monotonic() - last_checkpoint >= CHECKPOINT_INTERVAL_SECONDS:
                 atomic_write_json(os.path.join(directory, "checkpoint.json"), {
                     "run_id": args.run_id,
@@ -306,6 +342,13 @@ def cmd_soak_start(args: argparse.Namespace) -> int:
         return 2
     if not os.path.exists(args.env_file):
         print(f"soak-start: env file not found: {args.env_file}", file=sys.stderr)
+        return 2
+    alive = live_runners(exclude=args.run_id)
+    if alive:
+        print("soak-start refused: these runs still have a live runner: "
+              + ", ".join(f"{run['run_id']} (pid {run['pid']})" for run in alive)
+              + ". Two runners share one compose project, so their fault plans would stop each "
+                "other's services; stop the old runner first.", file=sys.stderr)
         return 2
     os.makedirs(directory, exist_ok=True)
     env = load_env(args.env_file)
@@ -385,6 +428,28 @@ def runner_alive(directory: str) -> bool:
     except Exception:
         return False
     return bool(actual_start) and actual_start == expected_start and "acceptance.py" in command
+
+
+def live_runners(exclude: str | None = None) -> list[dict]:
+    """Every soak run in a live state whose recorded runner process is still alive.
+
+    One compose project can only serve one 24h window: a runner left over from an earlier run
+    keeps its own fault plan and would stop the services of the current run."""
+    alive: list[dict] = []
+    root = os.path.join(REPO_ROOT, ".execution", "soak")
+    if not os.path.isdir(root):
+        return alive
+    for name in sorted(os.listdir(root)):
+        if name == exclude:
+            continue
+        directory = os.path.join(root, name)
+        state = read_json(os.path.join(directory, "state.json"), {}) or {}
+        if state.get("status") not in {"STARTING", "RUNNING"}:
+            continue
+        if runner_alive(directory):
+            alive.append({"run_id": name,
+                          "pid": (read_json(os.path.join(directory, "runner.pid"), {}) or {}).get("pid")})
+    return alive
 
 
 def cmd_soak_status(args: argparse.Namespace) -> int:
