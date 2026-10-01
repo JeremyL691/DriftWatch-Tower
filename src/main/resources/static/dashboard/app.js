@@ -267,7 +267,7 @@ async function showDeadLetter(id) {
     <p><span class="code-chip">${escapeHtml(detail.kafka_topic || "")}</span>
        partition ${detail.kafka_partition ?? "-"} offset ${detail.kafka_offset ?? "-"}</p>
     <details><summary>Payload and recovery history</summary>
-      <pre>${escapeHtml(JSON.stringify({ payload: detail.payload, replays: detail.replays }, null, 2))}</pre>
+      <pre tabindex="0" role="region" aria-label="Dead letter payload and recovery history">${escapeHtml(JSON.stringify({ payload: detail.payload, replays: detail.replays }, null, 2))}</pre>
     </details>`;
   document.getElementById("replayDeadLetter").addEventListener("click", async (event) => {
     const button = event.currentTarget;
@@ -439,7 +439,7 @@ function renderAlertsTable(alerts) {
             <td>${escapeHtml(alert.field_path ?? "-")}</td>
             <td>${escapeHtml(alert.message)}</td>
             <td>${formatDate(alert.created_at)}</td>
-            <td><details><summary>View</summary><pre>${escapeHtml(JSON.stringify(alert.evidence, null, 2))}</pre></details></td>
+            <td><details><summary>View</summary><pre tabindex="0" role="region" aria-label="Alert evidence">${escapeHtml(JSON.stringify(alert.evidence, null, 2))}</pre></details></td>
           </tr>
         `).join("")}
       </tbody>

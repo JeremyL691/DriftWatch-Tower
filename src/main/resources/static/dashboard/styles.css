@@ -7,9 +7,9 @@
     --bg-elev: #20202A;
 
     /* 古铜金 - 主强调色 */
-    --gold: #B8860B;
+    --gold: #D4AF37;
     --gold-deep: #8B6914;
-    --gold-bright: #D4A017;
+    --gold-bright: #F0C75E;
     --gold-glow: rgba(184, 134, 11, 0.45);
     --gold-line: rgba(184, 134, 11, 0.18);
     --gold-fill: rgba(184, 134, 11, 0.08);
@@ -20,10 +20,11 @@
     /* ponytail: spec's #7A7468 only reaches 3.89:1 (FAILS WCAG AA 4.5). Used #8B8576 (4.91:1) to actually pass. */
     --muted: #8B8576;
 
-    /* 语义色 - 全部压暗以适配黑底 */
-    --ok: #3D6B5C;
-    --warn: #B8860B;
-    --err: #A63D2A;
+    /* Semantic colours must be readable ON the dark panels, so they are the light variants.
+       Measured against #101012/#16161A/#1C1C22: ok 8.3-9.7:1, warn 8.6-10.1:1, err 6.1-7.2:1. */
+    --ok: #7FC8A9;
+    --warn: #E0B84C;
+    --err: #E8836F;
     --err-deep: #6B2418;
 
     /* 阴影 - 黑底用 gold 内发光代替投影 */
@@ -927,13 +928,17 @@ select:focus,
         --ink: #1B1A17;
         --ink-soft: #3A3833;
         --muted: #6B675E;
-        --gold: #8B6914;
-        --gold-deep: #6F530F;
-        --gold-bright: #A67C10;
-        --gold-line: rgba(139, 105, 20, 0.28);
-        --gold-fill: rgba(139, 105, 20, 0.08);
-        --shadow-panel: 0 1px 0 rgba(139,105,20,0.10) inset, 0 18px 40px rgba(0,0,0,0.10);
-        --glow-gold: 0 0 0 1px var(--gold-line), 0 0 18px rgba(139,105,20,0.10);
+        --gold: #6F530F;
+        --gold-deep: #5F4A0B;
+        --gold-bright: #7A5C10;
+        --gold-line: rgba(111, 83, 15, 0.30);
+        --gold-fill: rgba(111, 83, 15, 0.08);
+        --ok: #2F6B55;
+        --warn: #6F530F;
+        --err: #8F3323;
+        --muted: #5F574D;
+        --shadow-panel: 0 1px 0 rgba(111,83,15,0.10) inset, 0 18px 40px rgba(0,0,0,0.10);
+        --glow-gold: 0 0 0 1px var(--gold-line), 0 0 18px rgba(111,83,15,0.10);
     }
 }
 
@@ -947,13 +952,20 @@ html[data-theme="light"] {
     --ink: #1B1A17;
     --ink-soft: #3A3833;
     --muted: #6B675E;
-    --gold: #8B6914;
-    --gold-deep: #6F530F;
-    --gold-bright: #A67C10;
-    --gold-line: rgba(139, 105, 20, 0.28);
-    --gold-fill: rgba(139, 105, 20, 0.08);
+    --gold: #6F530F;
+    --gold-deep: #5F4A0B;
+    --gold-bright: #7A5C10;
+    --gold-line: rgba(111, 83, 15, 0.30);
+    --gold-fill: rgba(111, 83, 15, 0.08);
+    --ok: #2F6B55;
+    --warn: #6F530F;
+    --err: #8F3323;
+    --muted: #5F574D;
 }
 
+/* An explicit dark choice must restore the whole dark palette, not just the surfaces: a user
+   whose system prefers light and then picks dark would otherwise keep light-theme gold and
+   semantic colours on dark panels (measured 2.9-3.5:1). */
 html[data-theme="dark"] {
     --bg-0: #0A0A0B;
     --bg-1: #101012;
@@ -963,6 +975,14 @@ html[data-theme="dark"] {
     --ink: #E8E4D9;
     --ink-soft: #B8B2A4;
     --muted: #8B8576;
+    --gold: #D4AF37;
+    --gold-deep: #B8860B;
+    --gold-bright: #F0C75E;
+    --gold-line: rgba(212, 175, 55, 0.28);
+    --gold-fill: rgba(212, 175, 55, 0.10);
+    --ok: #7FC8A9;
+    --warn: #E0B84C;
+    --err: #E8836F;
 }
 
 /* Evaluation coverage: excluded rows are the point of the panel, so they read as warnings. */
@@ -973,5 +993,11 @@ html[data-theme="dark"] {
 
 .dead-letter-detail { margin-top: 1rem; }
 .dead-letter-detail pre { max-height: 22rem; overflow: auto; text-align: left; }
+.dead-letter-detail pre:focus-visible,
+.data-table pre:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
 .action-error { color: var(--gold-bright); }
 .status-chip { border: 1px solid currentColor; border-radius: 999px; padding: 0.05rem 0.5rem; font-size: 0.8rem; }
+
+/* A scroll container is a focusable region so keyboard users can reach the columns that
+   overflow at narrow widths (axe: scrollable-region-focusable). */
+.table-shell:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }

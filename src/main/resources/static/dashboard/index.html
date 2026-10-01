@@ -115,6 +115,7 @@
                     exclusions, and events whose baseline was not yet active skip the
                     baseline-dependent checks.
                 </p>
+                <div class="table-shell" tabindex="0" role="region" aria-label="Evaluation coverage table">
                 <table class="data-table coverage-table">
                     <thead>
                         <tr><th>Outcome</th><th>Events</th><th>Share</th></tr>
@@ -123,6 +124,7 @@
                         <tr><td colspan="3" class="muted">Loading…</td></tr>
                     </tbody>
                 </table>
+                </div>
             </div>
         </section>
 
@@ -165,7 +167,7 @@
                 </div>
                 <span class="muted">Sorted by lowest health score first</span>
             </div>
-            <div id="sourceHealthTable" class="table-shell"></div>
+            <div id="sourceHealthTable" class="table-shell" tabindex="0" role="region" aria-label="Source health table"></div>
         </section>
 
         <section id="schemas" class="panel">
@@ -187,7 +189,7 @@
                 </div>
                 <span class="muted">Alerts grouped by source and event type</span>
             </div>
-            <div class="table-shell">
+            <div class="table-shell" tabindex="0" role="region" aria-label="Scrollable table">
                 <table class="data-table">
                     <thead>
                         <tr><th>ID</th><th>Title</th><th>Source</th><th>Status</th><th>Created</th><th>Action</th></tr>
@@ -207,7 +209,7 @@
                 </div>
                 <span class="muted">Per source, event type and one-minute window</span>
             </div>
-            <div class="table-shell">
+            <div class="table-shell" tabindex="0" role="region" aria-label="Scrollable table">
                 <table class="data-table">
                     <thead>
                         <tr><th>Source</th><th>Event type</th><th>Metric</th><th>Window start</th><th>Value</th></tr>
@@ -227,7 +229,7 @@
                 </div>
                 <span class="muted">Durable failures with a replay action</span>
             </div>
-            <div class="table-shell">
+            <div class="table-shell" tabindex="0" role="region" aria-label="Scrollable table">
                 <table class="data-table">
                     <thead>
                         <tr><th>Diagnostic</th><th>Stage</th><th>Source</th><th>Attempts</th><th>State</th><th>Detail</th></tr>
