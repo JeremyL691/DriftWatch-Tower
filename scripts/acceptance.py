@@ -443,6 +443,8 @@ def live_runners(exclude: str | None = None) -> list[dict]:
         if name == exclude:
             continue
         directory = os.path.join(root, name)
+        if not os.path.isdir(directory):
+            continue
         state = read_json(os.path.join(directory, "state.json"), {}) or {}
         if state.get("status") not in {"STARTING", "RUNNING"}:
             continue
