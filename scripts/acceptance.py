@@ -254,6 +254,7 @@ def runner(args: argparse.Namespace) -> int:
     start_monotonic = time.monotonic()
     last_checkpoint = 0.0
     sample_count = 0
+    previous_sample = None
     status = "PASSED"
     failure_reason = None
     fault_failure: list[str] = []
@@ -269,6 +270,14 @@ def runner(args: argparse.Namespace) -> int:
             sample["elapsed_seconds"] = round(elapsed, 1)
             append_jsonl(os.path.join(directory, "samples.jsonl"), sample)
             sample_count += 1
+            if previous_sample is not None:
+                wall_gap, monotonic_gap = sample_gap(previous_sample, sample)
+                if max(wall_gap, monotonic_gap) > MAX_MONITOR_GAP_SECONDS:
+                    status = "FAILED"
+                    failure_reason = (f"sampling continuity lost: UTC gap {wall_gap}s, "
+                                      f"monotonic gap {monotonic_gap}s")
+                    break
+            previous_sample = sample
             for planned in fault_plan:
                 key = f"{planned['at_seconds']}-{planned['action']}"
                 if key in executed:
@@ -399,21 +408,33 @@ def read_samples(directory: str) -> list[dict]:
     return samples
 
 
+def sample_gap(previous: dict, current: dict) -> tuple[float, float]:
+    """UTC continues across host suspend; macOS monotonic time may not."""
+    import math
+    wall = parse_epoch(current["utc"]) - parse_epoch(previous["utc"])
+    monotonic = current["monotonic"] - previous["monotonic"]
+    if not all(math.isfinite(value) and value >= 0 for value in (wall, monotonic)):
+        raise ValueError("sample clocks are non-finite or moved backwards")
+    return wall, monotonic
+
+
 def continuity_report(directory: str) -> dict:
     samples = read_samples(directory)
-    if not samples:
-        return {"samples": 0, "max_gap_seconds": None, "continuity_valid": False}
-    gaps = []
-    for previous, current in zip(samples, samples[1:]):
-        gaps.append(current["monotonic"] - previous["monotonic"])
-    max_gap = max(gaps) if gaps else 0.0
-    return {
-        "samples": len(samples),
-        "first_sample": samples[0]["utc"],
-        "last_sample": samples[-1]["utc"],
-        "max_gap_seconds": round(max_gap, 1),
-        "continuity_valid": max_gap <= MAX_MONITOR_GAP_SECONDS,
-    }
+    report = {"samples": len(samples), "max_gap_seconds": None, "continuity_valid": False}
+    if len(samples) < 2:
+        return report
+    try:
+        gaps = [sample_gap(a, b) for a, b in zip(samples, samples[1:])]
+    except (KeyError, TypeError, ValueError) as error:
+        return {**report, "error": str(error)}
+    wall = max(gap[0] for gap in gaps)
+    monotonic = max(gap[1] for gap in gaps)
+    maximum = max(wall, monotonic)
+    return {**report, "first_sample": samples[0]["utc"], "last_sample": samples[-1]["utc"],
+            "max_wall_gap_seconds": round(wall, 1),
+            "max_monotonic_gap_seconds": round(monotonic, 1),
+            "max_gap_seconds": round(maximum, 1),
+            "continuity_valid": maximum <= MAX_MONITOR_GAP_SECONDS}
 
 
 def runner_alive(directory: str) -> bool:

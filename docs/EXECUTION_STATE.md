@@ -2,6 +2,14 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
+## 当前恢复记录 (2026-10-02 13:00 PDT)
+
+旧 run `20261001T182403Z-soak24` 已正式 FAILED。主机睡眠导致 7 段 UTC 采样空洞，最长 3646 秒；macOS monotonic 时钟未计入睡眠，旧版连续性检查无法发现这些空洞。已停止核验归属的 PID5002 和旧完成监视器，保留原始采样、故障、数据库备份和正式失败报告 `.execution/verify/failed-20261001T182403Z-soak24/soak-report.json`。297 个真实事件、三次恢复和零积压不能代替连续 24 小时通过。
+
+工具已改为同时验证 UTC 和 monotonic，runner 在空洞后立即失败；30 项发布安全回归通过。应用、配置、依赖、镜像保持冻结。下一步启动独立项目 `dwt-soak-recovery`、新卷、端口18088的完整 86400秒窗口。运行条件：Mac 保持打开屏幕盖、开机和联网；caffeinate 不能保证合盖不睡眠。G16 未通过，不进入合并发布。
+
+以下接管段落和第一次故障证据记录旧窗口历史，当前入口将随新窗口启动更新。
+
 ## 本聊天接管记录 (2026-10-01 12:50 PDT)
 
 工具进展：27 项防误发布回归通过；G16 报告增加账本读取、OOM、磁盘、内存采样、未知 lag 及结束十分钟清零的失败关闭检查。只读结束观察进程 PID39749（13:15:07 PDT）负责及时正式报告；登记在 `.execution/finalize/finish-watch.pid.json`。这不构成 G16/G17 通过证据。
@@ -20,7 +28,7 @@
 
 | 字段 | 当前值 |
 |---|---|
-| document_revision | 1.2 |
+| document_revision | 1.3 |
 | handoff_date | 2026-10-01，本聊天接管，America/Los_Angeles |
 | product_goal_status | RUNNING；冻结应用 573154b9 的短门禁已通过；G16 进行中，最终 G02/G15 尚待重跑，P7 尚未完成 |
 | current_phase | P6 |
@@ -40,7 +48,7 @@
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | **`20261001T182403Z-soak24`（RUNNING）**：2026-10-01T18:24:03Z 启动，PID 5002（`caffeinate -i -w 5002`），86400s，预计 **2026-10-02T18:24:03Z** 结束；`state.json` 记录 `git_sha=20f948be`、镜像 `sha256:2901be88…`（= 冻结候选），app 容器同一镜像且 healthy；故障计划 2h app-restart / 8h kafka-stop / 16h db-stop；启动后 bootstrap 轮已入库真实事件、readiness 200。其余历史 run（含 20261001T145553Z-soak24）均 FAILED，仅作证据保留 |
+| active_soak_run | **`20261001T182403Z-soak24`（FAILED，主机睡眠，正在恢复新窗口）**：2026-10-01T18:24:03Z 启动，PID 5002（`caffeinate -i -w 5002`），86400s，预计 **2026-10-02T18:24:03Z** 结束；`state.json` 记录 `git_sha=20f948be`、镜像 `sha256:2901be88…`（= 冻结候选），app 容器同一镜像且 healthy；故障计划 2h app-restart / 8h kafka-stop / 16h db-stop；启动后 bootstrap 轮已入库真实事件、readiness 200。其余历史 run（含 20261001T145553Z-soak24）均 FAILED，仅作证据保留 |
 | external_blocker | 尚未实际阻塞。首次 GHCR 推送后需在 GitHub 包设置将包设为 Public，再核验匿名 digest 拉取；官方界面动作由本聊天接管。不存在 visibility PATCH API；无须为该无效操作申请 PAT。 |
 
 > **接管规则**：旧 ZCode 自动化已暂停。本聊天 heartbeat 以执行计划和 release context 为准；同时验证 PID、创建时间、命令、采样更新、项目与镜像。不得根据旧投递文字或单个 RUNNING 状态启动第二个窗口。
@@ -97,7 +105,7 @@ G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compos
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
 | P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
 | P6.1 | 冻结候选、短门槛、负载 | RUNNING | 当前冻结应用 573154b9；G13/G14 已通过，旧候选与旧 bundle 不代替 final G02/G15，G16 后重跑 |
-| P6.2 | 24 小时真实验收 | RUNNING | 有效 run 20261001T182403Z-soak24，PID5002；正式报告 final-soak 尚未生成，历史失败均保留 |
+| P6.2 | 24 小时真实验收 | RUNNING | 旧 run 20261001T182403Z-soak24 FAILED；重启完整窗口，正式通过报告 final-soak 尚未生成 |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
 | P7.2 | 公共 Release / GHCR | NOT_STARTED | - |
 | P7.3 | 匿名安装及最终报告 | NOT_STARTED | - |
