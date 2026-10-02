@@ -42,3 +42,5 @@ Before upload, record exact main SHA, public digest and architecture/content map
 ## Oct2 host-sleep recovery
 
 Run `20261001T182403Z-soak24` FAILED with seven UTC gaps over120s, maximum3646s. The macOS monotonic clock excluded suspend; reporting now validates both clocks and the runner fails immediately on a new gap. Thirty focused regressions passed. Preserve the failed formal report and raw evidence; never reuse its duration/events/faults for the replacement. Restart on a fresh project/volumes with the same frozen image/configuration and verify successful real polling before starting. Mac must stay awake with lid open and connected; caffeinate assertions cannot override lid sleep. Completion and release dates move with the new actual start.
+
+Replacement active run: `20261002T200503Z-soak24-recovery`, runner PID73766, project `dwt-soak-recovery`, env `.execution/soak-recovery.env`, port18088, start2026-10-02T20:05:03Z; planned finish2026-10-03T20:05:03Z. Watcher PID73776 is registered dynamically. Initial fresh-volume real bootstrap99, pending0, failures0, READY. Do not use historical observer paths or original fault schedule for this replacement.

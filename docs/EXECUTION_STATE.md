@@ -6,9 +6,11 @@
 
 旧 run `20261001T182403Z-soak24` 已正式 FAILED。主机睡眠导致 7 段 UTC 采样空洞，最长 3646 秒；macOS monotonic 时钟未计入睡眠，旧版连续性检查无法发现这些空洞。已停止核验归属的 PID5002 和旧完成监视器，保留原始采样、故障、数据库备份和正式失败报告 `.execution/verify/failed-20261001T182403Z-soak24/soak-report.json`。297 个真实事件、三次恢复和零积压不能代替连续 24 小时通过。
 
-工具已改为同时验证 UTC 和 monotonic，runner 在空洞后立即失败；30 项发布安全回归通过。应用、配置、依赖、镜像保持冻结。下一步启动独立项目 `dwt-soak-recovery`、新卷、端口18088的完整 86400秒窗口。运行条件：Mac 保持打开屏幕盖、开机和联网；caffeinate 不能保证合盖不睡眠。G16 未通过，不进入合并发布。
+工具已改为同时验证 UTC 和 monotonic，runner 在空洞后立即失败；30 项发布安全回归通过。应用、配置、依赖、镜像保持冻结。已于 2026-10-02 13:05:03 PDT 启动独立项目 `dwt-soak-recovery`、新卷、端口18088的完整 86400秒窗口。运行条件：Mac 保持打开屏幕盖、开机和联网；caffeinate 不能保证合盖不睡眠。G16 未通过，不进入合并发布。
 
-以下接管段落和第一次故障证据记录旧窗口历史，当前入口将随新窗口启动更新。
+当前窗口 `20261002T200503Z-soak24-recovery`，runner PID73766，创建时间 Fri Oct  2 13:05:03 2026；结束监视器 PID73776。预计 2026-10-03 13:05:03 PDT 后正式判定。新卷 BOOTSTRAP 1轮/99事件，pending0、failures0、READY。故障计划：10月2日15:05应用重启、21:05 Kafka中断、10月3日05:05数据库中断。防睡眠断言跟随 runner 生命周期，不能保证合盖不睡眠。
+
+以下接管段落和第一次故障证据记录旧窗口历史，当前入口按恢复窗口更新。
 
 ## 本聊天接管记录 (2026-10-01 12:50 PDT)
 
@@ -48,12 +50,12 @@
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | **`20261001T182403Z-soak24`（FAILED，主机睡眠，正在恢复新窗口）**：2026-10-01T18:24:03Z 启动，PID 5002（`caffeinate -i -w 5002`），86400s，预计 **2026-10-02T18:24:03Z** 结束；`state.json` 记录 `git_sha=20f948be`、镜像 `sha256:2901be88…`（= 冻结候选），app 容器同一镜像且 healthy；故障计划 2h app-restart / 8h kafka-stop / 16h db-stop；启动后 bootstrap 轮已入库真实事件、readiness 200。其余历史 run（含 20261001T145553Z-soak24）均 FAILED，仅作证据保留 |
+| active_soak_run | **`20261002T200503Z-soak24-recovery` (RUNNING)**；2026-10-02T20:05:03Z，PID73766，project dwt-soak-recovery，env .execution/soak-recovery.env，port18088；冻结镜像2901be88；新卷、BOOTSTRAP99事件。预计2026-10-03T20:05:03Z后判定。旧20261001T182403Z-soak24 FAILED，正式报告及数据库保留。 |
 | external_blocker | 尚未实际阻塞。首次 GHCR 推送后需在 GitHub 包设置将包设为 Public，再核验匿名 digest 拉取；官方界面动作由本聊天接管。不存在 visibility PATCH API；无须为该无效操作申请 PAT。 |
 
 > **接管规则**：旧 ZCode 自动化已暂停。本聊天 heartbeat 以执行计划和 release context 为准；同时验证 PID、创建时间、命令、采样更新、项目与镜像。不得根据旧投递文字或单个 RUNNING 状态启动第二个窗口。
 
-> **陷阱警告（防止误记）**：旧 run `20261001T145553Z-soak24` 的 `faults.jsonl` 里**已有一条 completed 的 2h 故障**（它死于字段路径缺陷前的自身计划）。它是**旧窗口**的证据，**不能**用来给当前窗口做「重启恢复对比」。当前窗口的三次故障时间：2h → **2026-10-01T20:24:03Z**、8h → **2026-10-02T02:24:03Z**、16h → **2026-10-02T10:24:03Z**；只有在 `.execution/soak/20261001T182403Z-soak24/faults.jsonl` 里看到对应故障 `completed` 之后，才可用 `scripts/poller-state.sh --project dwt-soak --env-file .execution/soak.env` 与 `.execution/verify/p61-soak-prefault-baseline.json`（已更新为本窗口的故障前基线：BOOTSTRAP 1 / 96 事件 / inbox 96 / failures 0）做对比，并把**前后两组数字**写进状态文件。在 20:24:03Z 之前，当前窗口**没有任何**故障证据，不得记录任何「故障后」数字。
+> **证据归属**：旧 run `20261001T182403Z-soak24` 的三次故障均保留为历史，不能计入当前恢复窗口。当前故障仅从 release context 指定 run 的 `faults.jsonl` 读取；使用 `scripts/poller-state.sh --project dwt-soak-recovery --env-file .execution/soak-recovery.env` 比较同一 run 的 `prefault-takeover.json` 和故障前后观察。
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
 
@@ -105,7 +107,7 @@ G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compos
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
 | P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
 | P6.1 | 冻结候选、短门槛、负载 | RUNNING | 当前冻结应用 573154b9；G13/G14 已通过，旧候选与旧 bundle 不代替 final G02/G15，G16 后重跑 |
-| P6.2 | 24 小时真实验收 | RUNNING | 旧 run 20261001T182403Z-soak24 FAILED；重启完整窗口，正式通过报告 final-soak 尚未生成 |
+| P6.2 | 24 小时真实验收 | RUNNING | 当前 run 20261002T200503Z-soak24-recovery RUNNING；旧窗口睡眠失败保留，正式通过报告 final-soak 尚未生成 |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
 | P7.2 | 公共 Release / GHCR | NOT_STARTED | - |
 | P7.3 | 匿名安装及最终报告 | NOT_STARTED | - |
