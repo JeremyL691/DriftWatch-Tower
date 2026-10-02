@@ -60,6 +60,31 @@ class ReleaseSafety(unittest.TestCase):
 
     def validate(self): return ctx.validate('context.json')
 
+    def continuity(self, samples):
+        directory = self.root / 'clock-test'; directory.mkdir(exist_ok=True)
+        (directory / 'samples.jsonl').write_text(''.join(json.dumps(x)+'\n' for x in samples))
+        return acceptance.continuity_report(str(directory))
+
+    def test_host_suspend_cannot_pass_monotonic_continuity(self):
+        result = self.continuity([{'utc':'2026-10-02T18:41:26Z','monotonic':100},
+                                  {'utc':'2026-10-02T19:42:12Z','monotonic':132}])
+        self.assertFalse(result['continuity_valid'])
+        self.assertEqual(result['max_wall_gap_seconds'],3646)
+        self.assertEqual(result['max_monotonic_gap_seconds'],32)
+
+    def test_regular_utc_and_monotonic_continuity(self):
+        self.assertTrue(self.continuity([{'utc':'2026-10-02T18:41:26Z','monotonic':100},
+                                        {'utc':'2026-10-02T18:41:58Z','monotonic':132}])['continuity_valid'])
+
+    def test_bad_sample_clocks_fail_closed(self):
+        first={'utc':'2026-10-02T18:41:26Z','monotonic':100}
+        for last in [{'utc':'bad','monotonic':132},
+                     {'utc':'2026-10-02T18:40:58Z','monotonic':132},
+                     {'utc':'2026-10-02T18:41:58Z','monotonic':99},
+                     {'utc':'2026-10-02T18:41:58Z','monotonic':float('nan')}]:
+            with self.subTest(last=last): self.assertFalse(self.continuity([first,last])['continuity_valid'])
+        self.assertFalse(self.continuity([first])['continuity_valid'])
+
     def test_complete_bound_evidence_passes(self): self.validate()
     def test_invalid_json_fails(self):
         self.write('gates/G16.json', '{invalid')

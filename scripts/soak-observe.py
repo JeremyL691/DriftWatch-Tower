@@ -33,6 +33,9 @@ def main():
     directory,state,info=live[0]
     if directory.name != context['soak']['run_id'] or state['image']['image_id'] != context['image_id']:
         raise ValueError('effective runner differs from designated context')
+    spec=importlib.util.spec_from_file_location('acceptance',ROOT/'scripts/acceptance.py')
+    acceptance=importlib.util.module_from_spec(spec);spec.loader.exec_module(acceptance)
+    continuity=acceptance.continuity_report(str(directory))
     last=json.loads((directory/'samples.jsonl').read_text().splitlines()[-1])
     now=datetime.datetime.now(datetime.timezone.utc)
     sampled=datetime.datetime.fromisoformat(last['utc'].replace('Z','+00:00'))
@@ -48,7 +51,7 @@ def main():
     baseline=json.loads((directory/'prefault-takeover.json').read_text())
     bootstrap_before=baseline['polls_by_mode'].get('BOOTSTRAP',0)
     bootstrap_after=poller['polls_by_mode'].get('BOOTSTRAP',0)
-    observation={'run_id':directory.name,'utc':now.isoformat(),'runner':info,'project':project,'image_id':image['Image'],'sample_age_seconds':(now-sampled).total_seconds(),'elapsed_seconds':last['elapsed_seconds'],'completed_faults':completed,'poller':poller,'comparison':{'bootstrap_before':bootstrap_before,'bootstrap_after':bootstrap_after,'bootstrap_unchanged':bootstrap_before==bootstrap_after,'live_before':baseline['live_events'],'live_after':poller['live_events'],'pending':poller['outbox_pending'],'failures':poller['collector_state']['consecutive_failures']}}
+    observation={'run_id':directory.name,'continuity':continuity,'utc':now.isoformat(),'runner':info,'project':project,'image_id':image['Image'],'sample_age_seconds':(now-sampled).total_seconds(),'elapsed_seconds':last['elapsed_seconds'],'completed_faults':completed,'poller':poller,'comparison':{'bootstrap_before':bootstrap_before,'bootstrap_after':bootstrap_after,'bootstrap_unchanged':bootstrap_before==bootstrap_after,'live_before':baseline['live_events'],'live_after':poller['live_events'],'pending':poller['outbox_pending'],'failures':poller['collector_state']['consecutive_failures']}}
     name='observation-'+now.strftime('%Y%m%dT%H%M%SZ')+'.json'
     path=directory/name;path.write_text(json.dumps(observation,indent=2))
     evidence=str(path.relative_to(ROOT))
@@ -58,6 +61,6 @@ def main():
     summary={**observation,"poller":{k:v for k,v in poller.items() if k!="event_identities"}}
     summary["snapshot"]=str(path.relative_to(ROOT))
     print(json.dumps(summary,indent=2))
-    return 1 if bootstrap_after!=bootstrap_before else 0
+    return 1 if bootstrap_after!=bootstrap_before or not continuity['continuity_valid'] else 0
 
 if __name__=='__main__':raise SystemExit(main())
