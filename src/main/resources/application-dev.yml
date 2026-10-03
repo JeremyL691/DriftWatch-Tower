@@ -1,0 +1,15 @@
+# Local development defaults. Never use this profile for a self-host deployment.
+#
+# The compose dev override exposes PostgreSQL and Kafka on loopback:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres kafka
+#   ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+
+spring:
+  datasource:
+    password: driftwatch
+
+driftwatch:
+  security:
+    admin:
+      username: driftwatch
+      password: local-dev-only-password

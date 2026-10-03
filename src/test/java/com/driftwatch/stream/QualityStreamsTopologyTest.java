@@ -7,10 +7,7 @@ import com.driftwatch.quality.AlertType;
 import com.driftwatch.quality.FieldFormatDetector;
 import com.driftwatch.quality.FieldRangeDetector;
 import com.driftwatch.quality.LateEventDetector;
-import com.driftwatch.quality.SchemaDriftDetector;
-import com.driftwatch.quality.schema.SchemaBaselineProvider;
-import com.driftwatch.quality.schema.SchemaRegistry;
-import com.driftwatch.persistence.SchemaVersionRepository;
+import com.driftwatch.quality.schema.BaselineMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -49,55 +46,26 @@ class QualityStreamsTopologyTest {
         return new FieldFormatDetector(objectMapper, "");
     }
 
-    /** No expected leaf fields → the null-spike processor is inert. */
-    private SchemaBaselineProvider noFields() {
-        return eventType -> Map.of();
-    }
+    private static final Map<String, Map<String, String>> NO_BASELINE = Map.of();
+    private static final Map<String, Map<String, String>> ASK_NUMBER_BASELINE =
+            Map.of("demo_null_event", Map.of("ask", "NUMBER"));
 
     private TopologySettings settings() {
         return new TopologySettings(Duration.ofMinutes(5), Duration.ofMinutes(1), 0.6, 3, 2, 2, 3.0, 5);
     }
 
-    /** Stubbed schema registry: every event is a fresh baseline, so drift never fires in unit tests. */
-    private SchemaDriftDetector schemaDrift() {
-        return new SchemaDriftDetector(new SchemaRegistry(fakeSchemaRepo(), objectMapper), objectMapper);
-    }
-
-    @SuppressWarnings("unchecked")
-    private SchemaVersionRepository fakeSchemaRepo() {
-        return (SchemaVersionRepository) java.lang.reflect.Proxy.newProxyInstance(
-                SchemaVersionRepository.class.getClassLoader(),
-                new Class<?>[]{SchemaVersionRepository.class},
-                (proxy, method, args) -> {
-                    switch (method.getName()) {
-                        case "findByEventTypeAndSchemaHash":
-                        case "findFirstByEventTypeAndStatus":
-                            return java.util.Optional.empty();
-                        case "save":
-                            return args[0];
-                        default:
-                            if (method.getReturnType() == boolean.class) return false;
-                            if (method.getReturnType() == long.class) return 0L;
-                            if (method.getReturnType() == int.class) return 0;
-                            if (List.class.isAssignableFrom(method.getReturnType())) return List.of();
-                            if (method.getReturnType() == java.util.Optional.class) return java.util.Optional.empty();
-                            return null;
-                    }
-                });
-    }
-
     private Driver driver() {
-        return driver(quietLate(), emptyRange(), emptyFormat(), noFields(), settings());
+        return driver(quietLate(), emptyRange(), emptyFormat(), NO_BASELINE, settings());
     }
 
     private Driver driver(LateEventDetector late,
                           FieldRangeDetector range,
                           FieldFormatDetector format,
-                          SchemaBaselineProvider baseline,
+                          Map<String, Map<String, String>> baselines,
                           TopologySettings topologySettings) {
         QualityStreamsTopology topology = new QualityStreamsTopology(
-                serdes, hasher, late, range, format, schemaDrift(), baseline, objectMapper, topologySettings);
-        return new Driver(topology);
+                serdes, hasher, late, range, format, objectMapper, topologySettings);
+        return new Driver(topology, baselines);
     }
 
     @Test
@@ -155,7 +123,7 @@ class QualityStreamsTopologyTest {
     @Test
     void lateEventProducesLateAlert() {
         LateEventDetector late = new LateEventDetector(objectMapper, Duration.ofMinutes(5));
-        try (Driver driver = driver(late, emptyRange(), emptyFormat(), noFields(), settings())) {
+        try (Driver driver = driver(late, emptyRange(), emptyFormat(), NO_BASELINE, settings())) {
             DataEvent event = new DataEvent("evt-late", "demo-api", "market_tick",
                     Instant.now().minusSeconds(600), Map.of("bid", 1.0));
             driver.pipe(event);
@@ -173,7 +141,7 @@ class QualityStreamsTopologyTest {
     void fieldRangeAndFormatProduceAlerts() {
         FieldRangeDetector range = new FieldRangeDetector(objectMapper, Map.of("price", range(0, 100)));
         FieldFormatDetector format = new FieldFormatDetector(objectMapper, "code=^SKU-[0-9]{6}$");
-        try (Driver driver = driver(quietLate(), range, format, noFields(), settings())) {
+        try (Driver driver = driver(quietLate(), range, format, NO_BASELINE, settings())) {
             DataEvent event = new DataEvent("evt-f", "demo-api", "demo_quality_event", Instant.now(),
                     Map.of("price", 150.0, "code", "SKU-12"));
             driver.pipe(event);
@@ -187,8 +155,7 @@ class QualityStreamsTopologyTest {
 
     @Test
     void nullSpikeProducesAlert() {
-        SchemaBaselineProvider baseline = eventType -> Map.of("ask", "NUMBER");
-        try (Driver driver = driver(quietLate(), emptyRange(), emptyFormat(), baseline, settings())) {
+        try (Driver driver = driver(quietLate(), emptyRange(), emptyFormat(), ASK_NUMBER_BASELINE, settings())) {
             Instant ts = Instant.now().truncatedTo(ChronoUnit.MINUTES);
             driver.pipe(new DataEvent("evt-n0", "demo-api", "demo_null_event", ts, Map.of("bid", 1.0, "ask", 2.0)));
             driver.pipe(new DataEvent("evt-n1", "demo-api", "demo_null_event", ts.plusSeconds(1), Map.of("bid", 1.0)));
@@ -202,6 +169,30 @@ class QualityStreamsTopologyTest {
                 assertThat(a.evidence().get("null_count").asLong()).isEqualTo(2);
                 assertThat(a.evidence().get("total_count").asLong()).isEqualTo(3);
             });
+        }
+    }
+
+    @Test
+    void nullTypedBaselineFieldDoesNotFire() {
+        // A fixed-envelope source (the GitHub adapter) records columns an event type never
+        // populates as NULL in the baseline. Those are not confirmed fields of that type, so they
+        // must not raise NULL_SPIKE (guide 5.4: nullish means a *baseline-confirmed* leaf path is
+        // missing or null) - otherwise every event of that type fires on the same columns.
+        Map<String, Map<String, String>> baseline = Map.of(
+                "demo_null_event", Map.of("ask", "NUMBER", "forkee_id", "NULL"));
+        try (Driver driver = driver(quietLate(), emptyRange(), emptyFormat(), baseline, settings())) {
+            Instant ts = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+            driver.pipe(new DataEvent("evt-y0", "demo-api", "demo_null_event", ts, Map.of("bid", 1.0)));
+            driver.pipe(new DataEvent("evt-y1", "demo-api", "demo_null_event", ts.plusSeconds(1), Map.of("bid", 1.0)));
+            driver.pipe(new DataEvent("evt-y2", "demo-api", "demo_null_event", ts.plusSeconds(2), Map.of("bid", 1.0)));
+
+            List<ProcessedEvent.ProcessedAlert> alerts = driver.output().stream()
+                    .flatMap(entry -> entry.value.alerts().stream())
+                    .filter(alert -> alert.type() == AlertType.NULL_SPIKE)
+                    .toList();
+            // `ask` is confirmed as NUMBER and absent in all three events: exactly one alert.
+            assertThat(alerts).hasSize(1);
+            assertThat(alerts.get(0).evidence().get("field_path").asText()).isEqualTo("ask");
         }
     }
 
@@ -239,12 +230,15 @@ class QualityStreamsTopologyTest {
     /** Wraps a TopologyTestDriver wired to a fully-built topology. */
     private class Driver implements AutoCloseable {
         private final TopologyTestDriver driver;
-        private final TestInputTopic<String, DataEvent> input;
+        private final TestInputTopic<String, com.driftwatch.event.RawEnvelope> input;
         private final TestOutputTopic<String, ProcessedEvent> output;
 
-        Driver(QualityStreamsTopology topology) {
+        Driver(QualityStreamsTopology topology, Map<String, Map<String, String>> baselines) {
             StreamsBuilder builder = new StreamsBuilder();
-            topology.apply(builder);
+            var envelopes = builder.stream(KafkaTopics.RAW_EVENTS_V1,
+                    org.apache.kafka.streams.kstream.Consumed.with(
+                            org.apache.kafka.common.serialization.Serdes.String(), serdes.rawEnvelopeSerde()));
+            topology.buildPipeline(builder, envelopes);
 
             Properties props = new Properties();
             props.put(StreamsConfig.APPLICATION_ID_CONFIG, "test-topology");
@@ -252,13 +246,19 @@ class QualityStreamsTopologyTest {
 
             this.driver = new TopologyTestDriver(builder.build(), props);
             this.input = driver.createInputTopic(
-                    KafkaTopics.RAW_EVENTS, new StringSerializer(), serdes.dataEventSerde().serializer());
+                    KafkaTopics.RAW_EVENTS_V1, new StringSerializer(), serdes.rawEnvelopeSerde().serializer());
             this.output = driver.createOutputTopic(
-                    KafkaTopics.QUALITY_EVENTS, new StringDeserializer(), serdes.processedEventSerde().deserializer());
+                    KafkaTopics.QUALITY_EVENTS_V1, new StringDeserializer(), serdes.processedEventSerde().deserializer());
+            TestInputTopic<String, BaselineMessage> baselineInput = driver.createInputTopic(
+                    KafkaTopics.SCHEMA_BASELINES, new StringSerializer(), serdes.baselineMessageSerde().serializer());
+            baselines.forEach((eventType, leaves) ->
+                    baselineInput.pipeInput(eventType, new BaselineMessage(eventType, 1L, leaves)));
         }
 
         void pipe(DataEvent event) {
-            input.pipeInput(event.source() + "|" + event.eventType(), event, event.eventTimestamp().toEpochMilli());
+            var envelope = com.driftwatch.event.RawEnvelope.forRest(event, java.time.Instant.now());
+            input.pipeInput(com.driftwatch.quality.ScopeKey.of(event.source(), event.eventType()),
+                    envelope, event.eventTimestamp().toEpochMilli());
         }
 
         List<KeyValue<String, ProcessedEvent>> output() {

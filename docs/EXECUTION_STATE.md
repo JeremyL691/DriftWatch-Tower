@@ -1,0 +1,833 @@
+# DriftWatch Tower 执行状态
+
+本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
+
+## 当前阻塞记录 (2026-10-02 晚间 PDT)
+
+恢复 run `20261002T200503Z-soak24-recovery` 在 `2026-10-03T01:37:56Z` 自动 FAILED：UTC采样空洞156秒，monotonic仅32.6秒。正式失败报告 `.execution/verify/failed-20261002T200503Z-soak24-recovery/soak-report.json` 已保存，原始采样、故障、采集账本和主机睡眠日志保留。runner及完成监视器均已退出，不存在有效运行窗口。下面13:00恢复记录为历史。
+
+当前主机硬件读取 `AppleClamshellState=Yes`、`AppleClamshellCausesSleep=Yes`，电源为 Battery Power；系统反复Maintenance Sleep。需要打开屏幕盖、接AC电源并保持联网。heartbeat继续监测；实际核验lid open和AC Power后，归档并停止失败窗口自有栈，使用冻结镜像和新卷启动唯一完整86400秒窗口。禁止在该环境条件未恢复时反复启动窗口，禁止拼接旧采样。预计完成时间等待新的实际启动后重算。G16 FAILED，P6.2 BLOCKED，发布未开始。
+
+## 当前恢复记录 (2026-10-02 13:00 PDT)
+
+旧 run `20261001T182403Z-soak24` 已正式 FAILED。主机睡眠导致 7 段 UTC 采样空洞，最长 3646 秒；macOS monotonic 时钟未计入睡眠，旧版连续性检查无法发现这些空洞。已停止核验归属的 PID5002 和旧完成监视器，保留原始采样、故障、数据库备份和正式失败报告 `.execution/verify/failed-20261001T182403Z-soak24/soak-report.json`。297 个真实事件、三次恢复和零积压不能代替连续 24 小时通过。
+
+工具已改为同时验证 UTC 和 monotonic，runner 在空洞后立即失败；30 项发布安全回归通过。应用、配置、依赖、镜像保持冻结。已于 2026-10-02 13:05:03 PDT 启动独立项目 `dwt-soak-recovery`、新卷、端口18088的完整 86400秒窗口。运行条件：Mac 保持打开屏幕盖、开机和联网；caffeinate 不能保证合盖不睡眠。G16 未通过，不进入合并发布。
+
+当前窗口 `20261002T200503Z-soak24-recovery`，runner PID73766，创建时间 Fri Oct  2 13:05:03 2026；结束监视器 PID73776。预计 2026-10-03 13:05:03 PDT 后正式判定。新卷 BOOTSTRAP 1轮/99事件，pending0、failures0、READY。故障计划：10月2日15:05应用重启、21:05 Kafka中断、10月3日05:05数据库中断。防睡眠断言跟随 runner 生命周期，不能保证合盖不睡眠。
+
+以下接管段落和第一次故障证据记录旧窗口历史，当前入口按恢复窗口更新。
+
+## 本聊天接管记录 (2026-10-01 12:50 PDT)
+
+工具进展：27 项防误发布回归通过；G16 报告增加账本读取、OOM、磁盘、内存采样、未知 lag 及结束十分钟清零的失败关闭检查。只读结束观察进程 PID39749（13:15:07 PDT）负责及时正式报告；登记在 `.execution/finalize/finish-watch.pid.json`。这不构成 G16/G17 通过证据。
+
+- 旧 ZCode 自动化 `automation-82c729b4` 已通过界面暂停，显示“已暂停”。ZCode 无效 JSON 被误判为目标完成保留为历史，不作为完成证据。
+- 当前 Codex heartbeat: `driftwatch-v1`，每小时静默继续，仅恢复、失败、完成或需外部操作时通知。
+- 工作开始时 `codex/release-v1` @ `d83b6a4b1b980cca2b000f4317175de3427ceee8` 干净。冻结应用、配置和依赖保持不变。
+- runner PID 5002、创建时间 Thu Oct 1 11:24:03 2026、命令 run-id、容器镜像及新采样一致；有效窗口为 `20261001T182403Z-soak24`。13:24/19:24/次日03:24 PDT 为三次故障，次日11:24 PDT 后判定 G16。
+- 本窗口故障前快照 `.execution/soak/20261001T182403Z-soak24/prefault-takeover.json`: BOOTSTRAP 1轮/96事件，LIVE 15轮/23事件，inbox119，pending0，failures0，READY。故障后必须与同一窗口比较。
+- 当前事实入口: [收尾执行计划](RELEASE_FINISH_PLAN.md)。发布工具唯一证据绑定为 `.execution/finalize/release-context.json`；G02/G15/G16 的 final 路径尚未生成，不能视为通过。
+- G16 未完成；P7.1/P7.2/P7.3 未完成。历史发布工具按 mtime 选报告的说明已废弃。公开镜像可见性使用 GitHub 官方界面，不存在 visibility PATCH API。
+
+当前表格已按 release context 对齐。替换前的旧入口、任务、门禁与恢复表逐字保存在 [历史状态表](HISTORICAL_EXECUTION_TABLES.md)；下方有日期的运行记录继续保留为历史。
+
+## 当前入口
+
+| 字段 | 当前值 |
+|---|---|
+| document_revision | 1.3 |
+| handoff_date | 2026-10-01，本聊天接管，America/Los_Angeles |
+| product_goal_status | BLOCKED（主机合盖且电池供电）；冻结应用 573154b9 的短门禁已通过；G16 进行中，最终 G02/G15 尚待重跑，P7 尚未完成 |
+| current_phase | P6 |
+| current_task | P6.2 |
+| next_action | 以 release context 监测当前 run；完成监视器写入 `.execution/verify/final-soak` 后先正式核验 G16，再串行 final-compose / final-package、最终提交五项 CI、合并、预发布及 G17 |
+| local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
+| remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
+| execution_branch | codex/release-v1（已推送到 origin；PR #1 已开） |
+| execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
+| handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
+| original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
+| candidate_sha | 573154b9（应用面；GitHub 适配器字段路径 + 320px 布局两处修复后冻结，全部受影响门禁已在其上重跑 PASSED） |
+| source_tree_hash | bb6d14e7c7c02ed0f3aa26073c206f99976aa0ec493440b72a0d9a013b1483b7（见 `.execution/runs/p7-freeze/manifest.json`；204 文件） |
+| config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
+| candidate_image_id / public_digest | 本地镜像 sha256:2901be88df52de693b892825700ab8101fd72efb7bb944ad639b6018ad77d0d3（未发布；`content_identity.jar_content_hash` = 1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d；发布断言使用该值） |
+| target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
+| docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
+| release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
+| application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
+| active_soak_run | 无有效runner；20261002T200503Z-soak24-recovery FAILED，156秒UTC空洞。等待打开屏幕盖并接AC后再启动完整窗口。 |
+| external_blocker | 主机合盖且Battery Power，需lid open和AC Power后重新完整24小时；之后仍需公开GHCR并验匿名拉取。 |
+
+> **接管规则**：旧 ZCode 自动化已暂停。本聊天 heartbeat 以执行计划和 release context 为准；同时验证 PID、创建时间、命令、采样更新、项目与镜像。不得根据旧投递文字或单个 RUNNING 状态启动第二个窗口。
+
+> **证据归属**：旧 run `20261001T182403Z-soak24` 的三次故障均保留为历史，不能计入当前恢复窗口。当前故障仅从 release context 指定 run 的 `faults.jsonl` 读取；使用 `scripts/poller-state.sh --project dwt-soak-recovery --env-file .execution/soak-recovery.env` 比较同一 run 的 `prefault-takeover.json` 和故障前后观察。
+
+文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
+
+## 当前窗口第一次故障证据 (13:26 PDT)
+
+`app-restart` 于 `2026-10-01T20:24:11Z` 完成，outage32.6s、readiness恢复10.2s。前后 BOOTSTRAP 轮数1→1，LIVE事件23→26，inbox119→122，pending0、failures0、READY，容器与冻结镜像保持一致。证据：`.execution/soak/20261001T182403Z-soak24/faults.jsonl` 与 `observation-20261001T202601Z.json`；G16 仍 RUNNING，不能从一次故障推断整窗通过。
+
+## 收尾程序
+
+按 [RELEASE_FINISH_PLAN.md](RELEASE_FINISH_PLAN.md) 执行。历史程序已迁至 [历史交接](HISTORICAL_RELEASE_HANDOFF.md)，不得再使用其中旧 manifest、mtime 门禁选择、无效 visibility PATCH 或源码安装路径。
+
+正式预检: `python3 scripts/release-context.py --context .execution/finalize/release-context.json`。正式证据打包: `./scripts/evidence-pack.sh --context .execution/finalize/release-context.json --out .execution/evidence/final-release --run-id final-release`。
+
+G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compose / final-package。上传必须指定具体 evidence tar 文件，不能按目录时间挑包。发布安装: `./scripts/verify.sh release --context .execution/finalize/release-context.json --out .execution/verify/final-release --version v1.0.0 --pr 1`。
+
+## 历史审核快照
+
+以下来自本次会话前面的 2026-09-30 审核，尚未作为新重构版本重新执行：
+
+- 本地既有套件：53 项通过，0 失败/错误/跳过；远端快照既有套件：57 项通过，0 失败/错误/跳过。
+- 环境：审核机器 Java 25，Docker API/Byte Buddy 使用过命令级兼容参数。新发布验收使用 Java 21。
+- 连续字段缺失没有 NULL_SPIKE，以及低基线突增没有 ANOMALY_SPIKE，在本地/远端均复现。输入在指南第 5.4 节。
+- 本地 healthy -> STALE 漏报，在远端快照的新增回归测试已修复。
+- Compose Kafka 镜像曾返回 not found；自动 incident 未接入；source health 无独立 scheduler。
+- 无 token 的 apache/kafka 公共事件请求曾 HTTP 200，有实际事件、ETag 及 poll header。
+- 原始 [GitHub CI](https://github.com/JeremyL691/DriftWatch-Tower/actions/runs/33464634754)属于远端快照，不属于未来候选。
+- 可移植的复现输入与判断已写进指南；不得依赖当前机器 /private/tmp 里的文件才能执行。
+
+## 任务状态
+
+允许状态：NOT_STARTED / RUNNING / PASSED / FAILED / BLOCKED。任务从以下列表更新，不再另建竞争路线图。
+
+| Task | 内容 | 状态 | 证据 / 说明 |
+|---|---|---|---|
+| P0.1 | 保护交接、对齐远端 | PASSED | codex/release-v1 @ 0a2bb07，base 082fd84；见 2026-09-30 运行记录 |
+| P0.2 | 基线与红色回归 | PASSED | 60/0/0/0 真实容器；G01 三例 EXPECTED_FAILURE 已绑定 SHA |
+| P1.1 | 可重复部署、固定依赖 | PASSED | G02 通过；apache/kafka:3.9.2、postgres:16.15、摘要锁定、SCA 应用镜像 0 High/Critical |
+| P1.2 | 配置和认证基础 | PASSED | 86/0/0/0；live 19/19；弱/缺生产凭证 fail-fast；见 `.execution/runs/p12/` |
+| P1.3 | 验证脚本及后台 runner | PASSED | preflight/unit/sca/compose 入口全部 PASSED；selfhost init/up/status/down/backup/restore 实测；soak runner 采样/checkpoint/连续性/恢复实测 |
+| P2.1 | scope / 窗口 / 漏报修复 | PASSED | G03 PASSED（101/0/0/0，DetectionContractTest 18 项）；G01 三例已转绿 |
+| P2.2 | 规则与配置覆盖 | PASSED | 规则边界/哈希规范/数组契约/OpenAPI 契约测试；126/0/0/0 |
+| P2.3 | schema 事务及基线反馈 | PASSED | G04 PASSED；ACTIVE 唯一、advisory lock、outbox 补发、激活 API；126/0/0/0 |
+| P3.1 | 摄取确认、envelope、幂等 | PASSED | G05 PASSED（132/0/0/0）；见 `.execution/verify/p3-gate1/` |
+| P3.2 | retry / DLT / replay | PASSED | G06 PASSED（141/0/0/0 + 现场停机演练）；见 `.execution/verify/p3-gate3/`、`.execution/runs/p32-drill/` |
+| P3.3 | 历史升级与回滚演练 | PASSED | G07 PASSED；真实旧版本镜像 + 升级/桥接/回滚演练；`.execution/runs/p33-upgrade/` |
+| P4.1 | GitHub 持久 poller | PASSED | G08 PASSED（152/0/0/0，GithubPollerIntegrationTest 11 项）；`.execution/verify/p4-gate1/` |
+| P4.2 | 官方真实数据全链路 | PASSED | G09 PASSED；官方源无 token，bootstrap 199 事件 + 启动后新增 LIVE 事件 + 重启检查点保持；`.execution/runs/p42-smoke/` |
+| P5.1 | incident / scheduler | PASSED | G10 PASSED（163/0/0/0；IncidentLifecycle 6、Scheduler 2、CollectorStatus 3）；`.execution/verify/p5-gate3/` |
+| P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
+| P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
+| P6.1 | 冻结候选、短门槛、负载 | RUNNING | 当前冻结应用 573154b9；G13/G14 已通过，旧候选与旧 bundle 不代替 final G02/G15，G16 后重跑 |
+| P6.2 | 24 小时真实验收 | BLOCKED | 当前 run 20261002T200503Z-soak24-recovery RUNNING；旧窗口睡眠失败保留，正式通过报告 final-soak 尚未生成 |
+| P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
+| P7.2 | 公共 Release / GHCR | NOT_STARTED | - |
+| P7.3 | 匿名安装及最终报告 | NOT_STARTED | - |
+
+## 门禁状态
+
+NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修复后G03必须通过。
+
+| Gate | 状态 | 绑定 SHA / 配置 / 证据 |
+|---|---|---|
+| G00 基线 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-unit/gate.json` |
+| G01 红色回归复现 | EXPECTED_FAILURE | 3 个 5.4 用例在旧实现复现（null 全缺失 / 单事件基线突增 / 乱序覆盖窗口）；`g01-red-regression.log`、`g01-cases.json` |
+| G02 Compose | NOT_STARTED | 历史 p61-compose10 属旧应用；G16 后冻结镜像全新项目/卷重跑 `.execution/verify/final-compose` |
+| G03 检测正确性 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P2/gate.json` |
+| G04 schema 反馈 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P2/gate.json` |
+| G05 摄取与幂等 | PASSED | 记录提交 `20f948be` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P3/gate.json` |
+| G06 故障与死信 | PASSED | 记录提交 `20f948be` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P3/gate.json` |
+| G07 升级兼容 | PASSED | 记录提交 `20f948be` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P3/gate.json` |
+| G08 来源协议 | PASSED | 记录提交 `20f948be` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P4/gate.json` |
+| G09 官方真实源 | PASSED | 记录提交 `20f948be` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P4/gate.json` |
+| G10 操作闭环 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P5/gate.json` |
+| G11 保留与恢复 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P5b/gate.json` |
+| G12 浏览器与四断点 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P5c/gate.json` |
+| G13 安全与漏洞 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P6/gate.json` |
+| G14 100/s、30分钟 | PASSED | 记录提交 `c1b0b517` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-load/gate.json` |
+| G15 制品安装 | RUNNING | 当前应用 p7-package2 有历史通过证据；收尾工具/文档更新后须重生成并验收 final-package 的原始 bundle 字节 |
+| G16 24h | RUNNING | 有效 run 20261001T182403Z-soak24；正式报告 `.execution/verify/final-soak/soak-report.json` 尚未生成 |
+| G17 公开独立安装 | NOT_STARTED | `.execution/verify/final-release`，必须使用明确 context、匿名附件及公开 digest |
+
+## 长任务与恢复字段
+
+24 小时 run 进行中（P6.2）。已作废的 run 保留为历史，不作证据。
+
+| 字段 | 值 |
+|---|---|
+| run_id / run_dir | 20261001T182403Z-soak24 / `.execution/soak/20261001T182403Z-soak24/`；旧失败窗口与测试夹具保留为历史，不能据其 RUNNING 标签启动或恢复 |
+| compose_project / volume 所有权 | dwt-soak（自有卷 dwt-soak_pgdata、dwt-soak_kafkadata、dwt-soak_streams-state） |
+| env_file 路径 | `.execution/soak.env`（0600，仅路径，不含 secret 内容） |
+| candidate_sha / image_id / config_hash | 573154b9（应用面）/ sha256:2901be88df52de69…（完整值见 `.execution/runs/p7-freeze/manifest.json`）/ 7457349d… |
+| started_at_utc / expected_end_at_utc | 2026-10-01T18:24:03Z / 2026-10-02T18:24:03Z（洛杉矶 10 月 2 日 11:24 后判定） |
+| runner_pid / process_start / lock | PID 5002，Thu Oct 1 11:24:03 2026；逐次核验命令、创建时间、采样及冻结容器身份；独立完成监视器 PID39749，Thu Oct 1 13:15:07 2026 |
+| last_heartbeat_utc / checkpoint | samples.jsonl 每 30s 一行；checkpoint.json 每 5 分钟原子写 |
+| live_unique_events / new_after_bootstrap | 待结束后由 `soak-report` 从 raw_events(origin=GITHUB) 统计 |
+| source_poll 状态 / outbox / DLT / lag | 最新有效观测见 context 的 observation 文件；最终归零与一致性必须由 G16 报告判定，不能用中途正常状态代替 |
+| planned_faults / completed_faults | 3 次计划；app-restart 已完成（32.6s outage，10.2s readiness）；Kafka 洛杉矶19:24、PostgreSQL 次日03:24 尚待执行 |
+| monitor_gap / continuity_valid | 待判定（上限 120s） |
+| exact_resume_command | 先执行 `python3 scripts/soak-observe.py --context .execution/finalize/release-context.json`；若无活 runner，核对指定 run 的 state/result 和完成报告。仅确认连续性无效并核实归属后，保留 FAILED 再按执行指南启动完整新窗口；不得直接恢复旧编号 |
+| last_failure / required_external_action | 当前窗口无新失败，无需用户操作；历史失败详见运行记录与历史表。首次 GHCR 推送后官方界面可见性设置由本聊天接管 |
+
+恢复顺序：读状态 -> 核对 checkout/SHA -> 查原 runner 锁和进程身份 -> 验证采样连续性 -> 继续现有任务或保留失败记录并新建 run。不能看到 PID 就启动第二套。
+
+## 运行记录与阻塞
+
+### 2026-09-30 P0.1 保护交接并对齐远端（PASSED）
+
+- 绑定 SHA：base 082fd84d7fabee7d94e05b4dba842f0995a3775e，交接提交 0a2bb07b45fb44576a5a6e909fdf836e6557e14c。
+- 命令与结果：
+  - `git status --short`：dirty 集合仅为批准文档交接（README、samples/events/README.md、SVG、5 个已批准删除、3 个新文档），无业务代码或用户其他变更。
+  - `git fetch origin`：本地 main 落后 origin/main 3 个提交（9990316、5317f3f、082fd84），无领先提交。
+  - 分支 `codex/release-v1` 自 8440013 创建，提交交接（1967034），`git rebase origin/main` 后冲突处理：README 采用交接版本；docs/README.md、docs/assets/dashboard-preview.svg、docs/sample-incident-report.md 维持删除；SVG 与远端一致自动合并。
+  - `git diff --stat 1967034 0a2bb07 -- README.md docs samples`：空，交接文档逐字节一致。
+  - 保护：`backup/handoff-worktree-20260930` -> 1967034（rebase 前完整工作树，可恢复）。
+  - `git ls-remote origin refs/heads/main`：082fd84…；`git ls-remote --tags origin`：仅 v0.1.0，v1.0.0 无冲突。
+- 未执行：推送、24 小时任务、发布。工作树 clean。
+- 环境：Homebrew openjdk@21 已安装，供 P0.2 使用；Docker 29.5.3、Compose v5.1.4、Python 3.14.7、gh 2.101.0（ADMIN）。
+
+### 2026-10-01 P0.2 基线与红色回归（PASSED）
+
+运行目录：`.execution/runs/20261001T020542Z-p02-baseline/`（机器 11 CPU / 19.3 GiB RAM / 96 GiB 空闲，arm64，macOS）。
+
+- 环境修复：Docker Engine 29.5.3 最低要求 API 1.40（实测 `/v1.32/info` 400、`/v1.40/info` 200），而 Testcontainers 1.19.8 内嵌 docker-java 默认 1.32，导致 4 个容器测试类被 `disabledWithoutDocker` 静默跳过。新增 `src/test/resources/docker-java.properties`（`api.version=1.40`，兼容 Engine 19.03–29）后真实容器全部运行。1.21.3 及环境变量方式均无效，故采用项目内显式配置而非临时参数。
+- G00：`./mvnw clean test --batch-mode`（JAVA_HOME=OpenJDK 21.0.12.1）→ 60 tests / 0 failures / 0 errors / 0 skipped，19 个测试类，含 4 个真实 Kafka/PostgreSQL 容器类；与历史 57/0/0/0 的差异 = +3 个新增绿色回归用例（新增测试类其余 3 例），旧 57 项全部保留。
+- G01：`./mvnw test -Dtest=Guide54DetectionRegressionTest -Dgroups=expected-failure -Dsurefire.excludedGroups= --batch-mode` → 3 run / 3 failures（EXPECTED_FAILURE）。失败原因（读源码确认，非猜测）：NULL/ANOMALY 处理器用“前一状态低于阈值且当前高于阈值”的跃迁判定，替代了契约要求的 per-window fired 标志；null 窗口状态 key 不含窗口，导致乱序旧窗口事件覆盖当前窗口计数。绿色锁定用例：旧 null [正常、缺失、缺失]、旧 anomaly [2、2、8]、重复 event_id 保留双输入。
+- 已知红色用例以 JUnit tag `expected-failure` 排除出默认 surefire 运行（`surefire.excludedGroups` 属性可覆盖），P2 修复后必须移除该排除并转绿。
+- Compose 镜像核验：`docker manifest inspect bitnami/kafka:3.7` → `no such manifest`；`apache/kafka:3.8.0` 与 `postgres:16` 存在。P1.1 必须替换镜像。
+- 真实 GitHub 只读核验（2026-10-01T02:05Z）：HTTP 200、5 条真实事件（如 IssueCommentEvent 16151737466）、ETag、`x-poll-interval: 60`、`x-ratelimit-limit: 60`（remaining 52）；证据 `github-headers.txt`、`github-events-sample.json`。
+- 已核验远端修复：`SourceHealthService` 的 healthy→STALE 单次转换告警已存在并有测试锁定，不重写。
+- 未推送、未发布。
+
+### 2026-10-01 P1.1 可重复部署与固定依赖（PASSED）
+
+运行目录：`.execution/runs/20261001T022637Z-p11-g02/`。
+
+- 镜像：`bitnami/kafka:3.7` 确认不存在（`no such manifest`），改用官方 `apache/kafka:3.9.2`（与 Boot BOM 的 kafka-clients 3.9.2 一致）；`postgres:16.15`；全部按 manifest-list digest 锁定（compose、Dockerfile、Testcontainers 同步）。Kafka listener 使用 `PLAINTEXT://kafka:29092`（容器内）+ `EXTERNAL://localhost:9092`（开发覆盖），健康检查用镜像自带 `kafka-broker-api-versions.sh`（该镜像无 curl）。
+- 端口：postgres/kafka 不发布到宿主机；app 仅 `127.0.0.1:${DWT_APP_PORT}`；`docker-compose.dev.yml` 提供本地开发端口覆盖；Streams state 挂载 `streams-state` 卷并设 `driftwatch-streams-v1`。
+- 依赖升级（仅漏洞修复）：Spring Boot 3.3.5 → 3.5.16（CVE-2026-22733 / CVE-2026-41731），PostgreSQL 驱动 42.7.13（CVE-2026-54291），jackson-bom 2.21.7（CVE-2026-68497/91776/91777），tomcat 10.1.59（CVE-2026-65182/65905/68525），springdoc 2.8.17。运行时镜像额外安装 Ubuntu 已发布的 openssl 修复（CVE-2026-84782）。
+- SCA：Trivy 0.58.1（容器）扫描依赖树与应用镜像 → 0 HIGH/CRITICAL；postgres/kafka 上游镜像内的发现已保存（`sca/trivy-stack-images.txt`），在 docs/versions.md 声明为上游镜像、本项目不重新发布。
+- 守护：maven-enforcer 强制 Java [21,22) 与 Maven ≥3.9；`docs/versions.md` 为版本 manifest；`ContainerIntegrationTest` 支持 `dwt.requireDocker=true`（验收时 Docker 缺失即失败而非跳过）。
+- G02 两轮：全新拉取+构建后全部服务在 233s（含拉取与 Maven 构建）内 healthy；容器启动到 healthy 18–19s（第一轮）、13s（第二轮，app 6s）；均 ≤120s。topic `raw-events`/`quality-events` 3 分区；Streams changelog 4 个；POST 事件 HTTP 202 并落库。
+- 观察记录（供后续任务）：应用重启后 Streams 重新开始处理前约有 24s 空窗，而当前 readiness 只反映 DB；P1.2/P3 必须让 readiness 反映 Kafka/Streams。
+- 依赖变更后完整套件重跑：60 tests / 0 fail / 0 err / 0 skip，broker 3.9.2（`mvn-final-p11.log`）。
+- 验收资源已清理：`docker compose -p dwt-g02 down -v`，无残留卷/网络。
+
+### 2026-10-01 P1.2 配置与认证基础（PASSED）
+
+- 配置集中：`DriftwatchProperties`（`driftwatch.*`）统一绑定 detector/metrics/streams/source-health/security/source；数值范围由 Bean Validation 强制，窗口/grace/retention、异常历史窗口、来源新鲜度顺序、field-range min<=max 在启动时校验并指明 key；错误信息不含 secret。新增 grace/future-tolerance/state-retention/github late 阈值键作为 P2 契约。
+- 访问保护（§2.3）：Spring Security HTTP Basic 管理账号 + 独立 Bearer ingest token（SHA-256 常量时间比较）；浏览器修改请求经 CSRF Cookie 校验（`XSRF-TOKEN` 可读、`X-XSRF-TOKEN` 提交），摄取接口豁免 CSRF；匿名仅可见 `/actuator/health` 状态；metrics/prometheus/api-docs/dashboard 均需管理员；无账号数据库、不使用 localStorage。
+- 凭据：`selfhost` profile 要求强口令（>=16 且非示例值），缺失或过弱启动失败（exit 1，指明 key，不回显值）；空白口令在所有 profile 都失败。`dev`/`test`/`load` profile 提供轻量本地凭据，真实 GitHub 采集在测试与负载 profile 关闭（selfhost 开启）。
+- readiness 反映 DB + Kafka + Kafka Streams（`kafka`/`streams` 指标），liveness 仅 ping；应用重启后 Streams 未运行时不会误报健康。
+- 验证：单元+容器套件 86 tests / 0 fail / 0 err / 0 skip（需 Docker，`-Ddwt.requireDocker=true`）；live 环境 19/19 检查通过（401/403、health 详情隔离、ingest 只能摄取、CSRF 流程、坏 JSON 400、事件落库）；弱/缺口令 fail-fast 各以独立容器复现。证据 `.execution/runs/p12/`（summary.md、junit-summary.json、live-check-output.txt）与 `.execution/runs/p12-live/`。
+- 顺带修复：logback 只覆盖 prod/dev/default 导致 selfhost 无日志；坏 JSON 返回 500 改为 400；dashboard JS 增加 CSRF 头。
+- 经验记录：测试套件与验收 compose 栈不可同时运行（vCPU/内存竞争会导致 readiness 与落库超时）；验收脚本必须串行（P1.3）。
+
+### 2026-10-01 P1.3 自动执行入口（PASSED）
+
+脚本位于 `scripts/`（verify.sh、selfhost.sh、acceptance.py、lib/common.sh）。命令与指南 §9.1 同名同参数；退出码 0 通过 / 1 验证失败 / 2 外部前提缺失或未实现；每个命令在 `--out` 写入 `gate.json`（含 id/status/command/时间/exit_code/git_sha/证据路径）。
+
+实测（当前 SHA dfd79c2，source_tree_hash 8c8797ad…）：
+
+- `verify.sh preflight` → PASSED，gate.json 记录 JDK21（脚本自动选择 21）、Docker 29.5.3、Compose v5.1.4、Python 3.14.7、11 CPU/19.3GiB、磁盘、端口（18080 空闲；8080/5432/9092 被用户进程占用时只提示不抢占）、gh 认证。
+- `verify.sh unit` → PASSED，86 tests / 0 fail / 0 err / 0 skip（`-Ddwt.requireDocker=true`，Docker 不可用直接 exit 2）。
+- `verify.sh sca` → PASSED，Trivy 0.58.1（DB UpdatedAt 2026-10-01T01:24:14Z），依赖+镜像 0 HIGH/CRITICAL。
+- `verify.sh compose --project dwt-p13b` → PASSED，全新项目启动，容器 start→ready 11s（限 120s），raw/quality 各 3 分区，pg/kafka 无宿主端口，摄取 smoke 202 且落库。
+- `verify.sh phase P2/P3/P4/P5`、`load`、`release` 在对应阶段实现前返回 exit 2 且 gate.json 为 NOT_IMPLEMENTED（不预标 PASS）。
+- `selfhost.sh init` 生成随机凭证（0600）；`up/status/down` 实测；`down` 默认保留卷、`--volumes` 才删除；`backup` 生成 pg_dump custom 格式（23KB）；`restore --target-db driftwatch_restore` 恢复后 raw_events=1、flyway 迁移=7。
+- 资源隔离修复：compose 卷/网络改为按项目名作用域（`<project>_pgdata` 等），验收项目不再可能读写或删除自托管安装的数据卷。
+- `acceptance.py`：soak-start 异步（PID + 进程启动时间 + 锁文件），150s 验证 run 采样 5 点、连续性 max gap 32.2s（限 120s）、结果 PASSED 并写入镜像身份；重复 soak-start 返回既有状态且不启动第二个 runner；kill 掉 runner 后 `soak-resume` 将旧 run 标记 FAILED、给出原因并以原时长启动新 run（exit 1）。
+- 脚本只操作自己的 compose 项目；用户容器（cpamp-*）与 8080/5432/9092 未被占用或清理。凭证只在 `.execution/*.env`（0600）与容器运行时，脚本与 gate.json 不含 secret。
+
+### 2026-10-01 P2.1 检测契约与 scope/窗口（PASSED，G03）
+
+- 内部类型：`RawEnvelope`（contract_version=1、ingestion_id、received_at、origin、mode、origin_reference、replay_of）、`WindowEvaluation`（scope/window_start/window_end/outcome/watermark/detail）、`ScopeKey`（规范 JSON 数组编码）、`RuleVersions`。拓扑输入改为 envelope；旧 raw-events 由 `EnvelopeAdapter` 过渡包装，P3.1 再切 topic。
+- 窗口语义：null/anomaly 状态键包含 window_start，各自 fired；per-scope watermark + grace/future tolerance 决定 INCLUDED/EXPIRED/FUTURE；驱逐按 scope watermark（未来事件不会驱逐 grace 内窗口）；anomaly 基线含观测范围内零窗口，记录 WARMING_UP/BASELINE_ZERO；基线缺失时 `baseline_status=PENDING`（只跳过依赖基线的检查）。
+- 投递身份：ENRICH 后、任何检测前做 ingestion_id + envelope 摘要校验；重投 REDELIVERY 跳过检测，同 id 不同内容 CONFLICT（不污染计数）。
+- 去重按 scope 编码键，跨 source 同 event_id/payload 不再误报（契约 5.2）。
+- G03：`./scripts/verify.sh phase P2` → PASSED，101 tests / 0 fail / 0 err / 0 skip（DetectionContractTest 18 项覆盖 5.4 全部输入、边界、watermark 隔离、重投/冲突、模式跳过、scope key 不可碰撞；QualityStreamsTopologyTest 7 项原用例保留）。原 `expected-failure` 标签与 surefire 排除已移除。
+- 顺带修复：`MetricWindowProjector` 跳过非 INCLUDED 事件；`verify.sh unit/phase` 对容器启动失败做一次有记录的重试（首次日志保留为 attempt1）。
+- 观察：容器启动偶发失败（ContainerLaunchException/exit 126）在重试后消失，属环境竞争；两次运行的日志都保留。
+
+### 2026-10-01 P2.2 / P2.3 规则覆盖与 schema 事务（PASSED，G03+G04）
+
+- P2.2：非法 regex 在启动时失败并指明 `driftwatch.detector.field-format.patterns`；数值字段的非数字值改为类型证据（NOT_A_NUMBER + value_type）而不是静默跳过；所有检测告警带 rule_version；新增测试锁定数组/嵌套 leaf 契约、哈希规范化（嵌套键序、数组顺序、unicode、null）、质量状态优先级与 exclusion coverage、OpenAPI 事件 schema 与 202/400 契约。
+- P2.3：schema 观察与 drift 告警移入 sink 事务（拓扑不再访问 JPA），active leaf types 来自 Streams global store（compacted `schema-baselines-v1`）；V8 迁移增加 ACTIVE 部分唯一索引（升级时保留最早 ACTIVE、其余降级并写迁移记录）与 `baseline_outbox`；`SchemaObservationService` 用 advisory transaction lock，首个观察即 ACTIVE 并同事务写 outbox，NULL 不覆盖已确定的非空类型；`BaselineOutboxRelay` 在 broker ack 后才标 SENT，崩溃窗口内的 PENDING 行会被下一轮补发；`PUT /api/v1/schemas/{eventType}/baseline` 原子激活并降级旧 ACTIVE（不删除版本），响应报告 PUBLISHED/PENDING 而不是宣称 Streams 已应用。
+- 期间修复：激活时先 flush 降级再提升（部分唯一索引要求）；测试清理按外键顺序删除；测试 profile 为每个上下文使用独立 Streams application id（消除并发 rebalance 造成的 readiness/落库抖动）。
+- 证据：`.execution/verify/p2-gate5/`（126/0/0/0）。P3.1 管道切换后已在当前候选重跑：`.execution/verify/p2-gate6/` → PHASE-P2 PASSED，绑定 SHA 653a7e3（应用代码 = bb13ab9），126 tests / 0 fail / 0 err / 0 skip。
+
+### 2026-10-01 P3.1 摄取身份与幂等投递（RUNNING，未过 G05）
+
+已完成并全绿（126 tests / 0 fail / 0 err / 0 skip，SHA bb13ab9）：
+
+- 管道切到 `raw-events-v1`（RawEnvelope）与 `quality-events-v1`（ProcessedEvent）；旧 topic 名保留仅用于 P3.3 bridge。
+- `RawEventProducer` 以规范 scope key 发布并等待 broker ack（10s）；`IngestionService` 单条/批量摄取：Idempotency-Key receipt 先于发布在独立事务写入、同 key 不同内容 409、未确认返回 503 带重试提示、256KiB/100 条限制、逐条结果；`EventController` 保留 status/event_id 并追加 ingestion_id，OpenAPI 记录 202/400/409/503，page/size 有界。
+- sink 消费 `quality-events-v1`，在同一事务内先查 processed receipt：同 ingestion_id 同摘要直接返回（不重复副作用），同 id 不同内容抛失败路径；告警写入 ingestion_id/detector_key/window_key（部分唯一约束）。
+- V9 迁移：raw_events 增加 ingestion_id（旧行 legacy-db:<pk> 稳定身份）、origin/mode/window_evaluation/baseline_status、唯一索引；processed_receipts、ingestion_receipts、dead_letter_records（P3.2 用）。
+- 期间修复：demo 场景与测试改走 envelope；生产者分区键断言改为规范 key（含防碰撞断言）；sink 单测 ObjectMapper 注册 JavaTimeModule。
+
+G05 已通过（`.execution/verify/p3-gate1/`，SHA 45d18bce，132 tests / 0 fail / 0 skip），新增：
+- `IdempotencyIntegrationTest`：丢失响应后同 key 重试得到同一身份且只有一个 raw row/receipt；同 key 改内容 409；两次业务重复保留两行并产生 DUPLICATE 证据；重投 ProcessedEvent 被 receipt 去重；并发同 key 得到单一身份。
+- `PreAckFailureTest`：未确认发布返回 503 且保留身份，重试按保留身份重新发布并转 CONFIRMED。
+- 测试暴露并修复：未确认 receipt 重试必须重新发布（原来直接返回"已接受"）；并发插入 receipt 冲突后改为读取获胜者继续；`ResponseStatusException` 保留 409/503 而不是被兜底成 500。
+- `GET /api/v1/events/{ingestionId}` 返回该次摄取的 origin/mode、window_evaluation、baseline_status 与关联告警。
+
+P3.1 之后仍需完成（下一动作）：
+
+1. 新增 `IdempotencyIntegrationTest`（容器）覆盖 §11 的 G05 清单：确认前发布失败→503 且 receipt 保持未确认；确认后响应丢失→同 Idempotency-Key 重试得到同一 ingestion_id 且只有一次副作用；发布后重启→重放不重复；DB commit 后 offset 未 commit 的重投→receipt 去重且计数不变；并发同 key 请求→单一身份；两次业务重复（不同 ingestion_id 同 event_id）→保留两条并产生 DUPLICATE 证据。
+2. 补 `GET /api/v1/events/{ingestionId}`（§4.5）返回该次摄取的 event、检测结果与 window_evaluation，并在 API 契约测试中断言。
+3. 批量 4MiB 总大小限制与「重试只发送未确认项」的显式用例；随后运行 `verify.sh phase P3`（阶段脚本尚未创建）并把 G05 置为 PASSED。
+4. 24 小时验收、P4-P7 均未开始；G05-G17 仍为 NOT_RUN。
+
+### 2026-10-01 P3.2 重试、死信与运维重放（PASSED，G06）
+
+- bytes 入口：`raw-events-v1` 以 bytes 消费并显式解析；坏记录或 `contract_version` 不受支持时进入 `dead-letter-events-v1`，携带原 topic/partition/offset 与稳定 diagnostic id，后续正常记录不受影响；解析边界使用全新 headers，避免外来 `__TypeId__` 污染死信 topic。
+- 有限 sink 重试：立即、2s、10s、30s 共 4 次；持久失败后发布 DLT，只有 broker ack 后才跳过原记录；DLT 发布失败则抛错让 offset 不推进。成功计数与 WebSocket 广播移到提交之后；持久化拆到 `SinkPersistenceService` 使每次重试都是新事务。
+- DLT 投影与管理：`dead_letter_records` 按 diagnostic id 幂等写入；`GET /api/v1/dead-letters`、`GET /{id}`、`POST /{id}/replay` 分别支持过滤、详情+恢复历史与重放；重放按失败阶段重新进入（SINK→quality-events-v1 保留原 ProcessedEvent；STREAM/SOURCE→raw-events-v1 保留原 envelope），每次返回新的 replay_attempt_id。
+- 测试与现场证据：SinkRetryTest（重试/死信/DLT 发布失败/重复 receipt）与 DeadLetterIntegrationTest（坏记录、版本不受支持、幂等投影、SINK 与 STREAM 重放）；`verify.sh phase P3` PASSED（141/0/0/0，SHA b5c10c0a）。现场演练 `.execution/runs/p32-drill/`：60s Postgres 停机被重试吸收（raw=1、无死信、无半提交）；200s 停机后产生 1 条 SINK 死信，恢复后投影成功，重放后 raw=1、receipt=1、DLT=REPLAYED、open=0，重复重放不增加副作用（attempts=2）。
+- 期间修复的真实缺陷：① 预约 Idempotency-Key 使用 merge 语义，并发下会覆盖获胜者的 receipt 并发放两个身份（改为严格 persist+flush，G05 并发用例由偶发失败转为稳定通过）；② Spring Kafka 默认错误处理在重试耗尽后跳过记录，会让 DB 不可用期间的事件与死信被静默丢弃（改为固定退避无限重试，Kafka 保持为持久恢复来源）；③ ERROR dispatch 被授权规则拒绝，导致真实错误以 401 呈现（改为放行 ERROR dispatch）。
+- 说明：Hikari 连接超时 30s 使一次尝试本身可耗时约 30s，因此重试的实际覆盖窗口约 2 分钟；60s 级停机由重试吸收，更长停机走死信路径（两者均有实测）。
+
+### 2026-10-01 P3.3 历史升级、桥接与回滚演练（PASSED，G07）
+
+演练脚本 `.execution/scripts/p33-upgrade-drill.sh`，只使用验收项目 `dwt-p37` 与其自有卷、端口 18081/18082；证据目录 `.execution/runs/p33-upgrade/`。
+
+- 旧版本夹具：从 base commit `082fd84` 构建 `driftwatch-tower:legacy`（真实重构前镜像），在旧 API 上摄取 5 条 legacy 事件；记录 `raw-events` 每分区 end offset（0:5,1:0,2:0）与 `flyway_schema_history` 中 V1-V7 的 checksum。
+- 备份与升级：`pg_dump -Fc` 备份旧库；新镜像挂同一库/卷启动 → 应用 V8-V10（migrations=10），V1-V7 checksum 与升级前完全一致（旧迁移未被改动）。
+- 历史保留：升级后 raw_events 仍为 5 行，全部带 `legacy-db:<pk>` 稳定身份，新 API `GET /api/v1/events/recent` 仍可查询；未 purge 任何旧数据或告警。
+- 真实 backlog 桥接：停机期间向旧 `raw-events` 追加 2 条记录（offset 0:5-6），运行一次性 `LegacyBridge`（配置门控、报告写盘）→ 2 条以 `legacy-kafka:raw-events:0:5/6` 派生稳定身份进入新管道；重复运行不会重复副作用（同一 offset 恒等同一 ingestion_id）。
+- 回滚演练：① 仅回滚镜像（旧镜像对新 schema）→ Flyway 报错 4 条，证明「只回滚镜像」被禁止；② 把备份恢复到新数据库并启动旧镜像 → readiness 正常、旧数据可查（restored_rows=5）。演练卷已清理，未触碰用户卷。
+
+### 2026-10-01 P4.1 / P4.2 GitHub 真实来源（PASSED，G08 + G09）
+
+- P4.1 实现（SHA fbba4d05）：`GithubEventsClient` 使用契约头（Accept、固定 X-GitHub-Api-Version、User-Agent、可选 token、If-None-Match）、5s 连接/可配请求超时，区分 200/304/401/403/404/429/5xx/超时/坏 JSON；`GithubEventConverter` 只保留 repository/type/actor/public 与类型专属结构字段、UNKNOWN 保留、缺字段显式 null、保留原记录摘要哈希；`GithubPoller` 单租约 + READY/FETCHING/STAGED/PUBLISHING/APPLIED（BACKOFF/ERROR）、每轮单事务写 inbox+ingestion_id+outbox、relay 20 条一批等 broker ack、candidate ETag 只在所有记录有 receipt 或终态死信后才提升为 applied、缺口记录（截断/失去重叠/停机超出可见范围/预算耗尽，缺失数量记 unknown）、304 只更新 poll 健康且不推进游标、403/429 遵守 Retry-After 或 rate-limit reset、5xx/超时 5s–5min 指数退避；V11 新增 5 张状态表；非官方 base URL 在生产配置下启动失败。
+- G08（`.execution/verify/p4-gate1/`，152 tests / 0 fail / 0 err / 0 skip）：本地 stub 覆盖 304 游标不动、403+Retry-After 退避并记 BUDGET_EXHAUSTED 缺口、429 指数退避、401/404 进入 ERROR 且不回显 token、500 后退避并在下一轮恢复、8s 慢响应超时、坏 JSON 失败且下一轮可用、跨页重叠不重复入库、重复轮询不新增、BOOTSTRAP→LIVE 模式记录、重启恢复（失败轮不推进检查点）。
+- G09（`.execution/runs/p42-smoke/`）：官方 `api.github.com` 无 token 只读证据（ETag、x-poll-interval、rate-limit 头）；bootstrap 轮 mode=BOOTSTRAP 摄取 199 条真实事件（窗口评估 SKIPPED_MODE），outbox 199 条全部 SENT；抽样事件 16156955211 全链路可查（raw origin=GITHUB、receipt、`GET /api/v1/events/{ingestionId}`）；重启后 inbox 仍 199、etag_applied 保持、无重复摄取；随后轮询发现启动后新增事件 16162901734（created 06:02:59Z，mode=LIVE，run #4 LIVE records_seen=199/new=1 APPLIED），raw 行 source=github:apache/kafka；QUIET 轮（304）证明无变化时不推进游标。速率预算按 PT2M 轮询（约 30 次/小时）低于未认证 60 次/小时上限；生产默认仍为 5 分钟。
+- 观察：BOOTSTRAP 事件按契约不参与实时窗口，因此其 baseline_status 为空（未执行基线检查），LIVE 事件才带 APPLIED/PENDING。
+
+### 2026-10-01 P5.1 incident、定时健康与采集器状态（PASSED，G10）
+
+- incident 关联（SHA 4b111417）：`AlertIncidentService` 只对非 INFO 告警按 source/event_type 关联最近 5 分钟内的 OPEN incident，使用 PostgreSQL advisory transaction lock 串行化同 scope 关联（并发告警只产生一个 incident、每条告警只关联一次）；INFO 告警只留在 alerts 以免重复提示制造 incident 洪水；sink 在同一事务内关联它持久化的告警。
+- 生命周期：`resolveIncident` 事务内解决其全部未解决告警；`resolveAlert` 在最后一条告警解决时自动解决 incident；`acknowledgeAlert` 幂等（重复保持原时间），对已解决告警 acknowledge 返回 409；控制器改走服务层。
+- 定时健康：`SourceHealthService.list()/get()` 恢复为纯读（GET 不再刷新、不再产生告警）；新增 30s `SourceHealthScheduler`（可注入 Clock）执行刷新，静默来源在没有 Dashboard 流量时仍产生 STALE 转换；sink 只刷新受影响来源（不再每次事件全表扫描）；转换告警每次失联仅一次、恢复后可再次告警（单元测试覆盖）。
+- 采集器状态：`GET /api/v1/sources/collectors` 返回 last_poll_at/last_success_at/next_poll_at/last_event_at/upstream_lag_seconds/lost/backoff_until/etag_applied/pending_outbox/open_gaps/last_error；`lost` 仅在 last_poll_success 超过 max(15 分钟, 2×poll interval) 时为真，成功但无新事件为 QUIET（依据 last_event_at 与 last_poll_success 关系），BACKOFF/ERROR 单独呈现。
+- 测试：`SourceHealthSchedulerTest`（每次失联一次告警、恢复后二次告警、读无副作用）、`IncidentLifecycleIntegrationTest`（关联、并发唯一、resolve/自动解决、ack 幂等与 409、health/dashboard/alerts 反复 GET 不新增行）、`CollectorStatusServiceTest`（QUIET/LOST 阈值/积压与缺口）；旧 `SourceHealthServiceTest` 更新为纯读契约。
+
+### 2026-10-01 P5.2 指标、保留与备份恢复（PASSED，G11）
+
+- 指标（§7.3，SHA 6bf026de）：`DriftwatchMetrics` 注册并接线到真实路径——摄取 ack 时长/失败、处理时长（received_at→commit）/失败、采集器 polls/failures/upstream lag、source outbox/dead-letter/baseline-outbox 积压、按 detector+severity 的告警计数、retention 清理行数与最后成功时间；标签只含 detector/severity/outcome/reason 等有界值，事件与摄取身份从不作为标签（集成测试与现场 scrape 双重断言 `event_id=`/`ingestion_id=` 不出现）。
+- 保留（§7.4）：`RetentionService` 每日执行、每批 ≤1000 行；raw/metric 30 天、已解决告警/incident 与已完成死信 90 天、inbox 身份 35 天；未解决告警/incident、未恢复死信、pending source/baseline outbox、collector 状态与 schema 版本永不清理；processed receipt 只在其 raw 行已不存在时才清理（不会先删 receipt 再重放 raw）；`GET /api/v1/operations/retention` 暴露设置与受保护状态计数，`POST .../retention/run` 供演练使用。
+- 备份/恢复演练（`.execution/runs/p52-drill/`）：真实数据（4 raw、1 alert、1 schema、4 receipts）→ `pg_dump -Fc`（57KB）→ 恢复到**全新专用卷**（独立项目与卷）→ 计数完全一致 `counts_match=YES`、关系校验 `receipts_without_raw=0`；随后在源库运行 retention（API + CSRF），`open_alerts_before=1 after=1` 证明受保护证据未被清理；Prometheus scrape 中 7 个必需指标全部存在且无身份标签。演练卷与网络已清理，未触碰用户卷。
+- 测试：`OperationsIntegrationTest`（保留规则：受保护证据、orphan receipt、batch 设置、指标注册与标签基数）；`phase-P5b.sh` 门禁（165 tests / 0 fail / 0 err / 0 skip，OperationsIntegrationTest 2 + IncidentLifecycleIntegrationTest 6 + DeadLetterIntegrationTest 5 均实际运行）。
+- 说明：Micrometer 的 Prometheus 注册表会去掉 gauge 名的 `_total` 后缀，指标名已按实际导出名统一为 `driftwatch_retention_rows_pruned`。
+
+### 2026-10-01 P5.3 Dashboard 操作状态与响应式（PASSED，G12）
+
+- 起步（SHA 7d36c61）：`scripts/p53-capture.mjs` 用显式 Basic 头驱动本机 Playwright 缓存的 headless Chromium（`playwright-core`，无下载、无外部 CDN 依赖），逐断点截图并记录 console 错误、页面级横向溢出与键盘 focus 探针。before 场景：compose `dwt-p53`（selfhost，18080）经摄取 API 与 mixed-incident 演示产生 227 events / 339 alerts；证据 `.execution/runs/p53-before/`（4 张 dark 截图 + `before-report.json` + `findings.md`），实测缺陷 6 项：WS 无法携带 Basic 凭据连接失败、字体来自 fonts.gstatic.com、页面内一次 403（CSRF 未走通）、320/768 整页横向溢出、focus 仅浏览器默认 1px auto、无浅色主题。
+- 实现（SHA 4eab1da）：① WS 改走短期 HMAC ticket —— `GET /dashboard/api/ws-ticket` 签发 60s 一次性 ticket，`TicketHandshakeInterceptor` 在握手时校验，客户端按 1s→30s 指数退避重连且重连后重新查询数据；② 全部外部资源本地化 —— Lucide 图标集与 SockJS/STOMP 客户端 vendor 到 `/dashboard/vendor/`，字体改系统栈；③ 页面内 403 消除 —— `DashboardDataController.summary()` 不再有副作用式 `refreshAllAndPersist`，CSRF cookie 由 `CsrfCookieFilter` 确定性下发；④ 窄屏溢出 —— 表格包进 `.table-shell{overflow-x:auto}` 并对 shell/panel 设 `min-width:0`；⑤ 可见 focus —— `:focus,:focus-visible{outline:2px solid var(--gold-bright)}`；⑥ 浅色主题 —— `prefers-color-scheme` 与 `html[data-theme]` 双通道 token，切换按钮持久化到 cookie（只存偏好，不存凭据）。GSAP 动画依赖一并移除，改为等价的内建补间封装（保持 MOTION_INTENSITY=2，不引入 React）。
+- G12（SHA e36bb3b，`.execution/verify/p5c-gate6/`）：`./scripts/verify.sh phase P5c --out … --base http://127.0.0.1:18080 --env-file .execution/p13.env` → PHASE-P5c PASSED。8/8 页面（320/768/1024/1440 × dark/light）status 200、console 错误 0、页面级横向溢出无、focus outline 2px、`#wsStatus` state=connected（label=Live）。
+- 门禁工具修复：`verify.sh` 增加 `--base` 透传与 `P5b|P5c` 阶段别名（此前的编辑曾让脚本语法损坏，已重写并 `bash -n` 验证）；`check-dashboard.py` 原先用 label 子串匹配「connected」，而 UI 在断开时显示 "Disconnected"（同样含 connect）——改为读取 `#wsStatus` 的语义 class（connected/disconnected），capture 同步记录 `{label,state}`。
+- 验收栈 `dwt-p53` 已在记录后按 `down -v` 清理；用户容器与 8080/5432/9092 未受影响。
+
+### 2026-10-01 P6.1 冻结候选与完整验收（PASSED，G13+G14+G15）
+
+冻结（`.execution/runs/p61-freeze/manifest.json`）：应用面 SHA 791c75f、source_tree_hash 5375a9d0…、config_hash 7457349d…、依赖锁哈希 8819d368…、镜像 sha256:4f064addf44b7febf4a8f1ae01efb0740695f14f7644b1c216ec7e9526d71248、JDK 21.0.12.1、机器 11 CPU / 18 GiB / 49 GiB 空闲。`source_tree_hash` 只覆盖应用面（src、pom、Dockerfile、compose、.mvn），工具链单独记 `tooling_tree_hash`：指南冻结的是应用/依赖/配置/迁移/规则/镜像，检查脚本的改动不能伪装成新版本，反之亦然。冻结还记录 `content_identity.jar_content_hash`（镜像内 app.jar 的 entry(name,size,CRC) 摘要），发布流水线在推送前用同一锁定输入重建并比对它，因此已发布镜像不可能悄悄换成另一份应用字节。
+
+门禁（全部绑定 791c75f）：
+
+- G00/G03/G04：`verify.sh unit` → 165 tests / 0 fail / 0 err / 0 skip（`.execution/verify/p61-unit2/`）。
+- G02：全新项目 dwt-p61 用冻结镜像启动，container-start-to-ready 11s（`.execution/verify/p61-compose2/`）。
+- G12：四断点 × 暗/亮 8/8 通过（`.execution/verify/p61-browser2/`）。
+- G13：Trivy 0.58.1（DB UpdatedAt 2026-10-01T01:24:14Z）依赖树与镜像 0 HIGH/CRITICAL、镜像与 tracked 树 0 secret、镜像内无凭证文件（`.execution/verify/p61-g13c/`）。
+
+G14 负载与真实缺陷修复：第一次 100/s × 1800s 运行失败并保留（`.execution/verify/p61-load/`，gate.json FAILED + FAILURE-NOTES.txt + 窗口末指标快照）：180000 次 offer 全部被接受（0 摄取失败），但窗口结束时只处理了 57839 条，consumer lag 122476 且不可能在界内清空。定位到的三个真实原因：① 每个事件都重算 source health，包含 4 条对滚动 1h/5m 窗口的 COUNT 查询——每事件 O(行数)，随表增长而恶化；② `findFirstBySourceOrderByEventTimestampDescIdDesc` 没有支撑索引，实测每事件 25ms 顺序扫描+排序；③ 监听器并发为 1，而持久化 topic 有 3 个分区。修复：source health 完全交给 30s scheduler（指南 7.2 的机制，G10 已覆盖），新增 V12 索引 `(source, event_timestamp DESC, id DESC)`（25ms → 0.034ms），监听器并发按分区数设为 3（scope 键固定映射到单一分区，因此每个 scope 的顺序性完全保留，独立 scope 才并行），负载生成器改为 6 种事件类型的真实混合而不是单 scope。修复后第二次运行 PASSED：180000/180000 offer 于 1800.0s（100.0/s）、accepted 180000 / failed 0、ack p95 12.4ms（限 1s）、commit p95 134ms（限 5s，180000 样本）、账本 180100 accepted = processed = raw、0 未确认、0 DLT、0 孤儿、三组 lag 31.3s 归零、资源曲线 263 点/容器（`.execution/verify/p61-load2/`）。同一次运行也暴露并修掉了 verify.sh 的 `--base`/阶段别名问题与 p53 采集的 networkidle 竞态。
+
+G15：`verify.sh package` 从制品安装（不构建源码）——镜像导出 tar 的 sha256 与 manifest 一致、docker load 后 id 等于冻结 id、SBOM 为 CycloneDX、checksums 覆盖全部制品；在全新 project/volume/env（18082）启动后匿名 health 200、管理员 API 200、Bearer 摄取 202 且落库、重启后 readiness 恢复（`.execution/verify/p61-package2/`）。
+
+期间还完成：CI 拆成 unit / integration / fault-migration / image(SCA+secret) / browser 五个 job，默认 `permissions: contents: read`；release 工作流（tag 或手动触发）在推送前断言 content identity，仅发布 job 拥有 contents/packages write；README 重写为发布版，明确来源、延迟、缺口与限流边界；`soak-report` 子命令按指南 11.1 逐条判定 G16。
+
+### 2026-10-01 P6.1 补充：候选重建（favicon 与匿名图标）
+
+首次冻结候选 791c75f 的全部门禁（G00/G02/G03/G04/G12/G13/G14/G15）通过后，CI 的 browser job 在 Linux 上失败，报每个页面 1 个 console 错误（403）。本地 macOS headless shell 不请求站点图标，因此本地 8/8 全绿而 CI 必红——这正是"CI 短门槛"要抓的东西。诊断：`/favicon.ico` 命中受保护根路径被拒（实测 401，Linux Chromium 记为 403），且仓库根本没有图标文件。
+
+修复：新增 16×16 favicon.ico 与 32×32 apple-touch-icon.png（脚本生成，无外部依赖），页面声明 `<link rel="icon">`，SecurityConfig 把这两个公共资源加入匿名放行（`/api/**` 仍然需要管理员）。修复后本地 G02/G12 重新通过，CI 五个 job 全绿（run 36839799355，head f111aa6）。
+
+候选随之重建：应用面 SHA f111aa6、source_tree_hash c1357517…、镜像 sha256:fcafddff…、content_identity.jar_content_hash c18b2a5c…（462 entries）。按指南"应用有变更必须重跑受影响门禁并重开 24 小时 run"：
+
+- 20261001T083508Z-soak24 作废：runner 已停止（PID 23887），`.execution/soak/20261001T083508Z-soak24/FAILURE-NOTES.txt` 记录原因与时间；其 40 个采样只作历史，不作为 G16 证据，也不与新 run 拼接。
+- 受影响门禁按新候选重跑：UNIT 165/0/0/0（`.execution/verify/p61-unit3/`）、G02（`.execution/verify/p61-compose3/`，11s ready）、G12（`.execution/verify/p61-browser3/`，8/8）、G13（`.execution/verify/p61-g13d/`，0 HIGH/CRITICAL、0 secret）、G14（`.execution/verify/p61-load3/`，同一 100/s×1800s 门槛）、G15（`.execution/verify/p61-package3/`，从制品安装且镜像 id 一致）。
+- 同时把 npm lockfile 纳入版本控制：CI 需要 `npm ci` 在固定 Playwright 版本上运行，之前 lockfile 被 .gitignore 排除导致 browser job 无法安装浏览器。
+
+### 2026-10-01 P6.2 24 小时真实验收启动（RUNNING）
+
+候选 f111aa6 / 镜像 sha256:fcafddff… 的全部门禁通过后启动 run 20261001T093737Z-soak24（PID 48024，dwt-soak，18087，86400s，预计 2026-10-02T09:37:37Z 结束）。计划故障：2h app-restart、8h kafka-stop、16h db-stop；每 30s 采样 readiness/liveness/recent + 容器资源，每 5 分钟原子写 checkpoint。
+
+启动过程中修掉了一个真实的恢复路径缺陷：`soak-resume` 用 CLI 默认值而不是原 run 的 placement 启动替代 run，导致监控进程采样的是错误的端口、且没有加载故障计划（新 run 的 image 与 planned_faults 为空、readiness 全为 error）。修复后 resume 会把 project/env-file/fault-plan/duration 从原状态带过去，`soak-start` 也会在 project 为空或 env 文件缺失时直接拒绝。作废的 20261001T093502Z-resume 与 20261001T083508Z-soak24 都保留 FAILURE-NOTES.txt 并标记 FAILED，不与新 run 拼接。
+
+### 2026-10-01 P6.2 第三次启动（当前有效 run）：BOOTSTRAP 修复后的 24 小时
+
+修复后全部受影响门禁在新候选 75e6a10 上通过（unit 166/0/0/0、G02、G12 8/8、G13、G14 180000@100.0/s + ack p95 6.7ms + commit p95 112ms + drain 29.5s、G15 镜像身份一致），CI 在 75e6a10/af88a40 全绿。全新 24 小时 run 20261001T103023Z-soak24（PID 85137，镜像 sha256:1f915abc…）于 2026-10-01T10:30:23Z 启动，预计 2026-10-02T10:30:23Z 结束；启动后摄取 299 条真实 GitHub 事件，`quality_alerts`=0、`alert_incidents`=0，证明回填不再制造告警洪水。
+
+### 2026-10-01 P6.2 第二次作废与修复：BOOTSTRAP 不得触发实时检测
+
+第二次 24 小时 run 运行到 15 分钟时，`soak-report` 的预演（对部分数据跑一遍判定逻辑，提前验证代码路径）暴露出一个真实的契约违背：299 条 BOOTSTRAP 事件产生了 298 条 LATE_EVENT(WARN) 与 203 条 DUPLICATE_EVENT(INFO)，而 WARN 会开 incident——新装实例一上线就有约 300 个 incident 和 500 条告警，全部来自回填历史数据。指南 4.1 明确「BOOTSTRAP 默认只持久化/观察 schema，不触发实时窗口」。
+
+根因：`DetectorProcessor`（late/range/format）与 `DuplicateProcessor` 只检查 `skipDetection`（重投/冲突），没有检查 `liveWindowEligible()`；两个 spike 处理器此前已正确处理 SKIPPED_MODE。修复：两处都加上 mode 门控，只有 LIVE 参与实时检测；回填仍然持久化、仍然观察 schema、window_evaluation 仍记 SKIPPED_MODE。新增契约测试 `bootstrapBackfillTriggersNoRealtimeDetector`（旧事件 + 重复 payload + 越界值，全部以 BOOTSTRAP 注入，断言 3 条都保留、告警为空、状态 OK）。
+
+验证：修复后新栈摄取 300 条真实 GitHub 事件 → `quality_alerts` 计数 0（修复前 503），dashboard summary `alertsLast24h=0`、`unhealthySources=0`。套件 166 tests / 0 fail / 0 err / 0 skip（`.execution/verify/p61-unit4/`）。
+
+按指南重跑受影响门禁：G02（`.execution/verify/p61-compose4/`）、G12（`.execution/verify/p61-browser4/`）、G13（`.execution/verify/p61-g13e/`）、G14（`.execution/verify/p61-load4/`）、G15（`.execution/verify/p61-package4/`），随后以全新 24 小时 run 重开。作废的 20261001T093737Z-soak24 已标记 FAILED 并留 FAILURE-NOTES.txt。
+
+### 2026-10-01 P6.2 受控故障预演（在等待期内完成）
+
+24 小时 run 进行到约 5 分钟时，用一个独立的临时栈（dwt-faulttest，18088，同一冻结镜像）把三个计划故障各真实执行一次，走的是 `acceptance.py execute_fault` 的生产代码路径，避免在 run 的第 2/8/16 小时才发现时序或恢复问题：
+
+| 故障 | outage | readiness 恢复 | 限值 |
+|---|---|---|---|
+| app-restart | 32.3s | 5.1s | ≤60s / ≤300s |
+| kafka-stop | 31.3s | 8.5s | ≤60s / ≤300s |
+| db-stop | 31.2s | 14.1s | ≤60s / ≤300s |
+
+三者全部在门槛内，`.execution/plans/g16-faults.json` 的排程可用；证据 `.execution/runs/p62-faultpretest/fault-pretest.json`。故障期间的数据安全已由 P3.2 现场演练覆盖（60s 停机被重试吸收且无死信；200s 停机产生一条可恢复死信，重放后只有一次副作用）。临时栈与其卷已清理，未触碰 run 的 dwt-soak 栈。
+
+### 2026-10-01 P6.2 等待期风险核对（保留期、内存、真实源）
+
+- 保留期是否会打断账本：`RetentionService` 的 cron 是每天 03:30（`0 30 3 * * *`），落在 24 小时窗口内。逐条核对删除条件后确认它在本 run 中不会删任何行——raw_events 与 processed_receipts 的截止是 `received_at/processed_at < now-30d`（本 run 的行都是刚写入），metric_windows 是 `window_end < now-30d`，quality_alerts/alert_incidents 只删已解决且超过 90 天的（本 run 的告警都是 OPEN），source_inbox 是 35 天。因此 `processed_without_raw=0` 的账本判定不会被保留期破坏。03:30 之后可用 `GET /api/v1/operations/retention` 复核实际删除行数为 0。
+- 内存曲线：`soak-report` 现在同时给出严格窗口（前 2 小时均值 vs 最后 1 小时）与 1–2 小时平台均值，以及冷启动值，避免把 JVM 预热误判为泄漏；当前冷启动 592MiB、前 10 分钟均值 679MiB。
+- 真实源：3 次轮询，300 条不同事件（299 bootstrap + 1 条 bootstrap 之后新发现），0 缺口；告警 2 条均来自 LIVE 事件，incident 0、DLT 0、lag 0。轮询证据逐轮可查：poll1 BOOTSTRAP 299/299 APPLIED、poll2 LIVE 200/1 APPLIED（ETag 前进）、poll3 LIVE QUIET（304，游标不动），每轮都记录 `x_poll_interval=60`；间隔约 5.4 分钟，即 12 次/小时，低于未认证 60 次/小时预算。
+- 宿主电源：`pmset -g` 显示系统 `sleep 1`（空闲 1 分钟即休眠），当时仅靠第三方应用（ChatGPT、Amphetamine、UURemote）持有断言才没睡——它们一旦退出，24 小时 run 会因监控空洞而失效。已用 `caffeinate -i -w 85137` 绑定 runner 进程持有 `PreventUserIdleSystemSleep`（PID 11469，runner 退出即自动释放，不改任何持久设置）。残余风险：显式休眠（合盖或菜单休眠）不受该断言保护，需要人在 24 小时内不要主动休眠。
+- 容器与磁盘：G16 要求「无计划容器重启、磁盘未耗尽」，`soak-report` 现在读取三个容器的 `RestartCount` 与剩余磁盘（当前均为 0 次重启、50GiB 空闲）。已实测 `docker stop/start`（计划故障使用的路径）不会增加 `RestartCount`，因此该检查只会抓到真正的崩溃重启。
+
+### 2026-10-01 P6.2 等待期：发布包内容缺口
+
+对照指南第 12 节逐条核对 Release 附件时发现：`package-release.sh` 只把 `docker-compose.yml`、`.env.example`、`selfhost.sh`、`common.sh`、`PROJECT_EXECUTION_GUIDE.md` 与 `README.md` 放进 bundle，**没有放 `docs/RUNBOOK.md` 和 `docs/RELEASE_NOTES.md`**——而第 12 节第 5 条要求的「安装/升级/备份恢复说明和已知限制」正写在这两份文档里，只下载 Release 的安装者会拿不到。已修：bundle 现在包含这两份文档。收尾程序第 5 步相应改为先用最终脚本重跑 `verify.sh package` 再上传，且明确该步必须等 soak 栈结束后执行（打包会起自己的 compose 项目，指南禁止与验收栈并行以免资源竞争）。
+
+### 2026-10-01 P6.2 等待期：CI action 固定到完整 SHA
+
+按指南第 4 节「CI actions 固定完整 SHA」逐条核对两个 workflow，发现此前用的是浮动的 `@v4` 主版本标签——上游重新打标签会悄悄改变发布流水线实际执行的代码，正是该条要防的。已把 `actions/checkout`、`actions/setup-java`、`actions/setup-node`、`actions/upload-artifact` 全部固定到解析出的提交 SHA（版本号保留为行尾注释），两个 workflow 共 14 处 `uses:` 均已固定。推送后 CI 在新 head c5cf8d6 上全绿，证明固定的 SHA 可用。
+
+### 2026-10-01 P6.2 第四次启动与逐条规格审计（当前有效 run）
+
+等待期间按指南逐条审计，发现并修复了三类此前未满足的契约项，因此按规则重开 24 小时 run：
+
+1. **evaluation coverage 缺失**（指南 5.3「另外展示 evaluation coverage，不把 OK 等同所有窗口都参与」，且第 551 行把它写进 G04 的完成条件）。新增 `GET /api/v1/events/coverage`（按 outcome 与 baseline 状态聚合，带 `included_ratio` 与说明文字）与 dashboard 面板；新增容器测试断言四种状态（INCLUDED+APPLIED、EXPIRED、SKIPPED_MODE+null、INCLUDED+PENDING）与 OpenAPI 契约断言。
+2. **仪表盘缺少 incident / 指标窗口 / 死信详情与重放**（指南 7.5 的页面清单）。三个面板与 rail 图标补齐，接入既有 API；重放与 resolve 具备 loading、禁用重复提交、成功/失败反馈与 retry。
+3. **没有自动化可访问性扫描**（指南 7.5）。本地打包 axe-core 4.13.0（不依赖 CDN）并在采集时执行 WCAG 2A/2AA 扫描，critical/serious 违规直接使 G12 失败。
+
+扫描立刻查出三个真实缺陷（这正是该条要求存在的意义）：① 横向滚动容器不可键盘聚焦（`scrollable-region-focusable`）；② 强调色与语义色只按浅色页面定义，深色面板上 gold 仅 3.54:1、ok 仅 2.96:1，且 `[data-theme="dark"]` 只覆盖背景，系统偏好为浅色的用户切到深色会得到浅色系配色（2.9–3.5:1）；③ **浅色截图其实从未是浅色**——系统偏好已是浅色时点一次主题开关会翻成深色，所以此前 G12 的 "light" 证据实际测的是深色（修复后实测平均亮度：修复前 light=27.1 与 dark=26.6 几乎相同，修复后 light=232.4）。三处均已修复：滚动容器与证据块加 `tabindex="0" role="region"`；两套主题各自完整定义强调色/语义色并实测对比度（深色 gold 8.6–9.0、ok 8.3–9.7、err 6.1–7.2；浅色 gold 5.1–5.7、ok 4.9–5.4、err 6.2–7.9、muted 5.6–7.1）；采集脚本改为显式设置并校验 `data-theme`，不再点击开关。
+
+另修：`verify.sh package` 的 bundle 现在包含 `docs/RUNBOOK.md` 与 `docs/RELEASE_NOTES.md`（第 12 节要求的安装/升级/备份恢复说明与版本说明此前不在包内）；两个 workflow 的 action 全部固定到完整 SHA（指南第 4 节）。
+
+新候选 c1220eb 上重跑全部受影响门禁：UNIT 167/0/0/0（`.execution/verify/p61-unit5/`）、G02（`p61-compose8/`）、G12（`p61-browser8/`，8/8 且可访问性扫描 0 serious/critical、主题经属性校验）、G13（`p61-g13f/`）、G14（`p61-load5/`，180000@100.0/s、ack p95 5.1ms、commit p95 112ms、drain 29.2s）、G15（`p61-package-final/`，镜像身份一致、bundle 含三份文档）。第四个 24 小时 run 20261001T114957Z-soak24 于 2026-10-01T11:49:57Z 启动（PID 73433，镜像 sha256:1d10f24a…，`caffeinate` 防休眠），启动后 299 条真实事件、0 告警、0 incident。
+
+### 2026-10-01 P6.2 第五次启动（当前有效 run）：规格审计的第二批修复
+
+继续逐条审计，又发现三个契约项未满足，均已实现并用测试锁定，因此再次重开 24 小时 run：
+
+1. **baseline version 未进入窗口 key 与证据**（指南 5.3「schema 活动版本变化后使用新 baseline version构建窗口 key……不能将两版字段集合的计数相加。processor emitted evidence带 baseline_version/rule_version」）。`BaselineMessage` 本就带 `versionId` 却未使用：null 窗口 key 现在包含活动 baseline 版本，证据新增 `baseline_version`；新增契约测试验证「版本 1 记 2 条、切换版本 2 后窗口从 0 重新计数到 3（而不是 5）」且证据写明版本号。
+2. **origin_reference 缺少获取 URL**（指南 6.2 要求含原始ID、仓库、获取URL、poll run ID）。记录可以来自任意分页，因此没有采用"统一填第一页 URL"（那会是假声明），而是让每条记录携带其实际所在页的 URL：新增 `PagedRecord` 与逐页 URL 追踪，`origin_reference` 形如 `github:apache/kafka#7001@11|http://…/repos/apache/kafka/events?per_page=2`；新增测试断言四个要素齐全。轮询测试 12 项全绿。
+3. **Kafka 保留期依赖 broker 默认**（指南 7.1「默认Kafka保留7天」）。raw/quality/DLT 三个持久 topic 现在显式设置 `retention.ms=604800000`；运行中的栈已实测 `kafka-configs --describe` 返回 `retention.ms=604800000`。
+
+新候选 378d7cf 上重跑全部门禁：UNIT 169/0/0/0（`.execution/verify/p61-unit6/`）、G02（`p61-compose9/`）、G12（`p61-browser9/`，8/8、可访问性 0 serious/critical）、G13（`p61-g13g/`）、G14（`p61-load6/`，180000@100.0/s、ack p95 4.6ms、commit p95 112ms）、G15（`p61-package-final2/`，镜像身份一致）。第五个 24 小时 run 20261001T124728Z-soak24 于 2026-10-01T12:47:28Z 启动（PID 95382，镜像 sha256:a8fa82cb…，`caffeinate` 防休眠），启动后 299 条真实事件、1 条 LIVE 告警、0 incident。
+
+### 2026-10-01 P6.2 第六次启动（当前有效 run）：批次收据缺陷
+
+审计指南 4.2/4.3 时发现一个严重缺陷并用测试复现：收据主键是 (source, event_type, idempotency_key)，而批次里同一 source/event_type 往往有多条事件——旧实现为**每条**事件写一行收据，于是同批次内第二条同类型事件与第一条撞键，冲突校验比对的是**单条摘要**，整个批次直接返回 409。「一次批量提交多条同类型事件」这一最常见用法是坏的。
+
+修复：一行收据代表该 (source, event_type) 在本批中的全部条目，逐条状态存 `batch_items`（指南 4.3 的列语义）；冲突摘要改用**批次摘要**（指南 4.2「batch Idempotency-Key 对应固定顺序的整批」）；行级 publish_state 由条目汇总（全部确认才 CONFIRMED，有失败即 FAILED），逐条真相仍在 batch_items；重试只重发未确认条目并保留其原身份；批次同时受 100 条与 4 MiB 双重限制（此前只限制条数与单条 256 KiB）。新增测试 `aRetriedBatchResendsOnlyTheUnconfirmedItemsAndCompletes` 与 `aBatchOverTheTotalSizeLimitIsRejectedWithoutPublishing`。
+
+新候选 8a798a6e 上重跑全部门禁：UNIT 171/0/0/0（`.execution/verify/p61-unit7/`）、G02（`p61-compose10/`）、G12（`p61-browser10/`，0 问题）、G13（`p61-g13h/`）、G14（`p61-load7/`，180000@100.0/s、ack p95 5.5ms、commit p95 112ms）、G15（`p61-package-final3/`，镜像身份一致）。第六个 24 小时 run 20261001T134438Z-soak24 于 2026-10-01T13:44:38Z 启动（PID 18174，镜像 sha256:aeb1c9f9…，`caffeinate` 防休眠），启动后 299 条真实事件、1 条 LIVE 告警、0 incident。
+
+审计收敛：本轮已逐条核对指南 §4.1-4.6、§5.1-5.4、§6.1-6.3、§7.1-7.5（§4.4 与实现一致；§5.2 各检测器证据字段与实现一致）。除出现新的具体证据外，不再为新增行为要求重开 run，让本次运行走完 24 小时。
+
+### 2026-10-01 P6.2 等待期：跨架构内容身份核验（发布断言前置验证）
+
+发布流水线在推送前会重建镜像并比对 `content_identity.jar_content_hash`，不一致就拒绝推送。此前只验证过「本机 arm64 两次构建一致」，而 CI 在 **amd64** 上构建——若两者字节不同，发布会在 24 小时 run 结束后才失败，代价是又一天。
+
+本机用 QEMU 模拟 amd64 构建失败（`mvnw dependency:go-offline` 解 tar 失败，属模拟层问题，CI 原生 amd64 构建是成功的），因此改为让 CI 自己报告：在 `image` job 中新增一步，构建后从镜像内取出 `/app/app.jar` 计算同一算法（entry 的 name/size/CRC 摘要）并打印 + 上传为 `content-identity` 附件。
+
+结果（run a53fcd3，head a53fcd36）：CI 原生 amd64 计算值 `e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a` 与冻结候选值**逐字节相同**。结论：跨架构重建可复现（Dockerfile 用 digest 固定 Temurin 21 构建阶段，javac 输出与宿主架构无关），发布流水线的身份断言会通过。
+
+### 2026-10-01 P6.2 第六个 run 作废：遗留 runner 干扰（第 7 次启动）
+
+等待期例行核对时发现异常：app 容器 `StartedAt=2026-10-01T14:48:27Z`，而 kafka/postgres 是 13:44:25Z（run 20261001T134438Z-soak24 的启动时刻）。`docker inspect` 显示 `RestartCount=0`、`ExitCode=0`、`FinishedAt=14:47:56Z`，`docker events` 显示 14:47:56 kill→stop→die、14:48:27 start——是一次优雅的 `compose stop/start`，不是崩溃。
+
+根因：`ps` 发现**两个** acceptance.py runner。PID 95382 属于更早的 run `20261001T124728Z-soak24`（12:47:29Z 启动，绑定上一候选 378d7cf8 / 镜像 a8fa82cb），在冻结候选接管 compose 项目 `dwt-soak` 后**没有被停掉**；它的 2h 计划故障按自己的 elapsed 在 14:47:55Z 触发，对**共享的** app 容器执行了 app-restart（`faults.jsonl`：status completed、outage 32.5s、recovery 10.1s）。两个 runner 共用一个 compose 项目。
+
+危险点：G16 的 `container_health` 只数 `RestartCount`（优雅 stop/start 不增加），所以这次干扰对判定**不可见**；而该 runner 的 8h kafka-stop（20:47Z）与 16h db-stop（04:47Z）还会继续打进新窗口。
+
+处理（不掩盖、不拼接）：
+
+1. 14:49Z 停止 PID 95382；`ps` 复核只剩 1 个 runner。
+2. `20261001T124728Z-soak24` 标 FAILED（被取代且绑定旧候选）；`20261001T134438Z-soak24` 标 FAILED（环境干扰），samples/faults/checkpoint 全部保留作证据，`result.json` 记 measured 3900s / 86400s，不删除、不改造。
+3. 工具修复（commit 57baf06，仅 `scripts/`）：`soak-start` 在存在其它存活 runner 时拒绝启动并列出 run_id/PID；`runner` 启动时与**每次注入故障前**都校验 app 容器镜像 id 是否等于本 run 记录的镜像，不等则记 `skipped-environment-changed` 并让 run FAILED——宁可失败也不去动别人的环境。
+4. 启动前复核制品：镜像 `driftwatch-tower:local` = sha256:aeb1c9f9…，jar content identity `e574ffcf…` 与冻结值一致；当前工作树 source_tree_hash 重算 = `d5ca0f55…`（203 文件）与 manifest 一致；`git diff 8a798a6e..HEAD -- src pom.xml Dockerfile docker-compose.yml docker-compose.dev.yml .mvn` 为空（冻结后提交只动 `.github/workflows`、`docs`、`scripts`）。
+5. 重建环境：`docker compose -p dwt-soak --env-file .execution/soak.env down -v`（仅该验收项目自有测试卷）再 `up -d --wait`，三容器 healthy、app `RestartCount=0`、readiness 200。
+6. 启动第 7 个 run `20261001T145553Z-soak24`（PID 42061，86400s，预计 2026-10-02T14:55:53Z 结束，`caffeinate -i -w 42061`）。启动后约 1 分钟 bootstrap 轮已落库 300 条真实 GitHub 事件、readiness 200。run 记录的 `git_sha=1213d3b8`（启动时 HEAD），工具修复 57baf06/fa27c7b 在启动后数分钟提交；应用面与冻结候选逐字节相同，因此该窗口仍覆盖冻结制品。注意：正在运行的 runner 进程是 14:55:53 启动时加载的**加固前**代码（Python 启动即读源码），所以本窗口内的故障注入没有镜像归属校验；缓解措施是已确认全局只有 1 个 runner（`ps`）、每小时自动化会复查并先停掉多余 runner，且任何未来窗口都用加固后的 runner。不为此重启窗口（会破坏连续性）。
+7. 两条守卫实测（不触碰环境）：`soak-start` 在有存活 runner 时拒绝并列出 run_id/PID（exit 2，未创建 run 目录）；`execute_fault(..., expected_image='sha256:deadbeef')` 返回 `skipped-environment-changed` 且 app 容器 `RestartCount` 仍 0、`StartedAt` 未变、readiness 200。测试中发现 `live_runners` 会被 `.execution/soak/` 下的非目录文件绊倒（`NotADirectoryError`），已加 `isdir` 过滤并复测通过（commit 见下）。
+
+### 2026-10-01 P6.2 等待期：按指南 §12 逐条核对发布交付物（发现并修复 3 处）
+
+在等待窗口继续核对 §12 的 8 条完成条件，发现并修复三处只有发布时才会暴露的问题：
+
+1. **RELEASE_NOTES 与已验收证据不一致**：候选 commit 写的是 `75e6a10`（更早的冻结），单元测试数 166（实际 171），负载 ack p95 6.7ms / drain 29.5s（已验收的 `p61-load7` 报告是 5.5ms / 29.3s），磁盘 49GiB（freeze manifest 记 45Gi）。§12 第 5 条要求版本说明给出准确的 candidate commit 与性能条件，已逐项对齐证据，并补上应用内容身份与镜像 tag 规则（`sha-<candidate_sha>`）。
+2. **架构图没有被发布**：`docs/assets/driftwatch-architecture.svg`（已按真实 Streams 拓扑重绘）不被任何活动文档引用，等于没发布；README 现在链接它（§12 第 6 条「架构图反映实际实现」+「所有文档链接有效」）。
+3. **bundle 里的 README 链接断**：bundle 复制了 README，却没带它链接的本地文件——只有下载 bundle 的安装者会看到断链。现在 bundle 收齐 README 链接的全部本地文件（RUNBOOK、RELEASE_NOTES、EXECUTION_STATE、versions、架构 SVG）以及 LICENSE（许可证必须随制品分发）。已用「按脚本清单复制到临时目录 + 解析 README 本地链接」的方式彩排：0 断链、12 个文件。
+
+同轮按 §12 第 7 条做了一次所有权清理：删掉自己遗留的验收容器 `p37-app-18081`（镜像 driftwatch-tower:local，占 591MiB，已运行 10 小时）、其网络 `dwt-p37_driftwatch` 与 P1.3 夹具卷 `dwt-p13b_*`；保留 `dwt-trivy-cache`（收尾期 G13 复跑要用）与正在运行的 `dwt-soak_*`。用户自己的 `cpamp` 栈未触碰。
+
+同轮还发现并修复两处「发布时才会暴露」的门禁缺陷（都在工具层，不影响冻结应用面）：
+
+4. **`release-check.sh` 的证据绑定只是记录、没有牙齿**：它把每个 gate 的 `git_sha` 写进 `gate-evidence.json`，却从不与发布修订比对，因此过期于代码的门禁报告也能通过——正是指南 §11.2 禁止的情况。现在它解析 tag 指向的提交，并对每个 gate 用 `git diff --quiet <gate_sha> <released_sha> -- <冻结应用面 roots>` 断言应用面一致，不一致即 RELEASE FAILED。用当前证据实测：G00/G02/G12-G15 与发布面一致，**G03-G11 绑定的应用面确实不同**（653a7e39/7217ff67/fbba4d05/4b111417/6bf026de），必须靠收尾程序第 3 步重跑——这条检查把「必须重跑」从说明变成了强制。
+5. **`evidence-pack.sh` 会打包过期证据**：browser/security/package 三个目录名是写死的旧名（`*-browser4`、`*-g13e`、`*-package4`），而已验收的是 `p61-browser10`、`p61-g13h`、`p61-package-final3`，于是发布包会附上**修 a11y/对比度之前的旧浏览器截图**与旧扫描摘要；soak 目录还按目录 mtime 选择，可能选中作为历史保留的失败 run。现在每个证据目录都由「该 gate id 的最新 gate.json」推导（回退到最新匹配），soak run id 直接读自已验收报告里的 `run_id`。已用 `--run-id rehearsal` 彩排：browser/load/security/package 四个文件与各自已验收 gate 的证据**逐字节相同**，8 张截图齐全、0 凭据泄漏。
+
+6. **`release.yml` 允许发布未经比对镜像**：tag push 触发时 `content_identity` 为空，旧代码只 `::warning::` 然后继续推送——正是该断言存在的意义所在。现在直接 `::error::` 拒绝并给出恢复动作（改用 dispatch 并带上冻结身份）；发布仍走 dispatch。同时把镜像 tag 的文档写准（实际是 `sha-<candidate_sha 前 12 位>`）。
+7. **证据包不在 checksums 覆盖内**：`upload-release-assets.sh` 从 artifacts 目录之外上传证据包，而 `checksums.txt` 只覆盖 artifacts 目录，与 RELEASE_NOTES「checksums 覆盖每个附件」的说法不符。现在证据包在重建 checksums **之前**先被搬进 artifacts 目录，且上传前逐个断言「每个附件都能在 checksums.txt 里找到」（checksums.txt 自身除外）。用已验收的 package 制品彩排：14 个文件被 checksum 覆盖、证据包在内、所有断言通过，只在预期的 `release not found` 处停下。
+
+8. **发布包不是被验收的那份字节**：`upload-release-assets.sh` 上传前会**重新 tar** bundle，于是发布出去的 tar 与 `package-check.sh`(G15) 验证过的 tar 不是同一串字节（内容相同、mtime 不同），与「上传已验收制品」不符。现在改为断言打包产出的 bundle 存在并原样上传（checksums 仍会重建，因为写入 digest 会改写 `release-manifest.json`）。彩排：上传前后 bundle 的 sha256 完全相同、13 个文件被 checksum 覆盖、证据包在内，只在预期的 `release not found` 停下。
+
+9. **匿名安装会落在空 project 名下**：`verify.sh release` 无条件把 `--project "$PROJECT"` 传给 `release-check.sh`，而 `PROJECT` 默认为空——这会**覆盖**脚本自己的 `dwt-release-check` 默认值，使 P7.3 的匿名安装（以及随后的 `down -v` 清理）跑在一个由目录名隐式推导的 project 上。现在 `verify.sh` 只在真正给了 `--project` 时才转发，且被调脚本忽略空值（两层防护）。实测：空值时转发参数为空、显式值时正常转发、被调脚本在收到空值时保留自己的默认。
+
+10. **GHCR 可见性是本轮唯一可能需要外部动作的环节（已预置恢复动作）**：本机 `gh` 凭据的作用域是 `gist, read:org, repo, workflow`，**没有 `read:packages`/`write:packages`**（实测：列出 packages 直接 403），所以本地无法查改 GHCR 包可见性；工作流的 `GITHUB_TOKEN` 有 `packages: write` 能推送，但能否改可见性不确定（release.yml 已尝试 `PATCH /user/packages/container/...`，失败只告警，真正的判据是随后的**匿名拉取**）。为把恢复成本降到最低，已让匿名拉取失败时在日志里直接给出恢复三步（GitHub UI 路径 `https://github.com/users/JeremyL691/packages/container/driftwatch-tower/settings` → Change visibility → Public；或用具 `write:packages` 的 token 执行 `gh api --method PATCH ... -f visibility=public`；然后重跑 `verify.sh release`），并且**不会**把失败的匿名拉取当作成功。
+
+### 2026-10-01 P6.2 等待期：分支头部的重建身份复核（发布断言前置）
+
+用 CI 自己算的应用内容身份复核了**当前分支头部**（不是只有冻结那一刻）：CI run 36883611532 在 head `15255a1a`（含本会话全部工具/文档修复的后代提交）上于原生 amd64 构建镜像，并上传 `content-identity` 附件，值为 `e574ffcfddbf3e3dd75728b4181b8e5f1eb0f952a36b6e5d6dff86ee424c9d4a`，与 `.execution/runs/p61-freeze/manifest.json` 的冻结值**逐字节相同**。
+
+含义：本会话对 `scripts/`、`docs/`、`.github/`、`README.md` 的所有改动都没有改变应用字节；发布工作流在合并后按合并提交重建时，`Assert the application content identity` 这一步会通过，跨架构可复现性再次得到验证。该断言此前只在更早的 head（a53fcd36）上验证过。
+
+### 2026-10-01 P6.2 等待期：G16 判定器对本窗口实况预演
+
+在窗口进行中用 `./scripts/verify.sh soak-report --run-id 20261001T145553Z-soak24 --out .execution/verify/p61-soak-dryrun2` 预演了一次判定器（不是判定结果，窗口未结束），目的是确认它对**本窗口的新库**不会崩：所有 SQL（真实源计数、账本、三组 consumer lag）、容器健康与内存曲线都正常执行，输出的 `problems` 恰好只有「未结束」应有的三条：`measured 0.0s of a planned 86400.0s`、`only 57 samples`、`0 of 3 planned faults executed`；容器 `RestartCount` 全 0、磁盘 44GiB、内存均值 730.8MiB、增长 0.0MiB（上限 146.2MiB）。即：判定器与库结构、与冻结镜像的指标名完全对得上，G16 不会因为查询或字段名错误而在 24 小时后才失败。该 dry-run 的 FAILED `gate.json` 保留（若真判定因故未写出，发布门禁会选到它并如实失败，不会误判为通过）。
+
+### 2026-10-01 P6.2 等待期：为「重启恢复」留下可对比基线
+
+指南要求真实接入给出「bootstrap 后新增事件及**重启恢复**证据」。本窗口的 2h 受控故障就是一次真实的 app 重启，因此先在故障前把轮询器状态落盘为基线（`.execution/verify/p61-soak-prefault-baseline.json`，2026-10-01T15:28Z）：
+
+- `source_poll_runs` 7 次（BOOTSTRAP 1 + LIVE 6）；真实事件 300 bootstrap + 8 LIVE；`source_inbox` 308 行；`source_outbox` PENDING 0；`source_gaps` 4；`collector_state` 1 行。
+- 检查点：`etag_applied` = `W/"6d5ee8fd…"`（与 candidate 相同）、`last_poll_success` = 15:27:00Z、`next_poll_at` = 15:32:15Z、`consecutive_failures` = 0。
+
+重启后的判据（不新增 BOOTSTRAP 轮、`etag_applied` 保留、LIVE 轮询继续、inbox/outbox 连续），届时用同一条 SQL 对比即可，不靠叙述。**对比命令已固化**：`scripts/poller-state.sh --project dwt-soak --env-file .execution/soak.env`（输出字段与本基线文件一致，已实测一致），重启前后各跑一次并 diff。注意 `etag_applied` 的**值**会随新事件正常变化（实测 6d5ee8fd… → 2bf590e0…），要判的是「仍存在且未被重置」，不是「值相同」。
+
+### 2026-10-01 P6.2 等待期：凭证封闭性核验（本地文件之外零泄漏）
+
+指南与目标都要求「凭证仅放安全本地文件/Actions，不写 Git、状态文件、日志、提示词或公开附件」。做了一次机器核验，而不是只靠约定：
+
+- 从 `.execution/` 下全部 `*.env` 中提取出 **18 个不同的真实密钥值**（POSTGRES/ADMIN/INGEST 三类，值只在内存里比对、不打印）。
+- 对 `git ls-files` 的全部受控文件逐个取 `HEAD` 版本内容做子串匹配：**0 个受控文件包含任何真实密钥值**。
+- 对 `git log --all -p`（全部可达提交的完整补丁）做同样匹配：**历史中也不存在**任何真实密钥值。
+- `.gitignore` 第 35 行以注释「Local execution evidence and secrets (never commit)」忽略整个 `.execution/`，实测 `git check-ignore` 生效，且 `git ls-files` 下 `.execution` 受控文件数为 0——因此即使将来有人执行 `git add -A`，证据与 env 文件也进不了提交。
+- 唯一匹配到 "credential" 字样的受控路径是 `ProductionCredentialsValidator.java` 与其测试，属源码而非密钥。
+
+### 2026-10-01 P6.2 等待期：G16 判定器的一个会「误杀」的判据（重要，已修）
+
+核对 runner 契约（30s 采样 / 5min checkpoint）时发现判定器第 1 组里有个会**误杀**的判据：
+
+- 旧代码：`if continuity.samples * SAMPLE_INTERVAL_SECONDS < planned * 0.95: problem`，即要求 24 小时至少 `0.95*86400/30 = 2736` 个采样点。
+- 但 runner 的实际节奏是「先探测（readiness/liveness/`docker stats`，约 2 秒）→ 再 `sleep 30`」，因此**有效周期 ≈ 32s**（本窗口实测：69 个样本、区间 31.0/32.0/33.0s，中位 32s）。24 小时会得到约 `86400/32.6 ≈ 2650` 个样本，`2650*30 = 79,500 < 82,080`——**一个完全连续的窗口会在第 24 小时被判为不通过**，代价是又一天。
+- 修正：判据改为验证「采样确实覆盖了整个窗口」——`span = last.monotonic - first.monotonic >= planned*0.99`，并要求样本数不少于 `planned / MAX_MONITOR_GAP_SECONDS`（即每 120 秒至少一个，24 小时为 720），空样本直接报错。连续性本身仍由既有的 `max_gap <= 120s` 保证。
+- 修正后用本窗口复验：输出恰好只有「未结束」应有的四条（`measured 0.0s`、`samples cover 2179s of the 86400s window`、`only 69 samples ... need at least 720`、`0 of 3 planned faults`），连续性与 `max_gap 32.6s` 正常；按 24 小时外推则 span≈86400、样本≈2650≥720，不会再因节奏问题失败。
+- 该判据属工具层（`scripts/acceptance.py`），不影响冻结应用面与正在运行的窗口；正在运行的 runner 进程不受影响（它只写样本，不做判定）。
+
+### 2026-10-01 P6.2 等待期：把判定器其余判据按同一标准复查（无误杀）
+
+刚发现采样节奏判据会误杀后，用同一标准把 G16 判定器其余判据逐条复查，并对本窗口实测：
+
+- **故障判据**：三个计划故障此前已在独立临时栈（`dwt-faulttest`，同冻结镜像）用生产 `execute_fault` 路径演练过，含本窗口尚未执行过的 kafka-stop 与 db-stop：outage 32.3/31.3/31.2s（限 60s）、readiness 恢复 5.1/8.5/14.1s（限 300s），证据 `.execution/runs/p62-faultpretest/fault-pretest.json`。即第 8/16 小时不会因时序或恢复慢而失败。
+- **账本判据**：现在实测 `raw = processed = 308`、`accepted = 0`（本窗口无 API 摄取，只有轮询器直写 Kafka，属预期）、`unconfirmed = 0`、`accepted_without_processed = 0`、`processed_without_raw = 0`、`dlt_open = 0`、`outbox_pending = 0`——两条反连接不变量在轮询器路径上现在就成立，不是等 24 小时后才知道。
+- **lag 判据**：`consumer_lag_total` 逐组 `--describe`，按 `len(parts) >= 6` 且首列非 `GROUP` 过滤，`int(parts[5])` 失败即 `continue`——Kafka 对未分配分区输出的 `-` 会被跳过而不是当异常；组读不到时返回 -1 并如实报「lag -1 is not zero」。复查未发现同类误杀风险。
+- **span/样本判据**（本轮新修）：24 小时外推 span≈86400s（≥0.99×86400）且样本≈2650（≥720 下限），通过。
+
+### 2026-10-01 P6.2 等待期：G16 判定器全部判据的逐条审计结论
+
+除已修的「采样节奏误杀」外，判定器其余判据逐条看过实现并对本窗口实测，结论如下（这也是发布证据的一部分：被审的不只是被测系统，还有判分代码）：
+
+| # | 判据 | 实现要点 | 本窗口实测 / 风险 |
+|---|---|---|---|
+| 1 | 时长 | `result.measured_seconds >= planned >= 86400` | runner 在 `elapsed > duration` 才退出，measured 略大于 86400，通过 |
+| 2 | 监控连续性 | `max_gap <= 120s`（`monotonic` 差值） | 实测 32.6s，通过 |
+| 3 | 采样覆盖 | span ≥ 0.99×planned 且样本数 ≥ planned/120（本轮修复） | 外推 span≈86400、样本≈2650 ≥ 720，通过 |
+| 4 | 真实源 | 不同真实事件 ≥20 且 LIVE ≥1 | 实测 307+ / 7+，通过 |
+| 5 | 受控故障 | 3 个全 completed、outage ≤60s、恢复 ≤300s | 三故障已用生产路径预演：32.3/31.3/31.2s、5.1/8.5/14.1s |
+| 6 | 账本 | 5 条不变量（未处理/无 raw/未确认/未恢复死信/未发出 outbox） | 现在实测 raw=processed=308、其余全 0，通过 |
+| 7 | consumer lag | 三组逐组 `--describe`，`-` 跳过、读不到返回 -1 | 解析健壮；实测 0 |
+| 8 | 容器与磁盘 | `RestartCount` 必须为 0（优雅 stop/start 不计数）、磁盘 ≥5GiB | 实测 0/0/0、44GiB |
+| 9 | 最后 1 小时 | 排除故障窗口后 readiness 必须全 200 | 当前全 200；窗口末尾再判 |
+| 10 | 内存曲线 | 只取 app 行、要求 `MiB`/`GiB` 后紧跟 `/`（取用量不取上限），样本缺失则跳过；允许 `max(reference*0.20, 128MiB)` | 实测增长 0.0MiB / 允许 146.2MiB；解析不会把 `0B / 0B` 的瞬时异常算成 0 |
+
+结论：判定器十项判据中没有第二处会误杀健康窗口的逻辑；唯一发现的误杀已修复并复验。
+
+### 2026-10-01 P6.2 等待期：阶段门禁判分器同源缺陷（已修）
+
+用同一「审判分代码」的标准检查收尾程序第 6 步要重跑的 P2-P5b 门禁，发现 `scripts/phases/check-suite.py` 的文档与实现相反：docstring 写「Keeps only the newest report per class (a retry can leave several)」，实现却是 `sorted(..., key=mtime)` **升序** + `seen` 去重——先遇到的（**最旧**）胜出。
+
+- 影响面：五个阶段脚本在容器启动类基础设施错误时会**整轮重跑** `mvnw clean test`（`clean` 会清掉上一轮报告），所以当前路径下该缺陷是**潜伏**的；但一旦出现同一类在同一次构建里留下两份报告（例如将来开启 surefire rerun、或某阶段不再 `clean`），就会出现「重跑已通过却被旧报告判失败」或更糟的「旧报告通过掩盖重跑失败」。
+- 修复：改为 `reverse=True`（最新优先），与 docstring 一致；判据本身（required 类必须真跑且 `tests - skipped > 0`、全局不得有 failures/errors/skips、无报告即失败）保持不变。
+- 双向实测（合成两份同名类的报告）：旧报告 2 failures + 新报告干净 → 现在取新的、`problems` 为空、exit 0；反过来旧报告干净 + 新报告 1 failure → exit 1 并如实报 `totals contain failures`。即既不再误杀，也不会误放。
+
+### 2026-10-01 P6.2 等待期：续跑机制实测（不是假设）
+
+收尾程序自动化不能只当约定：实测每小时检查任务确实在跑——`automation-82c729b4` 的 `lastRunAt = 2026-10-01T15:00:06Z`（每小时第 6 秒触发，runCount=6）、`nextRunAt = 2026-10-01T16:00:00Z`，与 `0 * * * *` 的设定一致。即：即使没有人工介入，2h 故障后的重启恢复对比、窗口结束时的 `soak-report` 判定、P2-P5b 复跑、合并、发布与匿名核验都会按序被推进；任务内同时写入了断点（run id、fault 基线路径、每步命令与前置条件），接手者无需依赖会话记忆。
+
+### 2026-10-01 P6.2 等待期：一次 CI 失败的真实原因（外部 502，不是代码问题）
+
+核对 CI 队列时发现 head `e6f59125`（纯文档改动）的 CI 是红的。逐 job 查证：`Migration / Unit / Integration / Dashboard` 四个 job **全部 success**，只有 `Image and SCA` 在 `Build application image` 失败，原始错误是 Maven Central 返回 **502 Bad Gateway**：
+
+```
+Failed to collect dependencies at org.springframework.kafka:spring-kafka:jar:3.3.16
+ -> org.assertj:assertj-core:jar:3.25.3 -> net.bytebuddy:byte-buddy:jar:1.14.11
+Failed to read artifact descriptor ... net.bytebuddy:byte-buddy-parent:pom:1.14.11 (absent):
+Could not transfer ... from/to central (https://repo.maven.apache.org/maven2): status code: 502, reason phrase: Bad Gateway
+```
+
+即上游仓库瞬时不可用导致的下载失败，与本次改动无关；同一时期其它 head（0cb1135、7a1b740、720408c5、2457686c…）五个 job 均为 success。判据不受影响——合并要求的是**当前 head** 五个 job 全绿（自动化第 8 步已写明 exact head）。
+
+对发布的含义与恢复动作（不改源码）：`release.yml` 的 `Build the candidate image` 会执行同一条 `./mvnw -DskipTests dependency:go-offline`，因此**也可能**撞上同样的瞬时 502。此时**不得**改 `Dockerfile` 绕开——它在冻结应用面内（`source_tree_hash` 覆盖 `Dockerfile`），改动会作废 24 小时窗口与全部门禁。正确恢复是**重新 dispatch**（`gh workflow run release.yml ...`）：已推送的 tag/镜像可重入，未推送则重跑即可；若连续失败再记录确切错误与时间窗。
+
+### 2026-10-01 P6.2 等待期：针对同一次 502 的发布路径加固（工作流可改，冻结面不可改）
+
+既然已观察到 `dependency:go-offline` 会因上游 5xx 失败，就顺手把这个失效模式在**允许改动的范围内**消掉：`.github/workflows/` 不在冻结应用面内（`source_tree_hash` 只覆盖 `src`、`pom.xml`、`Dockerfile`、两个 compose 文件与 `.mvn`），所以改工作流不会作废 24 小时窗口、也不改变镜像字节（发布仍由 content-identity 断言把关）。
+
+- `release.yml` 的 `Build the candidate image from the locked inputs`：改为最多 3 次尝试、每次退避 20/40s。理由：构建是确定性的、Docker 会复用已完成的层，重试只重做失败那一步；真正的构建错误在 3 次后仍会失败，而「镜像是否可发布」仍由紧随其后的 content-identity 断言决定。
+- `ci.yml` 的 `Build application image`：同样处理，避免 PR 验证被同一瞬时故障染红（`e6f59125` 就是这么红的）。
+- 复验：两个工作流 YAML 可解析、抽取出的 run 脚本 `bash -n` 通过；`git status` 仅显示这两个工作流文件被修改，`src`/`pom.xml`/`Dockerfile`/compose/`.mvn` 无任何改动。
+
+### 2026-10-01 P6.2 等待期：发现真实缺陷——gap 分类器会把「没有丢数据」误报成缺口（不阻断本次发布）
+
+核对窗口数据时注意到 0.8 小时内已累计 5 条 `source_gaps`（对 5 分钟轮询而言过于频繁），于是按下述顺序查证，而不是猜：
+
+**证据（本窗口实测，按轮询逐条对齐）**
+
+| poll id | mode | 本轮新增事件 | 本轮产生 gap |
+|---|---|---|---|
+| 1 | BOOTSTRAP | 300 | 0 |
+| 2 | LIVE | 0 | 0 |
+| 3 | LIVE | 1 | **1** |
+| 4 | LIVE | 0 | 0 |
+| 5 | LIVE | 2 | **1** |
+| 6 | LIVE | 4 | **1** |
+| 7 | LIVE | 1 | **1** |
+| 8、9 | LIVE | 0 | 0 |
+| 10 | LIVE | 3 | **1** |
+
+规律是确定的：**只要 LIVE 轮询抓到任何新事件，就记一条 NO_OVERLAP gap**；抓不到就一条都不记。5 条 gap 的 `visible_from` 都是同一个值 `2026-09-30T05:10:22Z`，`missing_count=unknown`、`confirmed_from` 为 null、`recovery_state=OPEN`（永不关闭）。
+
+**根因（写入方与读取方对同一字段的语义相反）**
+
+- 写入（`GithubPoller` 第 395-397 行，仅 bootstrap 且仅当字段为 null 时）：`observedFrom = min(staged.created_at)` —— 即**初次回填的最早时间**，本窗口实测为 `2026-09-01T03:40:35Z`。
+- 读取（第 498 行）：`if (staged.oldestCreatedAt().isAfter(state.getObservedFrom())) recordGap("NO_OVERLAP", ...)`，其 detail 写的是「the visible window starts after the previously observed range」——把 `observedFrom` 当作**已观测区间的末端**来比较。
+- 结果：`observedFrom`（9 月 1 日）远早于此后任何新事件（9 月 30 日起），条件对新事件**恒为真**。而 GitHub 公共事件 API 的可见窗口对 `apache/kafka` 这类高频仓库会向前滑动，正是「初次回填起点」必然早于「当前可见起点」的场景。字段自 bootstrap 后再无更新（全仓只有这一处写入、这一处读取）。
+
+**影响判定（为什么不阻断本次发布）**
+
+- 数据完整性不受影响：事件照常被抓取、去重、入库；没有丢事件，账本、幂等与重放都不受影响。
+- 门禁不受影响：G16 会查询 `source_gaps` 计数，但**不对其做任何断言**（判据只有「不同真实事件 ≥20」「LIVE ≥1」），因此 G16 不会因此失败（我已逐条核对判定器十项判据）。
+- 用户可见性有限但真实：`GET /api/v1/sources/collectors` 会给出 `open_gaps` 计数，24 小时约累计 200+ 条且永不关闭，容易被自托管者读成「持续丢数据」。这是**误报**：存在这些行的语义是「公共 API 已无法再回读那段时间窗」，而不是「这些事件丢了」。
+- 修改它属于应用面改动（`src/main/java` 在 `source_tree_hash` 内），会作废当前 24 小时窗口与全部门禁，而用户本轮的指令是「等这个窗口结束后判定并发布」。因此本轮**不改代码**，改为：如实记录 + 写进版本说明的已知限制 + 作为发布后修复项。
+
+**拟修复方向（发布后，v1.0.1）**：把「连续观测区间」的两个端点分开——保留 `observed_from` 作为区间**起点**（bootstrap 的 min），另加/改用「上次观测区间的末端」（如 `last_event_at` 或新增 `observed_to`）作为 NO_OVERLAP 的比较基准，并只在 `new_oldest > 上次末端 + 容差` 时记 gap；同时让 gap 在后续轮询重新覆盖该区间时可关闭（`confirmed_from`/`recovered_at`），避免永不关闭的行堆积。
+
+### 2026-10-01 P6.2 等待期：STALE_SOURCE 频繁告警的核查结论（机制正确，属阈值适配问题）
+
+承接上一条，用同样的「数据是否符合契约」标准核查了 0.9 小时内 6 条 `STALE_SOURCE`（源明明在正常轮询）。逐条把告警时间与当时的「已知最新事件时间」对齐，结果**全部**是真实的静默超阈值转换：
+
+| 告警时间 | 当时 inbox 最新事件 | 静默时长 | 阈值 |
+|---|---|---|---|
+| 14:56:05 | 14:35:33 | 20m32s | PT5M |
+| 15:09:05 | 15:04:03 | 5m02s | PT5M |
+| 15:19:06 | 15:04:03（15:17-15:18 的突发还没被轮询到） | 15m03s | PT5M |
+| 15:23:36 | 15:18:07 | 5m29s | PT5M |
+| 15:32:06 | 15:26:38 | 5m28s | PT5M |
+| 15:47:07 | 15:41:48 | 5m19s | PT5M |
+
+即：**机制与指南一致**——指南第 239/258/349 行要求「healthy 来源无新事件时定时器置为 STALE、每次转换只告警一次、恢复后再次静默可再告警」，这里正是每条对应一次转换（没有出现「同一次失联重复告警」）。阈值取自 `application.yml` 的 `default-stale-after: PT5M`，而 GitHub 公共事件 API 会成批延迟发布（本项目 README 已写明「lags by seconds to hours」），所以对这个源来说 5 分钟门槛偏紧，会规律性 flapping。
+
+处置：这不是代码缺陷（与 gap 分类器不同，后者是写入/读取语义自相矛盾），因此不改行为；但 24 小时证据里会出现约百条 STALE 告警，必须在已知限制里说清含义，避免被误读为采集器故障。阈值调优（为轮询型延迟源单独设定，如 PT30M/PT60M）与把新鲜度判据改为「轮询成功 + 上游窗口年龄」一起，列入发布后跟进项。`application.yml` 属冻结配置面（`config_hash` 覆盖），本轮不动。
+
+### 2026-10-01 P6.2 等待期：source health 分数被「字段本就不存在」的 null 率压低（第三个数据语义问题，已如实披露）
+
+顺着 `source_health` 行里的 `status=STALE / health_score=10.45 / null_rate=1` 查下去：
+
+- **评分函数本身是对的**：`SourceHealthCalculator` 的公式 `100 - min(dup*35,35) - min(late*25,25) - min(null*25,25) - min(alerts*5,20) - (stale?35:0)`，代入实测 `dup=0.2727`、`late=0`、`null=1`、告警≥4（封顶 20）、`stale=true` → `100-9.55-25-20-35 = 10.45`，与库中数值**逐位吻合**。
+- **问题在 nullRate 这个输入的含义**：它取最近 1 小时内 `NULL_RATE:*` 指标窗口的**最大值**；实测窗口里有 `NULL_RATE:action type=github.PushEvent value=1`（`NULL_COUNT:action=1`、`NULL_TOTAL:action=1`）。而 GitHub 的 `PushEvent` **本来就没有 action 字段**（action 属于 IssuesEvent/PullRequestEvent 等），所以这个 1.0 是 payload 结构使然，不是数据质量退化。
+- **两条路径互相矛盾**：告警路径（按基线比较字段是否由有变无）**一条 NULL_SPIKE 都没发**（本窗口告警只有 DUPLICATE_EVENT×3 与 STALE_SOURCE×6），说明检测器判定「没有退化」；而健康分数却据此扣满 25 分，且是「一个字段-窗口的 max 决定全源分数」，于是该源即使一切正常也长期被压到 60 以下（非 stale 时会被判定为 `UNHEALTHY`）。
+- **影响与处置**：不影响数据完整性、不影响任何 gate（门禁不读 health_score/null_rate），但会误导自托管者（把正常的 GitHub 源看成「不健康」）。修复需改 `src/main/java`（冻结面内），因此本轮不改；已在 README/RELEASE_NOTES 的已知限制中写明含义，并把「null 率只在基线确认存在的字段上聚合（或只用已确认字段的 max）」列入发布后跟进项，与 gap 分类器、STALE 阈值并列。
+
+### 2026-10-01 P6.2 等待期：9 条 OPEN 告警但 0 个 incident 的核查（符合契约，不是缺陷）
+
+窗口里出现「9 条 OPEN 告警 / 0 个 incident」，先按可疑处理，逐项查证后确认**符合规范**：
+
+- 告警构成：`DUPLICATE_EVENT sev=INFO`×3、`STALE_SOURCE sev=WARN`×6，全部 `incident_id=NULL`。
+- 契约（指南 §7.2 第 346 行）：「**非INFO的检测告警**按 source/event_type 关联到最近 5 分钟的 OPEN incident；其余 INFO 告警留在 alerts，避免重复提示产生 incident 洪水」。关键限定词是「检测告警」——指检测流水线（sink）产生的告警。
+- 接线核对：`AlertIncidentService.correlate()` 的唯一生产调用点在 `SinkPersistenceService` 第 123 行（检测流水线），而 `STALE_SOURCE` 由定时健康检查（`SourceHealthService`）直接写库产生，属健康/运维信号，不在该规则范围内。指南 §2 第 43 行把「incident 关联服务没有接到 sink」列为**旧版缺陷**，本版已修（sink 确实调用了 correlate），说明「关联挂在 sink 上」正是设计要求。
+- 数据自洽：本窗口检测流水线**没有产生任何非 INFO 告警**（只有 INFO 的重复事件提示），因此按规则 incident 数应为 0 ✓；6 条 WARN 是健康路径的转换告警，按 §7.2 不建 incident。
+- 结论：不是缺陷、不需要改；`IncidentLifecycleIntegrationTest` 已覆盖关联/并发/解决语义（G10 门禁要求「incident 与告警状态一致」）。此项与前述三项不同——**它是被契约明确排除的**，因此在文档中不改写任何行为，仅在状态里留证。
+
+### 2026-10-01 P6.2 等待期：一次 CI 真失败的原因——测试隔离竞态（已知不稳定测试，非产品缺陷）
+
+继上一次外部 502 之后，head `bec724b`（同样是纯文档提交）的 `Migration, retry and dead letter` job 红了。这次**不是**外部问题，逐层查清如下：
+
+- 失败点：`com.driftwatch.dlt.DeadLetterIntegrationTest.malformedRecordIsDeadLetteredAndDoesNotBlockLaterRecords`（`DeadLetterIntegrationTest.java:107`），断言原文：
+  `Expecting actual: "ingestion:2d341f46-…" to start with: "kafka:raw-events-v1:"`。同 job 的其余测试（`IdempotencyIntegrationTest` 5/0/0/0、`SinkRetryTest` 4/0/0/0、`SchemaTransactionIntegrationTest` 4/0/0/0）全绿。
+- 产品的 id 规则本身是**有意设计**（`DltMessage.diagnosticIdFor` 的 javadoc 写明「Stable diagnostic identity when the ingestion id is unknown」）：有 ingestion id 时用 `ingestion:<id>`，未知时回退到 `kafka:<topic>:<partition>:<offset>`。畸形字节流（`{not-json`）没有 ingestion id，因此应当落到 kafka 形式——这正是测试期望的。
+- 真正原因是**测试自身的隔离竞态**：该用例的等待只检查「存在任意一条 `reason LIKE 'MALFORMED_RECORD%'`」，随后用 `ORDER BY id DESC LIMIT 1` 取最新一条。而同一个类里 `deadLetterProjectionIsIdempotent()`（第 133-136 行）与 `streamReplayReentersAtTheRawTopic()`（第 206-214 行）也会插入 `reason='MALFORMED_RECORD: probe'` 的行（前者带 ingestion id）。若本用例自己那条 DLT 行还没落库，等待会立刻被别的行满足，随后 DESC 查询取到的就是**别人的探针行**（`ingestion:` 形式）→ 断言失败。JUnit 方法顺序固定但非人为可控，所以表现为偶发。
+- 判定：**产品行为正确，测试不稳定**；`src/test/java` 属冻结应用面，本轮不改（改动会作废窗口与门禁）。跟进项：让该用例的查询带上自己的唯一标记（例如按本次发送的 key/ingestion id 过滤，或插入带唯一前缀的探针），而不是依赖 `reason` 前缀 + `id DESC`。
+- 运营后果与恢复动作（已写入收尾程序）：CI 或 P3 阶段门禁**可能**因这条不稳定测试偶发失败；此时重跑该 job / 该门禁一次，并在记录中明确标注为「已知不稳定测试（测试隔离竞态）」，附上本次失败的确切断言——**不得**跳过或绕过检查，也不得把偶发失败当成产品缺陷。
+
+### 2026-10-01 P6.2 等待期：验收数据无合成输入的核查
+
+指南明确「模拟事件不能算真实输入」。项目里存在真实可用的合成入口（`DemoScenarioService` + `DemoController` 的 `POST /api/v1/demo/run-scenario/{scenario}`，8 个场景：duplicate/normal/schema-drift/late/null-spike/anomaly-spike/stale-source/field-range），因此专门核查了本窗口的实际数据：
+
+- 实测 `select origin, source, count(*) from raw_events group by origin, source` → **只有一行**：`GITHUB | github:apache/kafka | 311`。即本窗口的全部原始事件都来自官方 GitHub 源，**没有任何合成事件**。
+- 设计上也是可区分的：判定器统计真实源用的是 `origin='GITHUB'`（不是「所有 raw_events」），合成事件走 `source` 以 `demo` 开头（如 `demo-api`），两者在数据层就不会混为一谈。
+- 暴露面：demo 端点位于 `/api/**`，按既有安全规则**只对 `ROLE_ADMIN` 开放**，匿名不可调用。
+- 唯一缺口是**文档**：端点此前无任何说明，自托管者看到 `demo-api` 行会不明所以。已在 `docs/RUNBOOK.md` 的日常检查一节补上「合成检测演示」——列出 8 个场景、说明其 `source` 前缀、明确「GitHub 源的数据绝不合成」「验收证据只统计 origin=GITHUB」，并提示归档前过滤。属文档改动（非冻结面）。
+
+### 2026-10-01 P6.2 等待期：CI 第四种失败模式——320px 布局零余量（字体度量敏感，真实但边缘）
+
+统计最近 40 次 CI：35 成功 / 4 失败 / 1 进行中。四个失败已全部定因：`e6f59125`＝上游 Maven Central 502；`bec724bc` 与 `9ebc4b81`＝`DeadLetterIntegrationTest` 测试隔离竞态（分别落在 migration job 与 integration job）；`d5d4c917`＝**本条**，浏览器 job 的 `320-light` 水平溢出。
+
+证据（两侧对比，都是实测）：
+
+| 环境 | 320px 测量 | 结论 |
+|---|---|---|
+| 已验收 macOS 抓取（`.execution/verify/p61-browser10/after-report.json`，8 个视口） | 每个视口 `scrollWidth == clientWidth`（320/320、768/768、1024/1024、1440/1440，两主题） | **零余量**，恰好贴合 |
+| CI（Linux，`d5d4c917`） | `320-light: scrollWidth 331 vs clientWidth 320`（body 亦 331），同次 320-dark 无问题 | 溢出 11px |
+
+零余量 + 换到 Linux 回退字体就溢出 11px，是最典型的**字体度量敏感**特征（同一份 CSS，macOS 系统字体下恰好容纳，Linux 回退字体略宽即越界）；且它**不是确定的**——同 job 在其它 head（如 `ef55dc18`）为成功，说明与页面具体内容（表格里的 id/时间/计数长度）相关，属于临界翻转。同次抓取里 a11y 8/8 无违规、consoleErrors 0，仅此一项。
+
+影响与处置：
+- 真实但边缘的用户可见问题：Linux 桌面/窄窗口在 320px 用浅色主题时可能出现约 11px 横向滚动；macOS（验收环境）没有。发布说明中的「四宽度两主题已验证」对验收环境成立，但对 Linux 字体栈不保证，需如实写进已知限制。
+- 修复需改 `src/main/resources/static/dashboard/styles.css`（冻结面内），会作废窗口与门禁，本轮不改。跟进项：让窄布局对字体度量稳健（长标识/数字允许断行，如对表格单元格加 `overflow-wrap: anywhere`，或收窄 320 断点的内边距），并把零余量本身当成一个可改进点。
+- **不得**为了让这个检查变绿而放宽 `check-dashboard.py` 的溢出判据（属指南禁止的「改阈值绕过用例」）。合并前的应对：若失败项**仅**是这条 320-light 溢出测量，重跑该 job 一次并如实记录测量值与「已知临界布局问题」；若重跑仍失败，则记录为已知缺陷并在状态与回复中报告，不以任何方式绕过必需检查。
+
+### 2026-10-01 P6.2 等待期：2h 重启前的状态恢复路径核查
+
+2h 受控故障会真的重启应用，而检测器依赖 Kafka Streams 的窗口状态与全局基线存储。在故障前先核实恢复路径存在（而不是等重启后才发现基线丢了）：
+
+- **变更日志主题齐全**（`kafka-topics.sh --list`）：`driftwatch-streams-v1-{anomaly-scope,anomaly-window,duplicate-event-id,duplicate-payload,envelope-digest,null-window,scope-watermark}-store-changelog` 七个窗口/去重存储的 changelog 均在；全局基线存储的源主题 `schema-baselines-v1` 也在（另有 `raw-events-v1`、`quality-events-v1`、`dead-letter-events-v1`）。
+- **本地状态存在**（`dwt-soak_streams-state` 卷）：`/state/driftwatch-streams-v1/0_{0,1,2}` 三个分区目录，内含各 store 的 RocksDB 目录，合计 **80.5MB**。
+- 结论：重启时 Streams 走「本地状态优先、必要时回放 changelog」，全局基线存储从 `schema-baselines-v1` 重建；不存在「缺 changelog 导致基线静默丢失」的隐患。这条正是重启后要验证的东西（比对基线文件），现在先确认它有恢复的物质基础；状态体积 80MB/1.25h，对 44GiB 余量无压力。
+
+### 2026-10-01 P6.2 第七个 run 作废：真实接入的字段路径缺陷（本轮最严重的发现）
+
+2h 受控故障按计划执行并完成（`{"action":"app-restart","status":"completed","outage_seconds":32.6,"readiness_recovery_seconds":10.1}`），重启恢复对比也干净（见下）。但记录证据时发现 **10 条 NULL_SPIKE WARN 告警与 1 个自动关联 incident**（`NULL_SPIKE on github:apache/kafka`，`github.PullRequestEvent`，16:12:57Z）出现在完全正常的数据上，于是逐层查证：
+
+**根因：适配器从事件根节点读取类型专属字段，而 GitHub 的 API 把它们放在 `payload` 里。**
+
+三条独立证据：
+
+1. **上游实况**（对 `https://api.github.com/repos/apache/kafka/events` 的一次真实请求）：`PullRequestReviewEvent`/`PullRequestReviewCommentEvent`/`WatchEvent` 的顶层键只有 `actor, created_at, id, org, payload, public, repo, type`；`action` 在顶层**不存在**，而在 `payload.action` 里（值 `created`/`started`）。
+2. **本窗口实测**：`GithubEventConverter` 读的是 `raw.path("action")`、`raw.path("pull_request").path("number")`、`raw.path("forkee").path("id")` 等根路径，因此 334 条真实事件的 `action` **全部为 null**（包括 GitHub 必发 action 的类型），141 条 PullRequestEvent 的 `pull_request_number` 也全为 null——类型专属结构证据整条链路丢失。
+3. **测试为何没发现**：`GithubStubServer.event()` 把 `"action"` 放在**顶层**，正好复刻了这个 bug；集成测试因此永远看不到真实 API 的差异。
+
+**症状**：`NullSpikeProcessor` 按基线里的每个 leaf path 计算空值率，而那些永远为 null 的列在 `total>=3` 时必然 `null_rate 1.0 > 0.6` → 对每个事件类型在每个窗口都产生假告警（2 小时 10 条 WARN + 1 个 incident）。这违反指南第 5.4 节「nullish 指**基线中已确定的** leaf path 缺失或值为 null」——只在某些类型里才存在的列不是该类型的已确认字段。
+
+**处置（不拼接、不掩盖）**：
+
+1. 第七个 run `20261001T145553Z-soak24` 在 7786.8s 处标 FAILED 并写 `FAILURE-NOTES.txt`（保留 234 个样本、已完成的 2h 故障、checkpoint/result）；runner 停止，caffeinate 释放。判定：该窗口的**检测证据无效**，不作为验收。
+2. 修复（commit `e8315ac9`，应用面）：
+   - `GithubEventConverter`：类型专属字段一律从 `raw.path("payload")` 读取（顶层仍读 id/type/created_at/repo/actor/public）。
+   - `NullSpikeProcessor`：只对基线中**记录了值类型**（非 NULL）的 leaf path 计算空值率，符合指南 5.4 的措辞；固定信封来源不再对「该类型从不填充的列」告警。
+   - `GithubStubServer` 夹具改为真实 API 形状（字段放进 `payload`），新增 `GithubEventConverterTest`（真实形状 → 字段被填充；类型不携带的字段保持显式 null）与拓扑回归 `nullTypedBaselineFieldDoesNotFire`（NULL 型基线字段不触发，NUMBER 型缺失字段恰好触发一次）。
+3. 重新冻结候选：`.execution/runs/p7-freeze/manifest.json` —— `git_sha=e8315ac9`、`source_tree_hash=36cf3255292c1c43…`（204 文件）、`tooling_tree_hash=572a0db93370fb81…`（26 文件）、`image_id=sha256:e94fd4698ac040baf4259068f403336ee4e126922c61cbfe468cb51c3347033a`、**`content_identity.jar_content_hash=e2029fc2c98b58ea3b5e2b0bf842b8b525439ac6592797c883dd0f23ef08e3fc`**（取代 `e574ffcf…`；发布断言改用新值）。
+4. 本地验收环境（`.execution/soak.env`、`.execution/p61-load.env`）的 `DWT_APP_IMAGE` 由旧镜像 id 改为新镜像 id，重建后 app 运行 `e94fd469…`、readiness 200。
+5. 门禁复跑（后台链 `.execution/p7-gate-chain.sh`，日志 `.execution/gates.log`→`.execution/p7-gates.log`）：UNIT 已 PASSED（`p7-unit`，**174/0/0/0**，比 171 多出本轮 3 个新测试），随后 P2→P3→P4→P5→P5b→P5c→P6→load→package，最后自动重建栈并启动新的 24 小时窗口（run 8）。
+
+**教训（已写入测试与文档）**：夹具必须复刻上游真实形状，否则「契约测试全绿」与「真实接入可用」是两件事；这一条与本轮此前发现的 check-suite 排序、采样节奏误杀属同一类——判分/夹具与真实语义不一致。
+
+### 2026-10-01 P6.2 第七个 run 的 2h 重启恢复对比（方法有效，数字保留）
+
+尽管该窗口因上述缺陷作废，2h 故障本身按计划执行、恢复数据有效，因此保留对比数字作为**方法验证**（新窗口会重跑同一对比）：
+
+| 指标 | 故障前 15:28Z | 重启后 17:00Z |
+|---|---|---|
+| `polls_by_mode` | LIVE 6 / **BOOTSTRAP 1** | LIVE 24 / **BOOTSTRAP 1** |
+| `bootstrap_events` | 300 | 300（未重放） |
+| `live_events` | 8 | 35 |
+| `inbox_rows` | 308 | 335 |
+| `outbox_pending` | 0 | 0 |
+| `collector_state` | READY，etag 6d5ee8fd…，failures 0 | READY，etag 09642785…（保留并前进），failures 0 |
+
+结论：应用重启后轮询器**没有重新 bootstrap**、etag 保留、LIVE 轮询继续、inbox 连续、无失败计数——重启恢复路径成立；`scripts/poller-state.sh` 的对比方法也得到验证。
+
+
+**待办（下一个人工轮次）**：每小时自动化 `automation-82c729b4` 的提示词仍引用旧 run id `20261001T145553Z-soak24`、旧制品目录 `p61-package-final3` 与旧 content identity `e574ffcf…`。**本轮（非自动化轮次）尝试更新时发现：本会话工具集不含任何修改 automations 的工具（只有 CronList；无 CronUpdate/CronCreate/CronDelete），且 automations 存于服务端——本地 `~/.zcode/cli/db/db.sqlite` 中没有任何 automation/cron 表（只读查证），因此无法从本会话改写提示词。** 采取的替代措施：在「当前入口」表中加入醒目标记与当前 run/候选/identity/路径，并要求执行该自动化的 Agent（在本会话中运行、携带完整历史）以标记为准、动态发现 `status=RUNNING` 的 run；用户可在 Automations 页面把提示词中的旧值一次性替换为：run id 动态发现（当前 `20261001T182403Z-soak24`）、制品目录 `.execution/verify/p7-package2`、content identity `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`、候选 `573154b9`（HEAD `20f948be` 起）、manifest `.execution/runs/p7-freeze/manifest.json`。风险与缓解：即使提示词未更新，`soak-start` 的存活 runner 守卫会拒绝为旧 run id 启动重复窗口（宁可失败也不动别人的环境），且 G16 判定与收尾程序仍会由本会话的后续轮次推进。
+
+### 2026-10-01 P6.2 等待期：320px 布局的真实溢出（确定性 91px）与修复
+
+修复字段路径缺陷后复跑门禁时，P5c 报告 **320px 视口确定性溢出 91px**（`scrollWidth 411` vs `clientWidth 320`，**明暗两主题完全相同**，因此不是字体度量问题，而是固定内容宽度）。排查过程与证据：
+
+- 复现：直接跑 `scripts/p53-capture.mjs`（与门禁同一工具）稳定复现 411px；而未登录/未连 socket 的手工加载是 320px —— 说明是**内容**触发的。
+- 定位：用同一流程（Basic 头、colorScheme、等 socket 连接后测量）列出所有超出视口的元素：`.subpanel` 382px、`.subpanel-head`/`.timeline`/`.timeline-item` 348px，文本是 `github.PullRequestReviewCommentEvent · github:apache/kafka` —— **时间线（Recent Events / Latest Detector Activity）里的长不可断 token** 把布局撑开；表格单元格同理。
+- 影响：真实内容（GitHub 事件类型名、id、时间戳）在窄屏下必然出现，属于确定性布局缺陷；此前接受过的抓取之所以通过，是因为当时的数据里没有这么长的 token（零余量，靠运气）。
+- 修复（commit `573154b9`，仅 CSS）：
+  - `th, td { overflow-wrap: anywhere }` —— 表格里的长 token 换行；
+  - `.subpanel/.timeline/.timeline-item/.subpanel-head { min-width: 0; overflow-wrap: anywhere }` —— 时间线容器可收缩且可断行。
+- 复验：重建镜像、重建 app 后重跑同一抓取，**8 个抓取全部 `scrollWidth == clientWidth`**（320/320、768/768、1024/1024、1440/1440，两主题），`problems: None`，a11y 违规 0。先前「320px 零余量」的已知限制因此解除（README/RELEASE_NOTES 的相应限制文字将随之更新）。
+
+第三次冻结（当前候选）：`.execution/runs/p7-freeze/manifest.json` —— `git_sha=573154b9`、`source_tree_hash=bb6d14e7c7c02ed0…`（204 文件）、`image_id=sha256:2901be88df52de693b892825700ab8101fd72efb7bb944ad639b6018ad77d0d3`、**`content_identity=e2029fc2…`→`1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`**。本地验收环境镜像 pin 同步更新。门禁链（P2→P3→P4→P5→P5b→P5c→P6→UNIT→load→package）已在新候选上重跑，随后自动启动新的 24 小时窗口。
+
+### 2026-10-01 P6.2 门禁复跑：P5c 通过、P3/P4 一次瞬时失败（已定位为构建产物重复，非代码缺陷）
+
+在候选 `573154b9` 上复跑门禁的结果：
+
+| 门禁 | 结果 | 证据 |
+|---|---|---|
+| UNIT | PASSED（174/0/0/0） | `.execution/verify/p7-unit/` |
+| PHASE-P2（G03/G04） | PASSED（174/0/0/0，DetectionContractTest 23） | `.execution/verify/p7-P2/` |
+| PHASE-P3（G05-G07） | **FAILED 一次**：15 errors，全部是 `ApplicationContext` 加载失败，根因 `FlywayException: Found more than one migration with version 10`，offenders 为 `target/classes/db/migration/V10__dead_letter_replays 2.sql` 与 `V10__dead_letter_replays.sql` | `.execution/verify/p7-P3/mvn-phase-p2.log` |
+| PHASE-P4（G08/G09） | 同一次失败（同因，context 复用） | `.execution/verify/p7-P4/` |
+| PHASE-P5（G10） | PASSED（174/0/0/0） | `.execution/verify/p7-P5/` |
+| PHASE-P5b（G11） | PASSED | `.execution/verify/p7-P5b/` |
+| PHASE-P5c（G12） | **PASSED：8 抓取、`problems: []`、a11y 违规 0** | `.execution/verify/p7-P5c/` |
+| PHASE-P6（G13） | PASSED（Trivy 无 HIGH/CRITICAL、无密钥/凭据文件） | `.execution/verify/p7-P6/` |
+
+对 P3/P4 的判定：**重复文件只出现在 `target/classes`，不在 `src`**（`src/main/resources/db/migration/` 只有 12 个正确版本、`git ls-files` 一致；若 `src` 里有未跟踪文件，`assert_clean_git` 会先失败而不会跑测试），且**同一套件在其前后的 P2/P5/UNIT 三次运行都 174/0/0/0 通过**，之后 `target` 重建（17:39Z）再未复现。仓库内没有任何脚本或测试会写迁移文件，compose 也没有把仓库挂进容器。因此判定为**构建产物层面的瞬时重复**（同一 `target` 目录在两轮 `mvnw clean test` 交接时的拷贝竞态），非代码缺陷；仍按「失败不掩盖」原则记录在此，并在门禁链结束后**单独重跑 P3 与 P4** 以取得干净记录。防御性改进（若再复现）：在门禁里加一条 preflight，断言迁移目录每个版本只有一个文件，让这类产物问题以明确信息快速失败，而不是 15 条 context 错误。
+
+### 2026-10-01 P6.2 门禁链收口：P3/P4 干净复跑、packaging 顺序缺陷修复、第九个 run 启动
+
+单跑 P3 与 P4（`./scripts/phases/phase-P3.sh` / `phase-P4.sh`，候选 `573154b9`）：**均 PASSED**，174/0/0/0、`git_sha 20f948be`、`GithubPollerIntegrationTest` 12 用例，瞬时重复未再现；证据 `.execution/verify/p7-P3`、`.execution/verify/p7-P4`（旧失败目录已改名保留，不覆盖）。
+
+随后 `verify.sh package` 一次 **FAILED**：`checksums do not match the shipped artifacts`（18 行，其中 1 行是 bundle 条目）。根因在**我自己本轮新加的脚本** `scripts/phases/package-release.sh`：它先对 `OUT_DIR` 算 checksums、之后才用 `tar -czf` 生成 bundle，于是 `checksums.txt` 里记录的 bundle sha256 与最终落盘的 bundle 不同（内容相同、mtime 不同）。修复：把 bundle 的生成移到 checksums 之前（先 `tar`、后 `find ... > checksums.txt`）。重跑进入全新目录：`./scripts/verify.sh package --out .execution/verify/p7-package2 --image driftwatch-tower:local --version v1.0.0 --manifest .execution/runs/p7-freeze/manifest.json` → **PASSED**（`gate.json: status PASSED, git_sha 20f948be`），镜像身份一致、匿名 health 200、API 200、ingest 202、重启恢复 true、`problems []`。即：上一轮暴露的打包缺陷已修好并用干净证据覆盖，本轮的 load 门禁（180000@100.0/s、ack p95 4.9ms、commit p95 111.8ms、drain 30.1s）与 package 门禁都是新候选上的最终记录。
+
+**第九个 24 小时 run `20261001T182403Z-soak24`**：2026-10-01T18:24:03Z 启动（PID 5002，`caffeinate -i -w 5002` 防休眠），86400s，预计 **2026-10-02T18:24:03Z** 结束；`state.json` 记录 `git_sha=20f948be`、`image.image_id=sha256:2901be88…`（与冻结候选一致），app 容器实测同一镜像且 healthy，fault plan 为 2h app-restart / 8h kafka-stop / 16h db-stop。启动即开始真实事件轮询（bootstrap 轮），此前每个窗口启动后约 1 分钟即可见数百条真实事件。本窗口是**第一个用加固后 runner 启动的窗口**（含 live-runner 拒绝与镜像归属校验），且启动前已确认全局只有这一个 runner。
+
+### 2026-10-01 发布前预检（把「24 小时后才会知道」的风险提前到现在）
+
+1. **跨平台内容身份已对齐**：CI run `36900410544`（head `573154b9`，原生 amd64）的 `Image and SCA` 任务构建镜像并上传 `content-identity` 附件，值为 `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d`，与本机 arm64 冻结值**逐字节相同**（证据 `.execution/verify/p7-amd64-identity/`，含 note.txt）。即 `release.yml` 的「Assert the application content identity」不会因平台差异在发布时失败。
+2. **发布失败模式复核**：`release.yml` 的步骤顺序是 build → identity 断言 → 推送 tag/镜像 → 尝试改可见性 → **匿名按 digest 拉取（失败即 `::error::` 并使 job 失败）** → 最后才 `gh release create`。因此可见性问题的失败是干净的：镜像与 tag 已推送、Release 不创建，重跑可入。
+3. **匿名探针（当前）**：`https://ghcr.io/token?scope=repository:jeremyl691/driftwatch-tower:pull` → 403、`/v2/.../manifests/v1.0.0` → 401（包尚不存在或不可匿名访问，与预期一致，无法据此预判发布后的可见性）。
+4. **凭据作用域实测**：`gh auth status` → `gist, read:org, repo, workflow`；`gh api /user/packages` → 403「need at least read:packages」；环境无 packages 作用域 token。结合 GitHub 文档「首次发布默认 private」，判定可见性很可能需要一次人工动作（见「当前入口」的 external_blocker 与恢复命令）。
+5. **pre-fault 基线已就位**：本窗口（`20261001T182403Z-soak24`）的 2h 故障前状态已写入 `.execution/verify/p61-soak-prefault-baseline.json`（自动化读的路径）并另存 `.execution/verify/p7-soak-prefault-baseline.json`；第七窗口的旧基线保留为 `p61-soak-prefault-baseline-run7.json`。当前值：BOOTSTRAP 1 轮、真实事件 96、LIVE 0、inbox 96、outbox 0、gaps 0、failures 0（2h 故障在 20:24:03Z，届时按 `scripts/poller-state.sh` 对比）。
+6. **PR #1 状态**：OPEN、head `cb838e3c`（分支 `codex/release-v1`）、base main、`MERGEABLE`（`mergeStateStatus=UNSTABLE`，因新 head 的 CI 正在跑）；合并前置条件（head 为 `573154b9` 的后代、五 job 全绿）在 G16 通过后逐条复核。
+
+### 2026-10-01 第九窗口运行期观测：告警画像（全部为规格内的真实检测，非缺陷）
+
+19:01Z（elapsed 2182s，samples 69，max_gap 32.3s，readiness 200）时的真实数据：distinct 真实事件 **112**（bootstrap 96 / live 16）、poll 轮 8、`source_gaps` 3 条（全部 NO_OVERLAP，属已知的保守分类器，RELEASE_NOTES 已披露）、**alerts 13**、**incident 1**、dead letter 0、未确认 receipt 0、outbox 0、lag 未判（窗口结束才判）。逐条核对了 13 条告警的构成与真实性：
+
+| 类型/严重度 | 条数 | 内容与证据 |
+|---|---|---|
+| STALE_SOURCE WARN | 4 | 源在 5 分钟新鲜度窗口内没有新事件（例：18:24:47 报「最后事件 18:18:57Z」，health_score 65.0）；指南 7.2「STALE_SOURCE 按 source 转换生成一次」，3+1 条即 4 次状态转换，与公共 API 的突发式发布一致（已披露） |
+| LATE_EVENT INFO | 4 | 真实投递延迟：如「arrived 310s / 789s after event_timestamp（阈值 PT5M）」，证据保存了 received_at、event_timestamp 与阈值，符合指南 5.2 |
+| LATE_EVENT WARN | 1 | 29 小时：事件创建于 `2026-09-30T13:29:32Z`、首次收到 `2026-10-01T18:45:32Z`（lateness 105360s）。独立核验：该事件确在 `raw_events`（mode=LIVE）；本窗口 LIVE 集合的 event_timestamp 跨度 `2026-09-30T13:29:32Z..2026-10-01T18:55:01Z`、received_at 集中在 18:29:42..18:55:50 —— 即 LIVE 响应**确实**带回了创建于很久之前的、此前从未见过的条目，规则按 received_at−event_timestamp 如实判定 |
+| DUPLICATE_EVENT INFO | 4 | 同 id 在 5 分钟内被再次看到（轮询页重叠），INFO 且不建 incident——正是去重路径生效的证据 |
+| incident | 1 | 由上述 WARN LATE_EVENT 按指南 7.2「非 INFO 告警按 source/event_type 关联 incident」自动开启（alert id 9 → incident 1，PushEvent，OPEN） |
+
+结论：没有一条告警是字段路径缺陷那样的假阳性——每条都有真实数字支撑、且与指南 5.2/7.2 的判定与升级规则一致。但它暴露了一个**默认调参/分类**问题（与既已披露的 gaps 分类器、health 分数同类）：公共事件 API 会把「首次可见的旧事件」交给 LATE_EVENT，规则无法区分「投递延迟」与「首次可见」，非 INFO 升级因此会产生一条 incident。G16 判据不涉及告警条数（判据是 distinct≥20、LIVE≥1、三次故障完成且 outage≤60s/readiness≤300s、账本一致、lag=0、连续性、内存、末尾 readiness），因此不影响判定；但已如实写进 `docs/RELEASE_NOTES.md` 与 `README.md` 的已知限制（含本条实测数字），并把「区分首次可见与延迟投递」列为发布后修复项。两处均为**文档**改动（不在冻结应用面内，content identity 是 jar），因此 `p7-package2` 的 bundle 不再包含最新文档：发布时的 package 门禁会重新生成 bundle 与 checksums（收尾程序第 10 步），发布制品以那次为准。
+
+### 后续记录要求
+
+- UTC 时间、任务、绑定 SHA、实际命令、退出码、结果、证据相对路径。
+- 失败原因和下一动作；旧失败不覆盖成新通过。
+- 外部阻塞需要说明失败动作/原始错误、可继续任务和精确恢复命令。
+- 用户暂停或额度耗尽记录恢复状态，不改成产品完成。
+- PR、Release、image@digest 和最终安装证据在真实出现后填写，不预填假 URL。
+
+## 文档交付核验
+
+2026-09-30 文档交付核验通过：
+
+- 5 个活动 Markdown 文件中的 19 个本地文件链接均存在。
+- 7 段 Bash 命令块通过 bash -n；代码围栏闭合，文件结尾和空白检查通过。
+- 指南与状态中的 21 个任务、18 个 Gate 一一对应。
+- 批准删除的 7 个目标均已删除，活动文档没有指向它们的链接或旧计划引用。
+- 保留的架构 SVG 是有效 XML；它同步了经核对远端文档中的正确箭头和标签。
+- git diff --check 通过；变更范围为 README、样例说明、docs 和批准删除的旧计划。业务代码、pom、Docker/Compose、CI、旧迁移没有变化。
+- 本轮没有执行产品重构、运行24小时任务、提交/推送或发布；产品任务仍是 NOT_STARTED，门禁仍是 NOT_RUN。
+
+这些结果只证明文档交付，不证明未来产品门槛通过。后续运行结果在新的任务记录中追加，不改写这份交接核验。

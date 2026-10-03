@@ -1,5 +1,6 @@
 package com.driftwatch.quality;
 
+import com.driftwatch.config.DriftwatchProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -32,8 +33,8 @@ public class FieldRangeDetector implements QualityDetector {
     private final Map<String, Bounds> bounds;
 
     @Autowired
-    public FieldRangeDetector(ObjectMapper objectMapper, FieldRangeProperties properties) {
-        this(objectMapper, properties.getFields());
+    public FieldRangeDetector(ObjectMapper objectMapper, DriftwatchProperties properties) {
+        this(objectMapper, properties.detector().fieldRange().fields());
     }
 
     public FieldRangeDetector(ObjectMapper objectMapper, Map<String, Bounds> bounds) {
@@ -54,8 +55,23 @@ public class FieldRangeDetector implements QualityDetector {
 
     private List<DraftAlert> checkField(DetectionContext ctx, JsonNode payload, String fieldPath, Bounds b) {
         JsonNode node = payload.get(fieldPath);
-        if (node == null || node.isNull() || !node.isNumber()) {
+        if (node == null || node.isNull()) {
+            // Missing/null values are the null-spike detector's evidence, not a range violation.
             return List.of();
+        }
+        if (!node.isNumber()) {
+            ObjectNode typeEvidence = objectMapper.createObjectNode();
+            typeEvidence.put("field_path", fieldPath);
+            typeEvidence.put("reason", "NOT_A_NUMBER");
+            typeEvidence.put("value_type", node.getNodeType().name());
+            typeEvidence.put("rule_version", RuleVersions.RULES_VERSION);
+            return List.of(new DraftAlert(
+                    AlertType.FIELD_OUT_OF_RANGE,
+                    Severity.WARN,
+                    ctx.event().source(), ctx.event().eventType(), fieldPath,
+                    "Field " + fieldPath + " is configured numeric but is "
+                            + node.getNodeType().name() + " in " + ctx.event().eventType(),
+                    typeEvidence));
         }
         double value = node.doubleValue();
         if (b.inRange(value)) {
@@ -66,6 +82,7 @@ public class FieldRangeDetector implements QualityDetector {
         evidence.put("value", value);
         evidence.put("min", b.min);
         evidence.put("max", b.max);
+        evidence.put("rule_version", RuleVersions.RULES_VERSION);
         String reason = b.max == null
                 ? value + " < " + b.min
                 : b.min == null

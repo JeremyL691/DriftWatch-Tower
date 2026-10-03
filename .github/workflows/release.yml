@@ -1,0 +1,164 @@
+name: Release
+
+# Publishes the accepted candidate to GHCR and cuts the GitHub Release.
+#
+# Default permissions stay read-only; only this job may write, and only for a tag or an explicit
+# dispatch. The job rebuilds from the same locked inputs as the accepted candidate and asserts the
+# application content identity recorded in the freeze manifest before anything is pushed, so a
+# published image cannot silently contain different bytes than the one that was verified.
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag to publish (for example v1.0.0)
+        required: true
+      candidate_sha:
+        description: Commit that passed the acceptance gates
+        required: true
+      content_identity:
+        description: content_identity.jar_content_hash from the freeze manifest
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: jeremyl691/driftwatch-tower
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.inputs.candidate_sha || github.sha }}
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Resolve the version being published
+        id: version
+        run: |
+          version="${{ github.event.inputs.version || github.ref_name }}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "candidate=${{ github.event.inputs.candidate_sha || github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Reject an existing public version before pushing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Asset upload is resumable separately; this workflow must never overwrite an existing tag.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" > /tmp/existing-tag.json 2>/tmp/tag-error.txt; then
+            echo "::error::tag already exists; compare the release context and resume asset verification instead of republishing"
+            exit 1
+          fi
+          grep -q 'HTTP 404' /tmp/tag-error.txt || { cat /tmp/tag-error.txt; exit 1; }
+
+      - name: Build the candidate image from the locked inputs
+        # Maven Central occasionally answers 5xx while the build resolves dependencies (observed
+        # 2026-10-01: 502 Bad Gateway on net.bytebuddy:byte-buddy-parent). The build is
+        # deterministic, so retry the transient failure instead of failing the release; Docker
+        # reuses the layers that completed, so a retry only redoes the failed one. A genuine
+        # build error still fails after the attempts, and the content-identity step below is
+        # what actually decides whether the image may be published.
+        run: |
+          for attempt in 1 2 3; do
+            if docker build --tag candidate:local .; then
+              exit 0
+            fi
+            echo "::warning::image build attempt $attempt failed; retrying in $((attempt * 20))s"
+            sleep $((attempt * 20))
+          done
+          echo "::error::image build failed after 3 attempts"
+          exit 1
+
+      - name: Assert the application content identity
+        env:
+          EXPECTED: ${{ github.event.inputs.content_identity }}
+        run: |
+          if [ -z "$EXPECTED" ]; then
+            # A tag push cannot name the frozen identity, and publishing an image that was never
+            # compared with the accepted candidate is what this workflow exists to prevent.
+            # Refuse instead of warning; dispatch the workflow with content_identity instead.
+            echo "::error::refusing to publish: no content identity supplied (dispatch release.yml with the content_identity of the accepted candidate)"
+            exit 1
+          fi
+          container=$(docker create candidate:local)
+          docker cp "$container:/app/app.jar" /tmp/app.jar
+          docker rm -f "$container" >/dev/null
+          actual=$(python3 - <<'PY'
+          import hashlib, zipfile
+          digest = hashlib.sha256()
+          with zipfile.ZipFile('/tmp/app.jar') as archive:
+              for info in sorted(archive.infolist(), key=lambda entry: entry.filename):
+                  digest.update(f"{info.filename}\0{info.file_size}\0{info.CRC}\n".encode())
+          print(digest.hexdigest())
+          PY
+          )
+          echo "expected $EXPECTED"
+          echo "actual   $actual"
+          [ "$actual" = "$EXPECTED" ] || { echo "::error::rebuilt image does not match the accepted candidate"; exit 1; }
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Tag and push
+        id: push
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          sha="${{ steps.version.outputs.candidate }}"
+          docker tag candidate:local "$REGISTRY/$IMAGE_NAME:$version"
+          docker tag candidate:local "$REGISTRY/$IMAGE_NAME:sha-${sha:0:12}"
+          docker push "$REGISTRY/$IMAGE_NAME:$version"
+          docker push "$REGISTRY/$IMAGE_NAME:sha-${sha:0:12}"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY/$IMAGE_NAME:$version" | cut -d@ -f2)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Verify an anonymous pull by digest
+        run: |
+          digest="${{ steps.push.outputs.digest }}"
+          clean="$(mktemp -d)"
+          if DOCKER_CONFIG="$clean" docker pull "$REGISTRY/$IMAGE_NAME@$digest" > /tmp/anon-pull.txt 2>&1; then
+            echo "anonymous pull by digest succeeded"
+          else
+            echo "::error::anonymous pull by digest failed: the package is not public, so the published image cannot be installed anonymously"
+            cat /tmp/anon-pull.txt
+            cat <<'EOF'
+          Recovery (the image itself is already pushed; only visibility is missing):
+            1. GitHub UI: https://github.com/users/JeremyL691/packages/container/driftwatch-tower/settings
+               -> Danger Zone -> Change visibility -> Public.
+            2. Re-run this workflow with the same accepted candidate and identity.
+          The workflow token (packages: write) can push but may not be allowed to change visibility.
+          EOF
+            exit 1
+          fi
+          rm -rf "$clean"
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          sha="${{ steps.version.outputs.candidate }}"
+          if gh release view "$version" >/dev/null 2>&1; then
+            echo "release $version already exists; leaving it untouched"
+            exit 0
+          fi
+          gh release create "$version" --prerelease \
+            --title "DriftWatch Tower $version" \
+            --notes "Candidate commit: $sha
+          Image: $REGISTRY/$IMAGE_NAME@${{ steps.push.outputs.digest }}
+
+          Acceptance evidence and the release manifest are attached as assets." \
+            --target "$sha"

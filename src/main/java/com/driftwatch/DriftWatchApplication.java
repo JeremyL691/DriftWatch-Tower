@@ -1,12 +1,14 @@
 package com.driftwatch;
 
-import com.driftwatch.quality.FieldRangeProperties;
+import com.driftwatch.config.DriftwatchProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
-@EnableConfigurationProperties(FieldRangeProperties.class)
+@EnableConfigurationProperties(DriftwatchProperties.class)
+@EnableScheduling
 public class DriftWatchApplication {
 
     public static void main(String[] args) {
