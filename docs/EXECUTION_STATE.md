@@ -2,7 +2,13 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
-## 当前阻塞记录 (2026-10-02 晚间 PDT)
+## 当前恢复窗口 (2026-10-03 13:31 PDT)
+
+主机已实际核验屏幕盖打开且AC Power。旧失败窗口的数据库已备份，原始采样/故障/失败报告和卷均保留；仅停止 `dwt-soak-recovery` 自有栈。新的完整86400秒窗口 `20261003T203107Z-soak24-r2` 在2026-10-03T20:31:08Z启动，runner PID64169，创建时间Sat Oct 3 13:31:08 2026；project `dwt-soak-r2`，env `.execution/soak-r2.env`，port18089，使用全新卷和冻结镜像sha256:2901be88…，不借用旧事件/故障。BOOTSTRAP1轮/198真实事件，READY、pending0、failures0。完成监视器PID64179与防睡眠断言已登记。
+
+预计2026-10-04T20:31:08Z（10月4日13:31 PDT）后正式判定G16。计划故障：10月3日15:31应用重启、21:31 Kafka中断、10月4日05:31数据库中断。持续保持lid open、AC Power、联网；睡眠仍会使窗口失败。G16/P6.2 RUNNING，最终G02/G15/G17和发布均未完成。下面晚间阻塞和13:00恢复段落为历史。
+
+## 历史阻塞记录 (2026-10-02 晚间 PDT)
 
 恢复 run `20261002T200503Z-soak24-recovery` 在 `2026-10-03T01:37:56Z` 自动 FAILED：UTC采样空洞156秒，monotonic仅32.6秒。正式失败报告 `.execution/verify/failed-20261002T200503Z-soak24-recovery/soak-report.json` 已保存，原始采样、故障、采集账本和主机睡眠日志保留。runner及完成监视器均已退出，不存在有效运行窗口。下面13:00恢复记录为历史。
 
@@ -38,7 +44,7 @@
 |---|---|
 | document_revision | 1.3 |
 | handoff_date | 2026-10-01，本聊天接管，America/Los_Angeles |
-| product_goal_status | BLOCKED（主机合盖且电池供电）；冻结应用 573154b9 的短门禁已通过；G16 进行中，最终 G02/G15 尚待重跑，P7 尚未完成 |
+| product_goal_status | RUNNING（主机条件恢复，新完整窗口进行中）；冻结应用 573154b9 的短门禁已通过；G16 进行中，最终 G02/G15 尚待重跑，P7 尚未完成 |
 | current_phase | P6 |
 | current_task | P6.2 |
 | next_action | 以 release context 监测当前 run；完成监视器写入 `.execution/verify/final-soak` 后先正式核验 G16，再串行 final-compose / final-package、最终提交五项 CI、合并、预发布及 G17 |
@@ -56,8 +62,8 @@
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | 无有效runner；20261002T200503Z-soak24-recovery FAILED，156秒UTC空洞。等待打开屏幕盖并接AC后再启动完整窗口。 |
-| external_blocker | 主机合盖且Battery Power，需lid open和AC Power后重新完整24小时；之后仍需公开GHCR并验匿名拉取。 |
+| active_soak_run | **`20261003T203107Z-soak24-r2` (RUNNING)**，PID64169，project dwt-soak-r2，env .execution/soak-r2.env，port18089；开始2026-10-03T20:31:08Z，预计2026-10-04T20:31:08Z后正式判定。 |
+| external_blocker | 当前无主机阻塞；lid open与AC Power已核验。未来首次GHCR推送后须公开包并核验匿名digest拉取。 |
 
 > **接管规则**：旧 ZCode 自动化已暂停。本聊天 heartbeat 以执行计划和 release context 为准；同时验证 PID、创建时间、命令、采样更新、项目与镜像。不得根据旧投递文字或单个 RUNNING 状态启动第二个窗口。
 
@@ -113,7 +119,7 @@ G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compos
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
 | P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
 | P6.1 | 冻结候选、短门槛、负载 | RUNNING | 当前冻结应用 573154b9；G13/G14 已通过，旧候选与旧 bundle 不代替 final G02/G15，G16 后重跑 |
-| P6.2 | 24 小时真实验收 | BLOCKED | 当前 run 20261002T200503Z-soak24-recovery RUNNING；旧窗口睡眠失败保留，正式通过报告 final-soak 尚未生成 |
+| P6.2 | 24 小时真实验收 | RUNNING | 当前run 20261003T203107Z-soak24-r2，完整86400秒；前两窗口FAILED保留，final-soak尚未生成。 |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
 | P7.2 | 公共 Release / GHCR | NOT_STARTED | - |
 | P7.3 | 匿名安装及最终报告 | NOT_STARTED | - |
