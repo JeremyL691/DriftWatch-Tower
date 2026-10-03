@@ -2,6 +2,12 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
+## 当前阻塞记录 (2026-10-02 晚间 PDT)
+
+恢复 run `20261002T200503Z-soak24-recovery` 在 `2026-10-03T01:37:56Z` 自动 FAILED：UTC采样空洞156秒，monotonic仅32.6秒。正式失败报告 `.execution/verify/failed-20261002T200503Z-soak24-recovery/soak-report.json` 已保存，原始采样、故障、采集账本和主机睡眠日志保留。runner及完成监视器均已退出，不存在有效运行窗口。下面13:00恢复记录为历史。
+
+当前主机硬件读取 `AppleClamshellState=Yes`、`AppleClamshellCausesSleep=Yes`，电源为 Battery Power；系统反复Maintenance Sleep。需要打开屏幕盖、接AC电源并保持联网。heartbeat继续监测；实际核验lid open和AC Power后，归档并停止失败窗口自有栈，使用冻结镜像和新卷启动唯一完整86400秒窗口。禁止在该环境条件未恢复时反复启动窗口，禁止拼接旧采样。预计完成时间等待新的实际启动后重算。G16 FAILED，P6.2 BLOCKED，发布未开始。
+
 ## 当前恢复记录 (2026-10-02 13:00 PDT)
 
 旧 run `20261001T182403Z-soak24` 已正式 FAILED。主机睡眠导致 7 段 UTC 采样空洞，最长 3646 秒；macOS monotonic 时钟未计入睡眠，旧版连续性检查无法发现这些空洞。已停止核验归属的 PID5002 和旧完成监视器，保留原始采样、故障、数据库备份和正式失败报告 `.execution/verify/failed-20261001T182403Z-soak24/soak-report.json`。297 个真实事件、三次恢复和零积压不能代替连续 24 小时通过。
@@ -32,7 +38,7 @@
 |---|---|
 | document_revision | 1.3 |
 | handoff_date | 2026-10-01，本聊天接管，America/Los_Angeles |
-| product_goal_status | RUNNING；冻结应用 573154b9 的短门禁已通过；G16 进行中，最终 G02/G15 尚待重跑，P7 尚未完成 |
+| product_goal_status | BLOCKED（主机合盖且电池供电）；冻结应用 573154b9 的短门禁已通过；G16 进行中，最终 G02/G15 尚待重跑，P7 尚未完成 |
 | current_phase | P6 |
 | current_task | P6.2 |
 | next_action | 以 release context 监测当前 run；完成监视器写入 `.execution/verify/final-soak` 后先正式核验 G16，再串行 final-compose / final-package、最终提交五项 CI、合并、预发布及 G17 |
@@ -50,8 +56,8 @@
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | **`20261002T200503Z-soak24-recovery` (RUNNING)**；2026-10-02T20:05:03Z，PID73766，project dwt-soak-recovery，env .execution/soak-recovery.env，port18088；冻结镜像2901be88；新卷、BOOTSTRAP99事件。预计2026-10-03T20:05:03Z后判定。旧20261001T182403Z-soak24 FAILED，正式报告及数据库保留。 |
-| external_blocker | 尚未实际阻塞。首次 GHCR 推送后需在 GitHub 包设置将包设为 Public，再核验匿名 digest 拉取；官方界面动作由本聊天接管。不存在 visibility PATCH API；无须为该无效操作申请 PAT。 |
+| active_soak_run | 无有效runner；20261002T200503Z-soak24-recovery FAILED，156秒UTC空洞。等待打开屏幕盖并接AC后再启动完整窗口。 |
+| external_blocker | 主机合盖且Battery Power，需lid open和AC Power后重新完整24小时；之后仍需公开GHCR并验匿名拉取。 |
 
 > **接管规则**：旧 ZCode 自动化已暂停。本聊天 heartbeat 以执行计划和 release context 为准；同时验证 PID、创建时间、命令、采样更新、项目与镜像。不得根据旧投递文字或单个 RUNNING 状态启动第二个窗口。
 
@@ -107,7 +113,7 @@ G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compos
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
 | P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
 | P6.1 | 冻结候选、短门槛、负载 | RUNNING | 当前冻结应用 573154b9；G13/G14 已通过，旧候选与旧 bundle 不代替 final G02/G15，G16 后重跑 |
-| P6.2 | 24 小时真实验收 | RUNNING | 当前 run 20261002T200503Z-soak24-recovery RUNNING；旧窗口睡眠失败保留，正式通过报告 final-soak 尚未生成 |
+| P6.2 | 24 小时真实验收 | BLOCKED | 当前 run 20261002T200503Z-soak24-recovery RUNNING；旧窗口睡眠失败保留，正式通过报告 final-soak 尚未生成 |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
 | P7.2 | 公共 Release / GHCR | NOT_STARTED | - |
 | P7.3 | 匿名安装及最终报告 | NOT_STARTED | - |
