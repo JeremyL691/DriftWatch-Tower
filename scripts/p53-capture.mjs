@@ -180,10 +180,18 @@ for (const theme of themes) {
       const produced = await scenarioResponse;
       if (produced.status() !== 202) throw new Error('dashboard demo did not accept');
       const scenario = await produced.json();
-      await page.waitForFunction(async () => {
-        const rows = await fetch('/api/v1/alerts').then(r => r.json());
-        return rows.some(a => a.status === 'OPEN' && a.source.includes('demo') && a.incident_id != null);
-      }, null, { timeout: 60000 });
+      try {
+        await page.waitForFunction(async () => {
+          const rows = await fetch('/api/v1/alerts').then(r => r.json());
+          return rows.some(a => a.status === 'OPEN' && a.source.includes('demo') && a.incident_id != null);
+        }, null, { timeout: 60000 });
+      } finally {
+        const observed = await page.evaluate(async () => ({
+          alerts: await fetch('/api/v1/alerts').then(r => r.json()),
+          incidents: await fetch('/api/v1/incidents').then(r => r.json()),
+        }));
+        writeFileSync(join(outDir, `${label}-action-input.json`), JSON.stringify({scenario, observed}, null, 2));
+      }
       const action = await page.evaluate(async () => {
         const rows = await fetch('/api/v1/alerts').then(r => r.json());
         const alert = rows.find(a => a.status === 'OPEN' && a.source.includes('demo') && a.incident_id != null);
