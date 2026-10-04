@@ -33,7 +33,9 @@ def gh(*args):return subprocess.check_output(['gh',*args],text=True)
 released=gh('api',f'repos/:owner/:repo/commits/{version}','--jq','.sha').strip()
 if released != c['release_sha']:raise ValueError('existing tag does not name designated release SHA')
 release=json.loads(gh('release','view',version,'--json','url,assets'))
-pr=json.loads(gh('pr','view','1','--json','state,headRefOid,statusCheckRollup'))
+release_pr=c.get('release_pr_number',1)
+if not isinstance(release_pr,int) or release_pr<1:raise ValueError('invalid release PR identity')
+pr=json.loads(gh('pr','view',str(release_pr),'--json','state,headRefOid,statusCheckRollup'))
 required={'Unit and topology','Real Kafka and PostgreSQL integration','Migration, retry and dead letter','Image and SCA','Dashboard at four viewports'}
 checks={check['name']:check for check in pr.get('statusCheckRollup') or []}
 if pr['state']!='MERGED' or not all(name in checks and checks[name].get('conclusion')=='SUCCESS' and checks[name].get('status')=='COMPLETED' for name in required):
