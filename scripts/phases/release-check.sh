@@ -21,7 +21,7 @@ REGISTRY_IMAGE="ghcr.io/jeremyl691/driftwatch-tower"
 PR_NUMBER=""
 CONTEXT=""
 PORT=18086
-PROJECT="dwt-release-check-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+PROJECT="dwt-release-check-$(date -u +%Y%m%dt%H%M%Sz)-$$"
 while [ $# -gt 0 ]; do
   case "$1" in
     --context) CONTEXT="$2"; shift 2 ;;

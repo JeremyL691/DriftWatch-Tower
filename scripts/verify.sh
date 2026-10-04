@@ -424,8 +424,11 @@ cmd_package() {
   "$check_script" --out "$OUT_DIR" --artifacts "$artifacts" --version "${VERSION:-v1.0.0}" \
     > "$OUT_DIR/package-check.log" 2>&1
   local exit_code=$?
-  [ "$exit_code" -eq 0 ] && finish_gate PACKAGE PASSED "$started" 0 >/dev/null \
-                          || finish_gate PACKAGE FAILED "$started" "$exit_code" >/dev/null
+  if [ "$exit_code" -ne 0 ]; then
+    finish_gate PACKAGE FAILED "$started" "$exit_code" >/dev/null
+  fi
+  # package-check emits an explicit safe evidence list. Do not replace it with a
+  # recursive directory inventory containing deployment credentials and image tars.
   exit "$exit_code"
 }
 
