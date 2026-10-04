@@ -111,3 +111,33 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 
 恢复顺序：读状态 -> 核对 checkout/SHA -> 查原 runner 锁和进程身份 -> 验证采样连续性 -> 继续现有任务或保留失败记录并新建 run。不能看到 PID 就启动第二套。
 
+
+## Archived v1.0.0 entry snapshot (2026-10-04 16:45 PDT)
+
+## 当前入口
+
+| 字段 | 当前值 |
+|---|---|
+| document_revision | 1.3 |
+| handoff_date | 2026-10-01，本聊天接管，America/Los_Angeles |
+| product_goal_status | RUNNING；G02/G13/G15/G16通过，PR1已合并、公开预发布已上传；G17公开安装验收进行中 |
+| current_phase | P7 |
+| current_task | P7.3 G17 |
+| next_action | 完成G17，上传最终报告与补充证据，匿名复核最终附件后提升正式Release |
+| local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
+| remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
+| execution_branch | codex/release-v1（已推送到 origin；PR #1 已开） |
+| execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
+| handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
+| original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
+| candidate_sha | 573154b9（应用面；GitHub 适配器字段路径 + 320px 布局两处修复后冻结，全部受影响门禁已在其上重跑 PASSED） |
+| source_tree_hash | bb6d14e7c7c02ed0f3aa26073c206f99976aa0ec493440b72a0d9a013b1483b7（见 `.execution/runs/p7-freeze/manifest.json`；204 文件） |
+| config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
+| candidate_image_id / public_digest | 本地镜像 sha256:2901be88df52de693b892825700ab8101fd72efb7bb944ad639b6018ad77d0d3（未发布；`content_identity.jar_content_hash` = 1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d；发布断言使用该值） |
+| target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
+| docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
+| release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
+| application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
+| active_soak_run | `20261003T203107Z-soak24-r2` PASSED，86413.6秒；20:31:44Z正式报告；数据库归档、自有栈已停止。 |
+| external_blocker | 当前无主机阻塞；lid open与AC Power已核验。未来首次GHCR推送后须公开包并核验匿名digest拉取。 |
+

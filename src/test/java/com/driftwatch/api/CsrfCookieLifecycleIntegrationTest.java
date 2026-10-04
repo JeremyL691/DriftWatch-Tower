@@ -4,6 +4,7 @@ import com.driftwatch.support.ContainerIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.annotation.DirtiesContext;
 
 import java.net.CookieManager;
 import java.net.CookiePolicy;
@@ -18,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real HTTP cookies avoid MockMvc csrf() replacing the application token repository. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class CsrfCookieLifecycleIntegrationTest extends ContainerIntegrationTest {
     @LocalServerPort int port;
 

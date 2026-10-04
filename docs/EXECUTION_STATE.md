@@ -2,6 +2,28 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
+## Current v1.0.1 execution (2026-10-04 16:45 PDT)
+
+The detailed development and release schedule is [RELEASE_V1_0_1_PLAN.md](RELEASE_V1_0_1_PLAN.md); the execution guide remains the acceptance specification. Approved runtime inspection completed at 16:20 PDT: PID80166 is absent, no active gate/soak process was found, and the three owned `dwt-v101-gates` containers are healthy. Compose directory/config, named-volume labels and the candidate app image match this repository. Historical soak stacks/volumes are retained and stopped. The host has open lid, AC power and idle-sleep prevention; GitHub connectivity is available. Evidence: `.execution/verify/20261004232049Z-runtime-ownership/report.json`. The earlier approval-availability blocker is resolved.
+
+The pending real-HTTP context closure passed full Java21/Docker-required validation: 176 tests, zero failures/errors/skips, including the CSRF lifecycle, OpenAPI, idempotency and detection-contract classes. Evidence: `.execution/verify/v101-isolation-validation-r1/`. This development validation precedes clean-commit acceptance gates. PR3 is OPEN/DRAFT at `fed951f`, with five CI successes on that exact head; a new head requires fresh CI. Remote main is `5a40f734d31778d702bc9273a418af10d2baa589`. Public v1.0.0 remains a prerelease, and no v1.0.1 Release/tag exists. No v1.0.1 soak is active. Next: commit, rebuild/refreeze, run fresh bound gates and a complete new window.
+
+## Current v1.0.1 task and gate status
+
+| Task / gate | Status | Evidence / remaining work |
+|---|---|---|
+| P1.2 / CSRF repair | RUNNING | Real HTTP and local browser actions pass; final candidate acceptance pending |
+| P5.2 / test isolation | RUNNING | Full development suite 176/0/0/0; clean-commit G11 pending |
+| P6.1 / G00, G02-G15 | RUNNING | Commit/refreeze and fresh bound gates required; first-attempt results remain archived |
+| P6.2 / G16 | NOT_STARTED | New complete86400s candidate-specific window required |
+| P7.1 | RUNNING | PR3 draft; final-head CI and gate-qualified merge pending |
+| P7.2 | NOT_STARTED | v1.0.1 public image/prerelease pending |
+| P7.3 / G17 | NOT_STARTED | Public install, final reports/anonymous asset verification and formal promotion pending |
+
+## Historical v1.0.1 recovery (2026-10-04 15:45 PDT)
+
+The repaired image passed actual browser demo ingestion (202), acknowledgment (200), and resolution (200). The first v1.0.1 gate chain passed Compose and P2/P3/P4/P5, then failed P5b in test setup: separate cleanup deletes allowed a background consumer to recreate a `baseline_outbox` reference before deleting its schema version. The failed gate and original freeze are preserved under `.execution/verify/v101-attempt1/`. A proposed atomic TRUNCATE cleanup also failed with a deadlock (176 tests, one error); its log and XML reports are preserved under `.execution/verify/v101-isolation-deadlock/`, and that unsuccessful cleanup change was reverted. The dedicated real-HTTP test context closure remains uncommitted and requires runtime validation. No new 24-hour window has started and no gate chain is currently running. Automatic approval review could not complete the next runtime inspection because of an account usage limit; the action was not executed. Resolve that external availability condition before further privileged runtime work. The revised tree must be committed and refrozen, with fresh gates, before starting a new complete window. `repair-status.json` and `v101-chain-state.json` record the current block. Public v1.0.0 remains an unpromoted prerelease with the CSRF blocker disclosed.
+
 ## 当前阻断与修复 (2026-10-04 15:05 PDT)
 
 G16/G02/G13/G15与PR1发布均已通过，但G17实际FAILED。公开v1.0.0在成功管理请求后删除XSRF-TOKEN Cookie，随后Dashboard确认/解决操作返回403。原始证据：`.execution/verify/failed-final-release-dashboard-resolve/`；独立浏览器诊断`.execution/verify/g17-action-diagnostic/browser-fifth/diagnostic-mutation-trace.json`和独立HTTP Cookie Jar `.execution/verify/g17-action-diagnostic/cookie-lifecycle.json`。Cookie清除现象在GET与POST均已复现；现有mock CSRF测试没有覆盖真实Cookie生命周期。
@@ -54,50 +76,44 @@ G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒�
 
 当前表格已按 release context 对齐。替换前的旧入口、任务、门禁与恢复表逐字保存在 [历史状态表](HISTORICAL_EXECUTION_TABLES.md)；下方有日期的运行记录继续保留为历史。
 
-## 当前入口
+## Current execution entry
 
-| 字段 | 当前值 |
+| Field | Current value |
 |---|---|
-| document_revision | 1.3 |
-| handoff_date | 2026-10-01，本聊天接管，America/Los_Angeles |
-| product_goal_status | RUNNING；G02/G13/G15/G16通过，PR1已合并、公开预发布已上传；G17公开安装验收进行中 |
-| current_phase | P7 |
-| current_task | P7.3 G17 |
-| next_action | 完成G17，上传最终报告与补充证据，匿名复核最终附件后提升正式Release |
-| local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
-| remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
-| execution_branch | codex/release-v1（已推送到 origin；PR #1 已开） |
-| execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
-| handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
-| original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 573154b9（应用面；GitHub 适配器字段路径 + 320px 布局两处修复后冻结，全部受影响门禁已在其上重跑 PASSED） |
-| source_tree_hash | bb6d14e7c7c02ed0f3aa26073c206f99976aa0ec493440b72a0d9a013b1483b7（见 `.execution/runs/p7-freeze/manifest.json`；204 文件） |
+| document_revision | 1.4 |
+| product_goal_status | RUNNING: v1.0.1 acceptance recovery; public v1.0.0 remains a prerelease after G17 failed |
+| current_phase | P6: new-candidate acceptance |
+| current_task | P6.1: commit validated P5b isolation repair, rebuild/refreeze and rerun gates |
+| next_action | Commit the validated context closure and updated plan; rebuild/refreeze; execute bound gates and a fresh full86400s window |
+| execution_branch | codex/csrf-release-v1-0-1; PR #3 OPEN/DRAFT |
+| remote_snapshot_sha | 5a40f734d31778d702bc9273a418af10d2baa589, remote main verified 2026-10-04 |
+| candidate_sha | fed951fd6ae5e0f12769ea2d09d58eec6c91313c before committing the validated test-context closure |
+| source_tree_hash | Revised tree NOT_FROZEN; first attempt archived in `.execution/verify/v101-attempt1/freeze/` |
 | config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
-| candidate_image_id / public_digest | 本地镜像 sha256:2901be88df52de693b892825700ab8101fd72efb7bb944ad639b6018ad77d0d3（未发布；`content_identity.jar_content_hash` = 1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d；发布断言使用该值） |
-| target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
-| docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
-| release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
-| application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | `20261003T203107Z-soak24-r2` PASSED，86413.6秒；20:31:44Z正式报告；数据库归档、自有栈已停止。 |
-| external_blocker | 当前无主机阻塞；lid open与AC Power已核验。未来首次GHCR推送后须公开包并核验匿名digest拉取。 |
+| candidate_image_id / public_digest | First-attempt local image sha256:c4501e15c040038a96d2499e9821a071317e2003de467a620af512fea2058ed2; rebuild/refreeze pending; v1.0.1 public digest absent |
+| target_release | v1.0.1; no existing remote tag or Release verified 2026-10-04 |
+| release_authorization | User-authorized repository commits/push, own PR merge, Actions, public GitHub/GHCR release and isolated acceptance resources |
+| docs_delivery_status | Detailed v1.0.1 plan and actual status updated; commit pending |
+| active_soak_run | NONE for v1.0.1; passed historical v1.0.0 r2 window is stopped and archived |
+| external_blocker | None currently verified; approved Docker/process/network access restored |
 
 > **接管规则**：旧 ZCode 自动化已暂停。本聊天 heartbeat 以执行计划和 release context 为准；同时验证 PID、创建时间、命令、采样更新、项目与镜像。不得根据旧投递文字或单个 RUNNING 状态启动第二个窗口。
 
-> **证据归属**：旧 run `20261001T182403Z-soak24` 的三次故障均保留为历史，不能计入当前恢复窗口。当前故障仅从 release context 指定 run 的 `faults.jsonl` 读取；使用 `scripts/poller-state.sh --project dwt-soak-r2 --env-file .execution/soak-r2.env` 比较同一 run 的 `prefault-takeover.json` 和故障前后观察。
+> **Evidence ownership**: all v1.0.0 windows, including passed r2, are historical for v1.0.1. Read faults/observations only from the new run explicitly bound in the current release context. No new run exists yet.
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
 
-## 当前窗口第一次故障证据 (13:26 PDT)
+## Historical first-window fault evidence (2026-10-01 13:26 PDT)
 
 `app-restart` 于 `2026-10-01T20:24:11Z` 完成，outage32.6s、readiness恢复10.2s。前后 BOOTSTRAP 轮数1→1，LIVE事件23→26，inbox119→122，pending0、failures0、READY，容器与冻结镜像保持一致。证据：`.execution/soak/20261001T182403Z-soak24/faults.jsonl` 与 `observation-20261001T202601Z.json`；G16 仍 RUNNING，不能从一次故障推断整窗通过。
 
 ## 收尾程序
 
-按 [RELEASE_FINISH_PLAN.md](RELEASE_FINISH_PLAN.md) 执行。历史程序已迁至 [历史交接](HISTORICAL_RELEASE_HANDOFF.md)，不得再使用其中旧 manifest、mtime 门禁选择、无效 visibility PATCH 或源码安装路径。
+Follow [RELEASE_V1_0_1_PLAN.md](RELEASE_V1_0_1_PLAN.md) and [RELEASE_FINISH_PLAN.md](RELEASE_FINISH_PLAN.md).历史程序已迁至 [历史交接](HISTORICAL_RELEASE_HANDOFF.md)，不得再使用其中旧 manifest、mtime 门禁选择、无效 visibility PATCH 或源码安装路径。
 
-正式预检: `python3 scripts/release-context.py --context .execution/finalize/release-context.json`。正式证据打包: `./scripts/evidence-pack.sh --context .execution/finalize/release-context.json --out .execution/evidence/final-release --run-id final-release`。
+正式预检: `python3 scripts/release-context.py --context .execution/finalize/release-context.json`。正式证据打包: `./scripts/evidence-pack.sh --context .execution/finalize/release-context.json --out .execution/evidence/v101-release --run-id v101-release`。
 
-G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compose / final-package。上传必须指定具体 evidence tar 文件，不能按目录时间挑包。发布安装: `./scripts/verify.sh release --context .execution/finalize/release-context.json --out .execution/verify/final-release --version v1.0.0 --pr 1`。
+G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compose / final-package。上传必须指定具体 evidence tar 文件，不能按目录时间挑包。发布安装: `./scripts/verify.sh release --context .execution/finalize/release-context.json --out .execution/verify/v101-final-release --version v1.0.1 --pr 3`。
 
 ## 历史审核快照
 
@@ -112,7 +128,7 @@ G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compos
 - 原始 [GitHub CI](https://github.com/JeremyL691/DriftWatch-Tower/actions/runs/33464634754)属于远端快照，不属于未来候选。
 - 可移植的复现输入与判断已写进指南；不得依赖当前机器 /private/tmp 里的文件才能执行。
 
-## 任务状态
+## Historical task status (v1.0.0 candidate)
 
 允许状态：NOT_STARTED / RUNNING / PASSED / FAILED / BLOCKED。任务从以下列表更新，不再另建竞争路线图。
 
@@ -138,9 +154,9 @@ G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compos
 | P6.2 | 24 小时真实验收 | PASSED | 20261003T203107Z-soak24-r2，86413.6秒，327真实事件；final-soak正式报告；前两FAILED保留。 |
 | P7.1 | 合并自己的重构 PR | PASSED | PR1，release SHA 7e1051de，c1dc0fff五项CI全绿 |
 | P7.2 | 公共 Release / GHCR | RUNNING | v1.0.0预发布，digest匿名拉取已通过，等待G17最终promotion |
-| P7.3 | 匿名安装及最终报告 | RUNNING | `.execution/verify/final-release`，原始失败记录保留 |
+| P7.3 | 匿名安装及最终报告 | FAILED | Actual CSRF-cookie failure; `.execution/verify/failed-final-release-dashboard-resolve/`; v1.0.1 recovery required |
 
-## 门禁状态
+## Historical gate status (v1.0.0 candidate)
 
 NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修复后G03必须通过。
 
@@ -163,11 +179,11 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G14 100/s、30分钟 | PASSED | 记录提交 `c1b0b517` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-load/gate.json` |
 | G15 制品安装 | PASSED | final-package，bundle SHA256 dbcfef4130635087143c687840b7eb45bd598fe51b0fb4d4dbaf32c123d2e611；指定身份落库/重启通过 |
 | G16 24h | PASSED | `20261003T203107Z-soak24-r2`；`.execution/verify/final-soak/soak-report.json`，327真实事件、三次故障、零积压 |
-| G17 公开独立安装 | NOT_STARTED | `.execution/verify/final-release`，必须使用明确 context、匿名附件及公开 digest |
+| G17 公开独立安装 | FAILED | Protected Dashboard operations failed; public v1.0.0 remains a prerelease |
 
-## 长任务与恢复字段
+## Historical long-running fields (first v1.0.0 window)
 
-24 小时 run 进行中（P6.2）。已作废的 run 保留为历史，不作证据。
+The fields below refer to the failed first v1.0.0 window; they do not describe an active v1.0.1 run.
 
 | 字段 | 值 |
 |---|---|
