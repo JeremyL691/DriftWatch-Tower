@@ -51,7 +51,7 @@ if docker image inspect "$IMAGE" >/dev/null 2>&1; then
     || die "image scan failed; see $OUT_DIR/trivy-image.err"
   # Credential material must not be baked into the runtime image.
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" \
-    image --scanners secret --format json "$IMAGE" > "$OUT_DIR/trivy-image-secrets.json" 2>&1 \
+    image --scanners secret --format json "$IMAGE" > "$OUT_DIR/trivy-image-secrets.json" 2> "$OUT_DIR/trivy-image-secrets.err" \
     || die "image secret scan failed; see $OUT_DIR/trivy-image-secrets.json"
   docker run --rm "$IMAGE" sh -c 'ls -la /app 2>/dev/null; find / -maxdepth 3 -name "*.env" -o -maxdepth 3 -name "credentials*" 2>/dev/null | head' \
     > "$OUT_DIR/image-file-list.txt" 2>&1 || true
