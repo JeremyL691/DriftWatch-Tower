@@ -7,12 +7,18 @@ const state = {
 
 // ponytail: respects user OS-level reduce-motion; single source of truth for the whole file.
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const GSAP_OK = typeof gsap !== "undefined";
+// Motion is CSS-only: GSAP is not loaded and every animation call becomes a safe no-op.
+const fx = typeof gsap !== "undefined" ? gsap : {
+  from: () => {}, to: () => {}, fromTo: () => {}, set: () => {}, killTweensOf: () => {},
+  registerPlugin: () => {}, utils: { toArray: () => [] },
+};
 
 // All REST controllers live under /api/v1 (WebSocket /ws is registered separately, unversioned).
 const API = "/api/v1";
 
 document.addEventListener("DOMContentLoaded", () => {
+  renderIcons();
+  initTheme();
   document.getElementById("refreshAll").addEventListener("click", () => refreshDashboard());
   document.getElementById("applyAlertFilters").addEventListener("click", () => loadAlerts());
   document.querySelectorAll(".scenario-button").forEach((button) => {
@@ -23,13 +29,35 @@ document.addEventListener("DOMContentLoaded", () => {
   initMotion();
 });
 
-function connectWebSocket() {
-  const socket = new SockJS("/ws");
+// Backoff reconnect: the socket re-authenticates with a fresh ticket and the dashboard
+// re-queries the data, so a reconnect never leaves a stale LIVE label on screen.
+let wsAttempt = 0;
+
+async function wsTicket() {
+  const response = await fetch(`${API}/dashboard/api/ws-ticket`);
+  if (!response.ok) {
+    throw new Error(`ticket request failed with ${response.status}`);
+  }
+  return (await response.json()).ticket;
+}
+
+async function connectWebSocket() {
+  let ticket;
+  try {
+    ticket = await wsTicket();
+  } catch (error) {
+    updateWsStatus(false);
+    scheduleReconnect();
+    return;
+  }
+  const socket = new SockJS(`/ws?ticket=${encodeURIComponent(ticket)}`);
   state.stompClient = Stomp.over(socket);
   state.stompClient.debug = null;
 
   state.stompClient.connect({}, () => {
+    wsAttempt = 0;
     updateWsStatus(true);
+    refreshDashboard();
     state.stompClient.subscribe("/topic/alerts", (message) => {
       const alert = JSON.parse(message.body);
       prependLiveAlert(alert);
@@ -43,8 +71,60 @@ function connectWebSocket() {
     });
   }, () => {
     updateWsStatus(false);
-    setTimeout(connectWebSocket, 3000);
+    scheduleReconnect();
   });
+}
+
+function scheduleReconnect() {
+  wsAttempt = Math.min(wsAttempt + 1, 6);
+  const delay = Math.min(1000 * Math.pow(2, wsAttempt - 1), 30000);
+  setTimeout(() => {
+    connectWebSocket();
+    // Re-query after reconnecting instead of trusting whatever is on screen.
+    refreshDashboard();
+  }, delay);
+}
+
+// Locally bundled Lucide icon set; no external icon CDN.
+function renderIcons() {
+  if (window.lucide && typeof window.lucide.createIcons === "function") {
+    window.lucide.createIcons();
+  }
+}
+
+// Dark stays the brand default; the toggle stores only the preference, never a credential.
+function initTheme() {
+  const stored = readCookie("dwt-theme");
+  if (stored === "light" || stored === "dark") {
+    document.documentElement.dataset.theme = stored;
+  }
+  updateThemeToggle();
+  const toggle = document.getElementById("themeToggle");
+  if (toggle) {
+    toggle.addEventListener("click", () => {
+      const current = document.documentElement.dataset.theme
+        || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      const next = current === "light" ? "dark" : "light";
+      document.documentElement.dataset.theme = next;
+      document.cookie = `dwt-theme=${next};path=/;max-age=31536000;samesite=lax`;
+      updateThemeToggle();
+    });
+  }
+}
+
+function updateThemeToggle() {
+  const label = document.getElementById("themeToggleLabel");
+  const toggle = document.getElementById("themeToggle");
+  if (!label || !toggle) return;
+  const current = document.documentElement.dataset.theme
+    || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  label.textContent = current === "light" ? "Dark" : "Light";
+  toggle.setAttribute("aria-pressed", current === "light" ? "true" : "false");
+}
+
+function readCookie(name) {
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 function updateWsStatus(connected) {
@@ -87,7 +167,152 @@ async function refreshDashboard() {
     loadSourceHealth(),
     loadSchemas(),
     loadRecentEvents(),
+    loadCoverage(),
+    loadIncidents(),
+    loadMetricWindows(),
+    loadDeadLetters(),
   ]);
+}
+
+async function loadIncidents() {
+  const rows = await fetchJson(`${API}/incidents`);
+  const body = document.getElementById("incidentRows");
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="6" class="muted">No incidents</td></tr>';
+    return;
+  }
+  body.innerHTML = rows
+    .map((incident) => `<tr>
+        <td>${incident.id}</td>
+        <td>${escapeHtml(incident.title || "")}</td>
+        <td>${escapeHtml(incident.source || "")}</td>
+        <td><span class="status-chip">${escapeHtml(incident.status || "")}</span></td>
+        <td>${formatDate(incident.created_at)}</td>
+        <td>${incident.status === "RESOLVED"
+          ? '<span class="muted">resolved</span>'
+          : `<button class="ghost-button" data-resolve-incident="${incident.id}">Resolve</button>`}</td>
+      </tr>`)
+    .join("");
+  body.querySelectorAll("[data-resolve-incident]").forEach((button) => {
+    button.addEventListener("click", () => resolveIncident(button));
+  });
+}
+
+// Loading, disabled repeat submission and explicit success/failure feedback (guide 7.5).
+async function resolveIncident(button) {
+  const id = button.getAttribute("data-resolve-incident");
+  button.disabled = true;
+  button.textContent = "Resolving…";
+  try {
+    await postJson(`${API}/incidents/${id}/resolve`, { rootCause: "resolved from dashboard" });
+    button.textContent = "Resolved";
+    await loadIncidents();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Retry resolve";
+    showActionError(`Resolve failed: ${error.message}`);
+  }
+}
+
+async function loadMetricWindows() {
+  const rows = await fetchJson(`${API}/metrics/windows?size=20`);
+  const body = document.getElementById("metricRows");
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="5" class="muted">No metric windows yet</td></tr>';
+    return;
+  }
+  body.innerHTML = rows
+    .map((row) => `<tr>
+        <td>${escapeHtml(row.source)}</td>
+        <td>${escapeHtml(row.event_type)}</td>
+        <td>${escapeHtml(row.metric_name)}</td>
+        <td>${formatDate(row.window_start)}</td>
+        <td>${row.metric_value}</td>
+      </tr>`)
+    .join("");
+}
+
+async function loadDeadLetters() {
+  const rows = await fetchJson(`${API}/dead-letters?size=20`);
+  const body = document.getElementById("deadLetterRows");
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="6" class="muted">No dead letters</td></tr>';
+    return;
+  }
+  body.innerHTML = rows
+    .map((row) => `<tr>
+        <td class="code-chip">${escapeHtml(row.diagnostic_id || "")}</td>
+        <td>${escapeHtml(row.stage || "")}</td>
+        <td>${escapeHtml(row.source || "")}</td>
+        <td>${row.attempts}</td>
+        <td><span class="status-chip">${escapeHtml(row.status || "")}</span></td>
+        <td><button class="ghost-button" data-dead-letter="${row.id}">Detail</button></td>
+      </tr>`)
+    .join("");
+  body.querySelectorAll("[data-dead-letter]").forEach((button) => {
+    button.addEventListener("click", () => showDeadLetter(button.getAttribute("data-dead-letter")));
+  });
+}
+
+async function showDeadLetter(id) {
+  const detail = await fetchJson(`${API}/dead-letters/${id}`);
+  const panel = document.getElementById("deadLetterDetail");
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="subpanel-head">
+      <h3>${escapeHtml(detail.diagnostic_id || `Dead letter ${id}`)}</h3>
+      <button class="ghost-button" id="replayDeadLetter">Replay</button>
+    </div>
+    <p class="muted">${escapeHtml(detail.reason || "")}</p>
+    <p><span class="code-chip">${escapeHtml(detail.kafka_topic || "")}</span>
+       partition ${detail.kafka_partition ?? "-"} offset ${detail.kafka_offset ?? "-"}</p>
+    <details><summary>Payload and recovery history</summary>
+      <pre tabindex="0" role="region" aria-label="Dead letter payload and recovery history">${escapeHtml(JSON.stringify({ payload: detail.payload, replays: detail.replays }, null, 2))}</pre>
+    </details>`;
+  document.getElementById("replayDeadLetter").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "Replaying…";
+    try {
+      await postJson(`${API}/dead-letters/${id}/replay`, {});
+      button.textContent = "Replayed";
+      await loadDeadLetters();
+      await showDeadLetter(id);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Retry replay";
+      showActionError(`Replay failed: ${error.message}`);
+    }
+  });
+}
+
+function showActionError(message) {
+  const panel = document.getElementById("deadLetterDetail");
+  panel.hidden = false;
+  panel.innerHTML = `<p class="action-error">${escapeHtml(message)}</p>`;
+}
+
+// Evaluation coverage (guide 5.3): an OK status must not be read as "the window evaluated this".
+async function loadCoverage() {
+  const body = await fetchJson(`${API}/events/coverage?hours=24`);
+  const total = body.total || 0;
+  const rows = [
+    ["Included in a window", body.included, true],
+    ["Expired (past grace)", body.excluded.expired, false],
+    ["Future (beyond tolerance)", body.excluded.future, false],
+    ["Skipped by mode (bootstrap/replay)", body.excluded.skipped_mode, false],
+    ["No window evaluation recorded", body.excluded.no_window_evaluation, false],
+    ["Baseline active", body.baseline.applied, true],
+    ["Baseline missing (checks skipped)", body.baseline.pending, false],
+  ];
+  document.getElementById("coverageWindow").textContent = `last ${body.window_hours}h`;
+  document.getElementById("coverageRows").innerHTML = rows
+    .map(([label, value, good]) => {
+      const share = total ? `${((value / total) * 100).toFixed(1)}%` : "–";
+      return `<tr class="${good ? "" : "coverage-excluded"}"><td>${escapeHtml(label)}</td>`
+        + `<td>${value}</td><td>${share}</td></tr>`;
+    })
+    .join("");
 }
 
 async function loadSummary() {
@@ -133,7 +358,7 @@ async function runScenario(button) {
   setScenarioStatus(`Running ${scenario}...`, "Publishing demo events and waiting for detectors to react.");
   disableScenarioButtons(true);
   try {
-    const response = await fetch(`${API}/demo/run-scenario/${scenario}`, { method: "POST" });
+    const response = await mutate(`${API}/demo/run-scenario/${scenario}`);
     if (!response.ok) {
         throw new Error(`Scenario request failed with ${response.status}`);
     }
@@ -214,7 +439,7 @@ function renderAlertsTable(alerts) {
             <td>${escapeHtml(alert.field_path ?? "-")}</td>
             <td>${escapeHtml(alert.message)}</td>
             <td>${formatDate(alert.created_at)}</td>
-            <td><details><summary>View</summary><pre>${escapeHtml(JSON.stringify(alert.evidence, null, 2))}</pre></details></td>
+            <td><details><summary>View</summary><pre tabindex="0" role="region" aria-label="Alert evidence">${escapeHtml(JSON.stringify(alert.evidence, null, 2))}</pre></details></td>
           </tr>
         `).join("")}
       </tbody>
@@ -363,6 +588,34 @@ async function fetchJson(url) {
   return response.json();
 }
 
+/** POST with the CSRF header; throws on a non-2xx so the caller can offer a retry. */
+async function postJson(url, body) {
+  const response = await mutate(url, {
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed for ${url}: ${response.status}`);
+  }
+  return response.status === 204 ? null : response.json();
+}
+
+// Browser mutations must carry the CSRF token from the readable XSRF-TOKEN cookie.
+// Tokens are never stored in localStorage.
+function csrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function mutate(url, options = {}) {
+  const headers = Object.assign({}, options.headers || {});
+  const token = csrfToken();
+  if (token) {
+    headers["X-XSRF-TOKEN"] = token;
+  }
+  return fetch(url, Object.assign({}, options, { method: options.method || "POST", headers }));
+}
+
 function formatDate(value) {
   if (!value) return "-";
   return new Date(value).toLocaleString();
@@ -399,12 +652,12 @@ function wait(ms) {
 // ---------------------------------------------------------------------------
 
 function initMotion() {
-  if (GSAP_OK) gsap.registerPlugin(ScrollTrigger);
+  if (typeof gsap !== "undefined") fx.registerPlugin(ScrollTrigger);
 
   // #1 Entrance stagger — panels fade up as they scroll into view.
-  if (!REDUCED_MOTION && GSAP_OK) {
-    gsap.utils.toArray(".panel").forEach((panel) => {
-      gsap.from(panel, {
+  if (!REDUCED_MOTION && typeof gsap !== "undefined") {
+    fx.utils.toArray(".panel").forEach((panel) => {
+      fx.from(panel, {
         opacity: 0,
         y: 24,
         duration: 0.55,
@@ -416,7 +669,7 @@ function initMotion() {
 
   // #3 Gold scan line on .stat-card hover.
   // ponytail: per-card overlay element, swept via gsap x; uses existing --gold token (no color edit).
-  if (!REDUCED_MOTION && GSAP_OK) {
+  if (!REDUCED_MOTION && typeof gsap !== "undefined") {
     document.querySelectorAll(".stat-card").forEach((card) => {
       const overlay = document.createElement("div");
       overlay.style.cssText =
@@ -427,8 +680,8 @@ function initMotion() {
       card.style.overflow = "hidden";
       card.appendChild(overlay);
       card.addEventListener("mouseenter", () => {
-        gsap.killTweensOf(overlay);
-        gsap.fromTo(overlay, { xPercent: -120 }, { xPercent: 220, duration: 0.85, ease: "power2.inOut" });
+        fx.killTweensOf(overlay);
+        fx.fromTo(overlay, { xPercent: -120 }, { xPercent: 220, duration: 0.85, ease: "power2.inOut" });
       });
     });
   }
@@ -492,14 +745,14 @@ function initMotion() {
 function animateCount(el, target) {
   if (!el) return;
   const value = Number(target) || 0;
-  if (REDUCED_MOTION || !GSAP_OK) {
+  if (REDUCED_MOTION || typeof gsap === "undefined") {
     el.textContent = formatNumber(value);
     return;
   }
   if (el._countTween) el._countTween.kill();
   const start = parseInt(String(el.textContent || "0").replace(/[^\d-]/g, ""), 10) || 0;
   const state = { v: start };
-  el._countTween = gsap.to(state, {
+  el._countTween = fx.to(state, {
     v: value,
     duration: 0.9,
     ease: "power2.out",
@@ -510,28 +763,28 @@ function animateCount(el, target) {
 
 // #4 Scenario status card crossfade.
 function crossfadeIn(el) {
-  if (!el || REDUCED_MOTION || !GSAP_OK) return;
-  gsap.from(el, { opacity: 0, y: -6, duration: 0.3, ease: "power2.out" });
+  if (!el || REDUCED_MOTION || typeof gsap === "undefined") return;
+  fx.from(el, { opacity: 0, y: -6, duration: 0.3, ease: "power2.out" });
 }
 
 // #5 Status badge (pill) color crossfade — pills in freshly-rendered tables fade in.
 function crossfadePills(container) {
-  if (!container || REDUCED_MOTION || !GSAP_OK) return;
+  if (!container || REDUCED_MOTION || typeof gsap === "undefined") return;
   const pills = container.querySelectorAll(".pill");
   if (!pills.length) return;
-  gsap.from(pills, { opacity: 0, scale: 0.85, duration: 0.35, ease: "power2.out", stagger: 0.015 });
+  fx.from(pills, { opacity: 0, scale: 0.85, duration: 0.35, ease: "power2.out", stagger: 0.015 });
 }
 
 // #6 Alert/event slide-in from left + bounce.
 function slideInTimeline(item) {
-  if (!item || REDUCED_MOTION || !GSAP_OK) return;
-  gsap.from(item, { x: -40, opacity: 0, duration: 0.5, ease: "back.out(1.4)" });
+  if (!item || REDUCED_MOTION || typeof gsap === "undefined") return;
+  fx.from(item, { x: -40, opacity: 0, duration: 0.5, ease: "back.out(1.4)" });
 }
 
 // #7 WebSocket data update pulse — ws-dot scale yoyo on incoming message.
 function pulseWsDot() {
-  if (REDUCED_MOTION || !GSAP_OK) return;
+  if (REDUCED_MOTION || typeof gsap === "undefined") return;
   const dot = document.querySelector("#wsStatus .ws-dot");
   if (!dot) return;
-  gsap.fromTo(dot, { scale: 1 }, { scale: 1.6, duration: 0.18, ease: "power2.out", yoyo: true, repeat: 1 });
+  fx.fromTo(dot, { scale: 1 }, { scale: 1.6, duration: 0.18, ease: "power2.out", yoyo: true, repeat: 1 });
 }

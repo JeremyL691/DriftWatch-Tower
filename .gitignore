@@ -30,3 +30,14 @@ HELP.md
 # ignore transient task prompts + backups)
 .omo/tasks/
 .omo/*.bak
+
+# Local execution evidence and secrets (never commit)
+.execution/
+
+# Python bytecode from local script checks
+__pycache__/
+*.pyc
+
+# Node dev-test dependencies (Playwright for browser acceptance). The lockfile is committed:
+# the browser gate must run on a pinned Playwright version, not on whatever resolves today.
+node_modules/

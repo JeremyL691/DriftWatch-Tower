@@ -24,9 +24,9 @@ public class DemoScenarioService {
         String evtId = "demo-dup-" + UUID.randomUUID();
         DataEvent first = new DataEvent(evtId, "demo-api", "market_tick", now,
                 Map.of("symbol", "BTC/USDT", "bid", 108000.1, "ask", 108002.4));
-        producer.publish(first);
-        producer.publish(first);
-        producer.publish(first);
+        producer.publish(com.driftwatch.event.RawEnvelope.forRest(first, java.time.Instant.now()));
+        producer.publish(com.driftwatch.event.RawEnvelope.forRest(first, java.time.Instant.now()));
+        producer.publish(com.driftwatch.event.RawEnvelope.forRest(first, java.time.Instant.now()));
         return new ScenarioRun("duplicate-events",
                 "Published the same event_id 3 times — expect DUPLICATE_EVENT alerts.",
                 List.of(evtId));
@@ -47,7 +47,7 @@ public class DemoScenarioService {
                     now.plusSeconds(i),
                     Map.of("symbol", "BTC/USDT", "bid", 108000.0 + i, "ask", 108001.0 + i, "trace", trace, "seq", i)
             );
-            producer.publish(event);
+            producer.publish(com.driftwatch.event.RawEnvelope.forRest(event, java.time.Instant.now()));
             eventIds.add(eventId);
         }
         return new ScenarioRun(
@@ -63,10 +63,10 @@ public class DemoScenarioService {
         String baseEvt = "demo-schema-" + UUID.randomUUID();
         DataEvent baseline = new DataEvent(baseEvt + "-base", "demo-api", "demo_schema_event", now,
                 Map.of("symbol", "BTC/USDT", "bid", 100.0, "ask", 101.0, "trace", baseEvt));
-        producer.publish(baseline);
+        producer.publish(com.driftwatch.event.RawEnvelope.forRest(baseline, java.time.Instant.now()));
         DataEvent drift = new DataEvent(baseEvt + "-drift", "demo-api", "demo_schema_event", now,
                 Map.of("symbol", "BTC/USDT", "bid", "100.0", "spread", 1.0, "trace", baseEvt));
-        producer.publish(drift);
+        producer.publish(com.driftwatch.event.RawEnvelope.forRest(drift, java.time.Instant.now()));
         return new ScenarioRun("schema-drift",
                 "Published baseline {symbol,bid,ask} then a drifted payload where bid became STRING, "
                         + "ask was dropped, and spread was added — expect a SCHEMA_DRIFT alert.",
@@ -79,7 +79,7 @@ public class DemoScenarioService {
         DataEvent late = new DataEvent(evtId, "demo-api", "market_tick",
                 now.minusSeconds(600),
                 Map.of("symbol", "ETH/USDT", "bid", 3500.0, "ask", 3502.0, "trace", evtId));
-        producer.publish(late);
+        producer.publish(com.driftwatch.event.RawEnvelope.forRest(late, java.time.Instant.now()));
         return new ScenarioRun("late-events",
                 "Published an event with event_timestamp 10 minutes in the past — expect a LATE_EVENT alert.",
                 List.of(evtId));
@@ -91,14 +91,14 @@ public class DemoScenarioService {
         String source = "demo-null-source-" + UUID.randomUUID();
         DataEvent baseline = new DataEvent(trace + "-base", source, "demo_null_event", now,
                 Map.of("symbol", "BTC/USDT", "bid", 108000.1, "ask", 108002.4, "trace", trace, "seq", 0));
-        producer.publish(baseline);
+        producer.publish(com.driftwatch.event.RawEnvelope.forRest(baseline, java.time.Instant.now()));
 
         List<String> eventIds = new java.util.ArrayList<>();
         eventIds.add(baseline.eventId());
         for (int i = 1; i <= 5; i++) {
             DataEvent spike = new DataEvent(trace + "-null-" + i, source, "demo_null_event", now.plusSeconds(i),
                     nullSpikePayload(trace, i));
-            producer.publish(spike);
+            producer.publish(com.driftwatch.event.RawEnvelope.forRest(spike, java.time.Instant.now()));
             eventIds.add(spike.eventId());
         }
         return new ScenarioRun("null-spike",
@@ -134,7 +134,7 @@ public class DemoScenarioService {
                 now.minusSeconds(900),
                 Map.of("symbol", "BTC/USDT", "bid", 108000.1, "ask", 108002.4, "trace", eventId)
         );
-        producer.publish(stale);
+        producer.publish(com.driftwatch.event.RawEnvelope.forRest(stale, java.time.Instant.now()));
         return new ScenarioRun("stale-source",
                 "Published source " + source
                         + " whose latest event_timestamp is 15 minutes old — expect source health to become STALE and a STALE_SOURCE alert.",
@@ -147,7 +147,7 @@ public class DemoScenarioService {
         String eventId = trace + "-oob";
         DataEvent event = new DataEvent(eventId, "demo-api", "demo_quality_event", now,
                 Map.of("price", 1500.0, "code", "SKU-000123", "trace", trace));
-        producer.publish(event);
+        producer.publish(com.driftwatch.event.RawEnvelope.forRest(event, java.time.Instant.now()));
         return new ScenarioRun("field-range",
                 "Published price=1500 above the configured max 1000 — expect a FIELD_OUT_OF_RANGE alert.",
                 List.of(eventId));
@@ -159,7 +159,7 @@ public class DemoScenarioService {
         String eventId = trace + "-bad";
         DataEvent event = new DataEvent(eventId, "demo-api", "demo_quality_event", now,
                 Map.of("price", 100.0, "code", "SKU-12", "trace", trace));
-        producer.publish(event);
+        producer.publish(com.driftwatch.event.RawEnvelope.forRest(event, java.time.Instant.now()));
         return new ScenarioRun("field-format",
                 "Published code=SKU-12 which does not match ^SKU-[0-9]{6}$ — expect a FIELD_FORMAT_MISMATCH alert.",
                 List.of(eventId));
@@ -185,7 +185,7 @@ public class DemoScenarioService {
             String eventId = trace + "-" + baseTime.getEpochSecond() + "-" + i;
             DataEvent event = new DataEvent(eventId, source, "demo_anomaly_event", baseTime.plusSeconds(i),
                     Map.of("symbol", "BTC/USDT", "bid", 108000.0 + i, "ask", 108001.0 + i, "trace", trace, "seq", eventId));
-            producer.publish(event);
+            producer.publish(com.driftwatch.event.RawEnvelope.forRest(event, java.time.Instant.now()));
             eventIds.add(eventId);
         }
     }

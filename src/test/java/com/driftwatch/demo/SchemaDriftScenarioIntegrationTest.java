@@ -10,16 +10,16 @@ import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class SchemaDriftScenarioIntegrationTest extends ContainerIntegrationTest {
 
-    @Autowired MockMvc mockMvc;
 
     @Test
     void schemaDriftScenarioRegistersBothSchemasAndAlerts() throws Exception {
-        mockMvc.perform(post("/api/v1/demo/run-scenario/schema-drift"))
+        mockMvc.perform(post("/api/v1/demo/run-scenario/schema-drift").with(asAdmin()).with(csrf()))
                 .andExpect(status().isAccepted());
 
         await().atMost(Duration.ofSeconds(25)).untilAsserted(() -> {
