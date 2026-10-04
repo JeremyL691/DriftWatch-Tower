@@ -81,6 +81,16 @@ for (const theme of themes) {
       colorScheme: theme === 'light' ? 'light' : 'dark',
     });
     const page = await context.newPage();
+    page.setDefaultNavigationTimeout(30000);
+    const mutationTrace = [];
+    page.on('response', async response => {
+      const request = response.request();
+      if (request.method() !== 'POST' || !response.url().includes('/api/v1/')) return;
+      const headers = await request.allHeaders();
+      const cookie = (headers.cookie || '').match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+      mutationTrace.push({url:response.url(), status:response.status(), csrfHeaderPresent:!!headers['x-xsrf-token'], csrfCookiePresent:!!cookie, csrfMatchesCookie:!!cookie && headers['x-xsrf-token'] === decodeURIComponent(cookie[1]), body:response.status() >= 400 ? await response.text() : undefined});
+      writeFileSync(join(outDir, `${label}-mutation-trace.json`), JSON.stringify(mutationTrace, null, 2));
+    });
     const consoleErrors = [];
     page.on('console', message => {
       if (message.type() === 'error') consoleErrors.push(message.text());
@@ -178,38 +188,70 @@ for (const theme of themes) {
       const scenarioResponse = page.waitForResponse(r => r.url().includes('/demo/run-scenario/mixed-incident') && r.request().method() === 'POST');
       await page.locator('[data-scenario="mixed-incident"]').click();
       const produced = await scenarioResponse;
-      if (produced.status() !== 202) throw new Error('dashboard demo did not accept');
+      await page.waitForTimeout(200);
+      if (produced.status() !== 202) {
+        const body = await produced.text();
+        writeFileSync(join(outDir, `${label}-demo-failure.json`), JSON.stringify({status:produced.status(), body}, null, 2));
+        throw new Error(`dashboard demo did not accept: ${produced.status()} ${body}`);
+      }
       const scenario = await produced.json();
-      await page.waitForFunction(async () => {
-        const rows = await fetch('/api/v1/alerts').then(r => r.json());
-        return rows.some(a => a.source.startsWith('demo:') || a.source.includes('demo'));
-      }, null, { timeout: 60000 });
+      try {
+        const deadline = Date.now() + 60000;
+        while (true) {
+          const ready = await page.evaluate(async () => {
+            const rows = await fetch('/api/v1/alerts?status=OPEN').then(r => r.json());
+            return rows.some(a => a.source.includes('demo') && a.severity !== 'INFO' && a.alert_type !== 'STALE_SOURCE');
+          });
+          if (ready) break;
+          if (Date.now() >= deadline) throw new Error('demo alert did not persist within 60 seconds');
+          await page.waitForTimeout(250);
+        }
+      } finally {
+        const observed = await page.evaluate(async () => ({
+          alerts: await fetch('/api/v1/alerts').then(r => r.json()),
+          incidents: await fetch('/api/v1/incidents').then(r => r.json()),
+        }));
+        writeFileSync(join(outDir, `${label}-action-input.json`), JSON.stringify({scenario, observed}, null, 2));
+      }
       const action = await page.evaluate(async () => {
         const rows = await fetch('/api/v1/alerts').then(r => r.json());
-        const alert = rows.find(a => a.status === 'OPEN' && a.source.includes('demo'));
+        const alert = rows.find(a => a.status === 'OPEN' && a.source.includes('demo') && a.severity !== 'INFO' && a.alert_type !== 'STALE_SOURCE');
         if (!alert) throw new Error('no demo alert available for action');
         const token = document.cookie.split('; ').find(c => c.startsWith('XSRF-TOKEN='));
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['X-XSRF-TOKEN'] = decodeURIComponent(token.slice('XSRF-TOKEN='.length));
         const response = await fetch(`/api/v1/alerts/${alert.id}/acknowledge`, {method:'POST', headers, body:JSON.stringify({acknowledgedBy:'release acceptance'})});
-        if (response.status !== 200) throw new Error(`acknowledge returned ${response.status}`);
         const acknowledged = await response.json();
-        if (acknowledged.status !== 'ACKNOWLEDGED') throw new Error('acknowledgement did not persist');
-        return {alert, acknowledged};
+        return {alert, acknowledged, acknowledgeStatus:response.status, csrfTokenPresent:!!token};
       });
+      writeFileSync(join(outDir, `${label}-acknowledge-result.json`), JSON.stringify(action, null, 2));
+      await page.waitForTimeout(200);
+      if (action.acknowledgeStatus !== 200 || action.acknowledged.status !== 'ACKNOWLEDGED') throw new Error(`acknowledge failed: ${action.acknowledgeStatus}`);
+      console.log('action: acknowledged, reload');
       await page.reload({waitUntil:'domcontentloaded'});
       await page.locator('[data-target="incidents"]').click();
       const rows = page.locator('#incidentRows tr').filter({hasText:action.alert.source});
       const resolve = rows.locator('[data-resolve-incident]').first();
       await resolve.waitFor({state:'visible',timeout:20000});
       const incidentId = await resolve.getAttribute('data-resolve-incident');
+      console.log('action: resolving incident', incidentId);
       const resolveResponse = page.waitForResponse(r => r.url().includes(`/incidents/${incidentId}/resolve`) && r.request().method() === 'POST');
       await resolve.click();
-      if ((await resolveResponse).status() !== 200) throw new Error('dashboard resolve failed');
-      await page.waitForFunction(async id => {
-        const rows = await fetch('/api/v1/incidents').then(r => r.json());
-        return rows.some(row => String(row.id) === id && row.status === 'RESOLVED');
-      }, incidentId, {timeout:20000});
+      const resolvedResponse = await resolveResponse;
+      const resolveBody = await resolvedResponse.text();
+      writeFileSync(join(outDir, `${label}-action-result.json`), JSON.stringify({action, incidentId, resolveStatus: resolvedResponse.status(), resolveBody}, null, 2));
+      await page.waitForTimeout(200);
+      if (resolvedResponse.status() !== 200) throw new Error(`dashboard resolve failed: ${resolvedResponse.status()} ${resolveBody}`);
+      const resolveDeadline = Date.now() + 20000;
+      while (true) {
+        const resolved = await page.evaluate(async id => {
+          const rows = await fetch('/api/v1/incidents').then(r => r.json());
+          return rows.some(row => String(row.id) === id && row.status === 'RESOLVED');
+        }, incidentId);
+        if (resolved) break;
+        if (Date.now() >= resolveDeadline) throw new Error('incident resolution did not persist');
+        await page.waitForTimeout(250);
+      }
       report.actions = {scenario, ...action, incidentId, resolved:true};
     }
 
