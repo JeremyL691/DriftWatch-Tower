@@ -46,12 +46,16 @@ if ! scan trivy-dependencies fs --scanners vuln --severity HIGH,CRITICAL --forma
   die "vulnerability database unavailable; a failed scan is NOT_RUN, never zero findings"
 fi
 
+image_source_args=()
+# Remote public digest scanning avoids legacy Docker archive readers on newer
+# containerd stores, while preserving the exact immutable registry input.
+case "$IMAGE" in ghcr.io/*@sha256:*) image_source_args=(--image-src remote) ;; esac
 if docker image inspect "$IMAGE" >/dev/null 2>&1; then
-  scan trivy-image image --scanners vuln --severity HIGH,CRITICAL --format json "$IMAGE" \
+  scan trivy-image image "${image_source_args[@]}" --scanners vuln --severity HIGH,CRITICAL --format json "$IMAGE" \
     || die "image scan failed; see $OUT_DIR/trivy-image.err"
   # Credential material must not be baked into the runtime image.
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" \
-    image --scanners secret --format json "$IMAGE" > "$OUT_DIR/trivy-image-secrets.json" 2> "$OUT_DIR/trivy-image-secrets.err" \
+    image "${image_source_args[@]}" --scanners secret --format json "$IMAGE" > "$OUT_DIR/trivy-image-secrets.json" 2> "$OUT_DIR/trivy-image-secrets.err" \
     || die "image secret scan failed; see $OUT_DIR/trivy-image-secrets.json"
   docker run --rm "$IMAGE" sh -c 'ls -la /app 2>/dev/null; find / -maxdepth 3 -name "*.env" -o -maxdepth 3 -name "credentials*" 2>/dev/null | head' \
     > "$OUT_DIR/image-file-list.txt" 2>&1 || true
