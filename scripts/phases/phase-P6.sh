@@ -71,6 +71,10 @@ docker run --rm -v "$OUT_DIR/tracked-tree":/tree:ro "$TRIVY_IMAGE" fs --scanners
   || die "repository secret scan failed; see $OUT_DIR/trivy-repo-secrets.err"
 rm -rf "$OUT_DIR/tracked-tree"
 
+# Record the database actually used after any automatic update during scans.
+docker run --rm -v dwt-trivy-cache:/root/.cache "$TRIVY_IMAGE" --version \
+  > "$OUT_DIR/trivy-version.txt" 2>&1
+
 python3 "$SCRIPT_DIR/check-security.py" --dir "$OUT_DIR" --out "$OUT_DIR/g13-summary.json"
 check_exit=$?
 
