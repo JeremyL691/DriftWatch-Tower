@@ -181,10 +181,16 @@ for (const theme of themes) {
       if (produced.status() !== 202) throw new Error('dashboard demo did not accept');
       const scenario = await produced.json();
       try {
-        await page.waitForFunction(async () => {
-          const rows = await fetch('/api/v1/alerts').then(r => r.json());
-          return rows.some(a => a.status === 'OPEN' && a.source.includes('demo'));
-        }, null, { timeout: 60000 });
+        const deadline = Date.now() + 60000;
+        while (true) {
+          const ready = await page.evaluate(async () => {
+            const rows = await fetch('/api/v1/alerts?status=OPEN').then(r => r.json());
+            return rows.some(a => a.source.includes('demo'));
+          });
+          if (ready) break;
+          if (Date.now() >= deadline) throw new Error('demo alert did not persist within 60 seconds');
+          await page.waitForTimeout(250);
+        }
       } finally {
         const observed = await page.evaluate(async () => ({
           alerts: await fetch('/api/v1/alerts').then(r => r.json()),
@@ -214,10 +220,16 @@ for (const theme of themes) {
       const resolveResponse = page.waitForResponse(r => r.url().includes(`/incidents/${incidentId}/resolve`) && r.request().method() === 'POST');
       await resolve.click();
       if ((await resolveResponse).status() !== 200) throw new Error('dashboard resolve failed');
-      await page.waitForFunction(async id => {
-        const rows = await fetch('/api/v1/incidents').then(r => r.json());
-        return rows.some(row => String(row.id) === id && row.status === 'RESOLVED');
-      }, incidentId, {timeout:20000});
+      const resolveDeadline = Date.now() + 20000;
+      while (true) {
+        const resolved = await page.evaluate(async id => {
+          const rows = await fetch('/api/v1/incidents').then(r => r.json());
+          return rows.some(row => String(row.id) === id && row.status === 'RESOLVED');
+        }, incidentId);
+        if (resolved) break;
+        if (Date.now() >= resolveDeadline) throw new Error('incident resolution did not persist');
+        await page.waitForTimeout(250);
+      }
       report.actions = {scenario, ...action, incidentId, resolved:true};
     }
 

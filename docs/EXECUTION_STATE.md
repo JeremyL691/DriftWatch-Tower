@@ -10,7 +10,7 @@ G17工具失败记录保留于`.execution/verify/failed-final-release-*`：无�
 
 ## 最新正式验收 (2026-10-04 13:31 PDT)
 
-G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒，2709次采样，最大双时钟间隔36.2秒；327真实事件（198 BOOTSTRAP/129 LIVE），三次故障均通过。20:31:44Z确认outbox/DLT/lag均0，账本327 raw=processed，无OOM；末小时均值790.2MiB，增长35.7MiB符合阈值。正式报告`.execution/verify/final-soak/soak-report.json`。13条NO_OVERLAP为已披露的分类缺陷，不能据此声明上游无缺失。数据库已备份，当前窗口自有容器停止，卷与证据保留。正在串行完成G02/G15，尚未合并或公开发布。
+G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒，2709次采样，最大双时钟间隔36.2秒；327真实事件（198 BOOTSTRAP/129 LIVE），三次故障均通过。20:31:44Z确认outbox/DLT/lag均0，账本327 raw=processed，无OOM；末小时均值790.2MiB，增长35.7MiB符合阈值。正式报告`.execution/verify/final-soak/soak-report.json`。13条NO_OVERLAP为已披露的分类缺陷，不能据此声明上游无缺失。数据库已备份，当前窗口自有容器停止，卷与证据保留。此段为G16完成时快照；后续G02/G15、合并与公开预发布已完成，最新状态见上节。
 
 ## 历史恢复窗口 (2026-10-03 13:31 PDT)
 
@@ -54,7 +54,7 @@ G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒�
 |---|---|
 | document_revision | 1.3 |
 | handoff_date | 2026-10-01，本聊天接管，America/Los_Angeles |
-| product_goal_status | RUNNING（主机条件恢复，新完整窗口进行中）；冻结应用 573154b9 的短门禁已通过；G16 已通过，最终 G02/G15 正在重跑，P7 尚未完成 |
+| product_goal_status | RUNNING；G02/G13/G15/G16通过，PR1已合并、公开预发布已上传；G17公开安装验收进行中 |
 | current_phase | P7 |
 | current_task | P7.3 G17 |
 | next_action | 完成G17，上传最终报告与补充证据，匿名复核最终附件后提升正式Release |
