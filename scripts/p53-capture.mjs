@@ -182,11 +182,11 @@ for (const theme of themes) {
       const scenario = await produced.json();
       await page.waitForFunction(async () => {
         const rows = await fetch('/api/v1/alerts').then(r => r.json());
-        return rows.some(a => a.source.startsWith('demo:') || a.source.includes('demo'));
+        return rows.some(a => a.status === 'OPEN' && a.source.includes('demo') && a.incident_id != null);
       }, null, { timeout: 60000 });
       const action = await page.evaluate(async () => {
         const rows = await fetch('/api/v1/alerts').then(r => r.json());
-        const alert = rows.find(a => a.status === 'OPEN' && a.source.includes('demo'));
+        const alert = rows.find(a => a.status === 'OPEN' && a.source.includes('demo') && a.incident_id != null);
         if (!alert) throw new Error('no demo alert available for action');
         const token = document.cookie.split('; ').find(c => c.startsWith('XSRF-TOKEN='));
         const headers = { 'Content-Type': 'application/json' };
