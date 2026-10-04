@@ -2,7 +2,11 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
-## 当前恢复窗口 (2026-10-03 13:31 PDT)
+## 最新正式验收 (2026-10-04 13:31 PDT)
+
+G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒，2709次采样，最大双时钟间隔36.2秒；327真实事件（198 BOOTSTRAP/129 LIVE），三次故障均通过。20:31:44Z确认outbox/DLT/lag均0，账本327 raw=processed，无OOM；末小时均值790.2MiB，增长35.7MiB符合阈值。正式报告`.execution/verify/final-soak/soak-report.json`。13条NO_OVERLAP为已披露的分类缺陷，不能据此声明上游无缺失。数据库已备份，当前窗口自有容器停止，卷与证据保留。正在串行完成G02/G15，尚未合并或公开发布。
+
+## 历史恢复窗口 (2026-10-03 13:31 PDT)
 
 主机已实际核验屏幕盖打开且AC Power。旧失败窗口的数据库已备份，原始采样/故障/失败报告和卷均保留；仅停止 `dwt-soak-recovery` 自有栈。新的完整86400秒窗口 `20261003T203107Z-soak24-r2` 在2026-10-03T20:31:08Z启动，runner PID64169，创建时间Sat Oct 3 13:31:08 2026；project `dwt-soak-r2`，env `.execution/soak-r2.env`，port18089，使用全新卷和冻结镜像sha256:2901be88…，不借用旧事件/故障。BOOTSTRAP1轮/198真实事件，READY、pending0、failures0。完成监视器PID64179与防睡眠断言已登记。
 
@@ -44,10 +48,10 @@
 |---|---|
 | document_revision | 1.3 |
 | handoff_date | 2026-10-01，本聊天接管，America/Los_Angeles |
-| product_goal_status | RUNNING（主机条件恢复，新完整窗口进行中）；冻结应用 573154b9 的短门禁已通过；G16 进行中，最终 G02/G15 尚待重跑，P7 尚未完成 |
+| product_goal_status | RUNNING（主机条件恢复，新完整窗口进行中）；冻结应用 573154b9 的短门禁已通过；G16 已通过，最终 G02/G15 正在重跑，P7 尚未完成 |
 | current_phase | P6 |
-| current_task | P6.2 |
-| next_action | 以 release context 监测当前 run；完成监视器写入 `.execution/verify/final-soak` 后先正式核验 G16，再串行 final-compose / final-package、最终提交五项 CI、合并、预发布及 G17 |
+| current_task | P6.1 final G15 |
+| next_action | G16/G02已通过；final-package、发布预检、最终提交五项CI、合并、预发布及G17 |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（已推送到 origin；PR #1 已开） |
@@ -62,12 +66,12 @@
 | docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
 | release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
 | application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | **`20261003T203107Z-soak24-r2` (RUNNING)**，PID64169，project dwt-soak-r2，env .execution/soak-r2.env，port18089；开始2026-10-03T20:31:08Z，预计2026-10-04T20:31:08Z后正式判定。 |
+| active_soak_run | `20261003T203107Z-soak24-r2` PASSED，86413.6秒；20:31:44Z正式报告；数据库归档、自有栈已停止。 |
 | external_blocker | 当前无主机阻塞；lid open与AC Power已核验。未来首次GHCR推送后须公开包并核验匿名digest拉取。 |
 
 > **接管规则**：旧 ZCode 自动化已暂停。本聊天 heartbeat 以执行计划和 release context 为准；同时验证 PID、创建时间、命令、采样更新、项目与镜像。不得根据旧投递文字或单个 RUNNING 状态启动第二个窗口。
 
-> **证据归属**：旧 run `20261001T182403Z-soak24` 的三次故障均保留为历史，不能计入当前恢复窗口。当前故障仅从 release context 指定 run 的 `faults.jsonl` 读取；使用 `scripts/poller-state.sh --project dwt-soak-recovery --env-file .execution/soak-recovery.env` 比较同一 run 的 `prefault-takeover.json` 和故障前后观察。
+> **证据归属**：旧 run `20261001T182403Z-soak24` 的三次故障均保留为历史，不能计入当前恢复窗口。当前故障仅从 release context 指定 run 的 `faults.jsonl` 读取；使用 `scripts/poller-state.sh --project dwt-soak-r2 --env-file .execution/soak-r2.env` 比较同一 run 的 `prefault-takeover.json` 和故障前后观察。
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
 
@@ -119,7 +123,7 @@ G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compos
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
 | P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
 | P6.1 | 冻结候选、短门槛、负载 | RUNNING | 当前冻结应用 573154b9；G13/G14 已通过，旧候选与旧 bundle 不代替 final G02/G15，G16 后重跑 |
-| P6.2 | 24 小时真实验收 | RUNNING | 当前run 20261003T203107Z-soak24-r2，完整86400秒；前两窗口FAILED保留，final-soak尚未生成。 |
+| P6.2 | 24 小时真实验收 | PASSED | 20261003T203107Z-soak24-r2，86413.6秒，327真实事件；final-soak正式报告；前两FAILED保留。 |
 | P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
 | P7.2 | 公共 Release / GHCR | NOT_STARTED | - |
 | P7.3 | 匿名安装及最终报告 | NOT_STARTED | - |
@@ -132,7 +136,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 |---|---|---|
 | G00 基线 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-unit/gate.json` |
 | G01 红色回归复现 | EXPECTED_FAILURE | 3 个 5.4 用例在旧实现复现（null 全缺失 / 单事件基线突增 / 乱序覆盖窗口）；`g01-red-regression.log`、`g01-cases.json` |
-| G02 Compose | NOT_STARTED | 历史 p61-compose10 属旧应用；G16 后冻结镜像全新项目/卷重跑 `.execution/verify/final-compose` |
+| G02 Compose | PASSED | 冻结镜像，全新project/卷，`.execution/verify/final-compose/gate.json`，28秒整体启动，真实摄取落库 |
 | G03 检测正确性 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P2/gate.json` |
 | G04 schema 反馈 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P2/gate.json` |
 | G05 摄取与幂等 | PASSED | 记录提交 `20f948be` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P3/gate.json` |
@@ -146,7 +150,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G13 安全与漏洞 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P6/gate.json` |
 | G14 100/s、30分钟 | PASSED | 记录提交 `c1b0b517` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-load/gate.json` |
 | G15 制品安装 | RUNNING | 当前应用 p7-package2 有历史通过证据；收尾工具/文档更新后须重生成并验收 final-package 的原始 bundle 字节 |
-| G16 24h | RUNNING | 有效 run 20261001T182403Z-soak24；正式报告 `.execution/verify/final-soak/soak-report.json` 尚未生成 |
+| G16 24h | PASSED | `20261003T203107Z-soak24-r2`；`.execution/verify/final-soak/soak-report.json`，327真实事件、三次故障、零积压 |
 | G17 公开独立安装 | NOT_STARTED | `.execution/verify/final-release`，必须使用明确 context、匿名附件及公开 digest |
 
 ## 长任务与恢复字段

@@ -43,7 +43,7 @@ transaction; failures retry four times and then go to a durable dead-letter topi
 | Load (100 events/s for 30 minutes) | 180,000/180,000 offers at 100.0/s, 0 failures, acknowledgement p95 4.9 ms (limit 1 s), commit p95 112 ms (limit 5 s), ledger 180,100 accepted = processed = raw, 0 dead letters, consumer lag back to 0 in 30.1 s |
 | Browser | 8/8 captures at 320/768/1024/1440 px in dark and light, no console errors, no horizontal overflow, visible focus, live socket connected |
 | Security | Trivy 0.58.1, database 2026-10-01: no HIGH/CRITICAL in the dependency tree or the runtime image, no secret in the image or the tracked tree |
-| Continuous 24-hour run | RUNNING, `20261001T182403Z-soak24`; G16 has not passed. Final report pending full real window. |
+| Continuous 24-hour run | PASSED, `20261003T203107Z-soak24-r2`: 86,413.6 s, 2,709 samples, maximum gap 36.2 s; 327 real IDs (129 LIVE), all three planned faults recovered, outbox/DLT/lag zero within 22 s of completion. 13 NO_OVERLAP classifications retain the disclosed limitation. |
 | Public installation | G17 NOT_STARTED; release remains pending until public assets and digest pass independent verification. |
 
 Performance conditions: single node, 11 CPU / 19.327 GB RAM / 41 GiB free disk at freeze time on macOS arm64, Docker Desktop, images pinned by digest,
