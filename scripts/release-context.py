@@ -72,7 +72,7 @@ def validate(context, published=False):
             path = file_path(evidence)
             if path.suffix == '.json':
                 json.loads(path.read_text())
-        summary[gate_id] = {**gate, 'path': path}
+        summary[gate_id] = {**gate, 'path': c['gates'][gate_id]}
     soak = c['soak']
     state = read(f'.execution/soak/{soak["run_id"]}/state.json')
     result = read(f'.execution/soak/{soak["run_id"]}/result.json')
@@ -83,7 +83,7 @@ def validate(context, published=False):
         raise ValueError('soak not complete or image differs')
     if report.get('problems') != [] or report.get('measured_seconds', 0) < 86400:
         raise ValueError('G16 report did not pass a full 24-hour window')
-    if soak['report'] not in summary['G16']['evidence_paths']:
+    if file_path(soak['report']) not in [file_path(p) for p in summary['G16']['evidence_paths']]:
         raise ValueError('G16 does not bind the designated report')
     if published:
         same_surface(c['release_sha'], candidate)
