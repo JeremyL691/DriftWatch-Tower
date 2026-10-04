@@ -183,7 +183,7 @@ for (const theme of themes) {
       try {
         await page.waitForFunction(async () => {
           const rows = await fetch('/api/v1/alerts').then(r => r.json());
-          return rows.some(a => a.status === 'OPEN' && a.source.includes('demo') && a.incident_id != null);
+          return rows.some(a => a.status === 'OPEN' && a.source.includes('demo'));
         }, null, { timeout: 60000 });
       } finally {
         const observed = await page.evaluate(async () => ({
@@ -194,7 +194,7 @@ for (const theme of themes) {
       }
       const action = await page.evaluate(async () => {
         const rows = await fetch('/api/v1/alerts').then(r => r.json());
-        const alert = rows.find(a => a.status === 'OPEN' && a.source.includes('demo') && a.incident_id != null);
+        const alert = rows.find(a => a.status === 'OPEN' && a.source.includes('demo'));
         if (!alert) throw new Error('no demo alert available for action');
         const token = document.cookie.split('; ').find(c => c.startsWith('XSRF-TOKEN='));
         const headers = { 'Content-Type': 'application/json' };
