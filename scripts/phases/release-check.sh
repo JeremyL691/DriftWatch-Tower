@@ -153,6 +153,15 @@ abort_if_problems
 digest="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["public_image_digest"])' "$CONTEXT")"
 [ -n "$digest" ] || problems+=("the release body does not name an image digest")
 clean_config="$(mktemp -d)"
+# Docker Desktop installs CLI plugins outside the system paths. Register only
+# the executable directory; the fresh config contains no auths or cred helpers.
+if [ -d /Applications/Docker.app/Contents/Resources/cli-plugins ]; then
+  python3 - "$clean_config/config.json" <<'PYPLUGIN'
+import json,sys
+open(sys.argv[1],'w').write(json.dumps({'cliPluginsExtraDirs':['/Applications/Docker.app/Contents/Resources/cli-plugins']}))
+PYPLUGIN
+fi
+unset DOCKER_AUTH_CONFIG
 export DOCKER_CONFIG="$clean_config"
 stack_created=0
 cleanup_release() {
