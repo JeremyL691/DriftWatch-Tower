@@ -86,6 +86,14 @@ class ReleaseSafety(unittest.TestCase):
         self.assertFalse(self.continuity([first])['continuity_valid'])
 
     def test_complete_bound_evidence_passes(self): self.validate()
+    def test_absolute_gate_evidence_is_bound_and_summary_serializable(self):
+        gate=json.loads((self.root/'gates/G16.json').read_text())
+        gate['evidence_paths']=[str(self.root/'report.json')]
+        self.write('gates/G16.json',gate)
+        _,summary=self.validate()
+        json.dumps(summary)
+        self.assertEqual(summary['G16']['path'],'gates/G16.json')
+
     def test_invalid_json_fails(self):
         self.write('gates/G16.json', '{invalid')
         with self.assertRaises(ValueError): self.validate()

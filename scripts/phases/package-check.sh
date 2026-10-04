@@ -15,7 +15,7 @@ OUT_DIR=""
 ARTIFACTS=""
 VERSION="v1.0.0"
 PORT=18082
-PROJECT="dwt-package-check-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+PROJECT="dwt-package-check-$(date -u +%Y%m%dt%H%M%Sz)-$$"
 while [ $# -gt 0 ]; do
   case "$1" in
     --out) OUT_DIR="$2"; shift 2 ;;
@@ -92,7 +92,8 @@ docker compose -p "$PROJECT" --env-file "$env_file" -f "$work/docker-compose.ins
 base="http://127.0.0.1:$PORT"
 ready=0
 for _ in $(seq 1 60); do
-  if curl -fsS "$base/actuator/health/readiness" >/dev/null 2>&1; then ready=1; break; fi
+  if curl -fsS "$base/actuator/health/readiness" >/dev/null 2>&1 \
+      && curl -fsS "$base/actuator/health" > "$OUT_DIR/health-ready.json" 2>/dev/null; then ready=1; break; fi
   sleep 2
 done
 [ "$ready" = "1" ] || fail "installed stack did not become ready within 120s"
