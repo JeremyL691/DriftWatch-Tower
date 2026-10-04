@@ -6,7 +6,7 @@
 
 G16/G02/G13/G15与PR1发布均已通过，但G17实际FAILED。公开v1.0.0在成功管理请求后删除XSRF-TOKEN Cookie，随后Dashboard确认/解决操作返回403。原始证据：`.execution/verify/failed-final-release-dashboard-resolve/`；独立浏览器诊断`.execution/verify/g17-action-diagnostic/browser-fifth/diagnostic-mutation-trace.json`和独立HTTP Cookie Jar `.execution/verify/g17-action-diagnostic/cookie-lifecycle.json`。Cookie清除现象在GET与POST均已复现；现有mock CSRF测试没有覆盖真实Cookie生命周期。
 
-v1.0.0保持公开预发布，tag、镜像和G15 bundle不可变，禁止正式promotion。按已批准的应用缺陷恢复规则，修复使用v1.0.1，需重新冻结并重跑受影响门禁及完整24小时；旧G16成功记录仅证明原v1.0.0候选，不能借作新候选通过证据。本聊天继续接管修复，旧ZCode自动化保持暂停。
+v1.0.0保持公开预发布，tag、镜像和G15 bundle不可变，禁止正式promotion。按已批准的应用缺陷恢复规则，修复使用v1.0.1，需重新冻结并重跑受影响门禁及完整24小时；旧G16成功记录仅证明原v1.0.0候选，不能借作新候选通过证据。本聊天继续接管修复，旧ZCode自动化保持暂停。后端Cookie渲染移至SessionManagementFilter之后；真实HTTP生命周期在旧应用失败、修复后通过，缺失/错误CSRF仍403（安全测试13项通过）。新分支`codex/csrf-release-v1-0-1`，新镜像及完整门禁待执行。PR2已在e6b99b5确切head五项CI全绿后合并。
 
 ## 当前公开制品验收 (2026-10-04)
 

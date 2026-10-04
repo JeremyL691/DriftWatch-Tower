@@ -52,3 +52,9 @@ Replacement `20261002T200503Z-soak24-recovery` automatically FAILED at2026-10-03
 ## Oct3 host availability restored
 
 Lid open and AC Power verified; failed first recovery DB archived and only its stack stopped, retaining original evidence/volumes. Active context now binds `20261003T203107Z-soak24-r2`, project `dwt-soak-r2`, env `.execution/soak-r2.env`, port18089, full86400s start2026-10-03T20:31:08Z, expected finish2026-10-04T20:31:08Z. Frozen image unchanged, fresh-volume real bootstrap198 and READY/pending0/failures0 verified before timing. Runner PID64169, watcherPID64179. Faults +2h/+8h/+16h relative to new start. Earlier blocked/history paragraphs are superseded by this actual recovery and dynamic context. Keep lid open, AC and network throughout; if RUNNING preserve runner and observe rather than starting another window.
+
+## Application-defect recovery: 2026-10-04
+
+Real G17 rejected the v1.0.0 public candidate: successful HTTP Basic requests clear the browser CSRF cookie, so consecutive protected Dashboard operations return 403. The immutable v1.0.0 tag/image/bundle and original G16/G17 evidence remain preserved; v1.0.0 stays a prerelease.
+
+The approved application-defect policy now applies to v1.0.1: render the replacement CSRF cookie after authentication/session token rotation; verify actual HTTP CookieManager lifecycle and invalid/missing-token rejection; build and freeze a new image; run all required gates against the new candidate and a complete fresh 86,400-second window. A new app-fix PR and its exact-head five CI jobs are required before new-version publication. Public installation G17, final supplementary evidence/checksums and anonymous final attachment verification are required before promotion. The old successful soak cannot certify the changed application.
