@@ -7,9 +7,9 @@
     --bg-elev: #20202A;
 
     /* 古铜金 - 主强调色 */
-    --gold: #B8860B;
+    --gold: #D4AF37;
     --gold-deep: #8B6914;
-    --gold-bright: #D4A017;
+    --gold-bright: #F0C75E;
     --gold-glow: rgba(184, 134, 11, 0.45);
     --gold-line: rgba(184, 134, 11, 0.18);
     --gold-fill: rgba(184, 134, 11, 0.08);
@@ -20,10 +20,11 @@
     /* ponytail: spec's #7A7468 only reaches 3.89:1 (FAILS WCAG AA 4.5). Used #8B8576 (4.91:1) to actually pass. */
     --muted: #8B8576;
 
-    /* 语义色 - 全部压暗以适配黑底 */
-    --ok: #3D6B5C;
-    --warn: #B8860B;
-    --err: #A63D2A;
+    /* Semantic colours must be readable ON the dark panels, so they are the light variants.
+       Measured against #101012/#16161A/#1C1C22: ok 8.3-9.7:1, warn 8.6-10.1:1, err 6.1-7.2:1. */
+    --ok: #7FC8A9;
+    --warn: #E0B84C;
+    --err: #E8836F;
     --err-deep: #6B2418;
 
     /* 阴影 - 黑底用 gold 内发光代替投影 */
@@ -31,9 +32,10 @@
     --glow-gold: 0 0 0 1px var(--gold-line), 0 0 24px rgba(184,134,11,0.12);
 
     /* 字体 */
-    --font-serif: "Fraunces", Georgia, serif;
-    --font-sans: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
-    --font-mono: "IBM Plex Mono", "SFMono-Regular", monospace;
+    /* System stacks only: the dashboard must work without any external font CDN. */
+    --font-serif: ui-serif, Georgia, "Times New Roman", serif;
+    --font-sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 * {
@@ -46,7 +48,7 @@ html {
 
 body {
     margin: 0;
-    font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+    font-family: var(--font-sans);
     color: var(--ink);
     background:
         radial-gradient(circle at top right, rgba(184, 134, 11, 0.08), transparent 40%),
@@ -266,6 +268,19 @@ a {
     font-size: 0.92rem;
 }
 
+/* The timeline carries the same long unbreakable tokens as the tables (event types, ids,
+   timestamps): at 320px one github.PullRequestReviewCommentEvent token made the item 348px wide
+   and the document 411px, so these containers must be allowed to shrink and to break. */
+.subpanel,
+.timeline,
+.timeline-item,
+.timeline-item p,
+.timeline-item strong,
+.subpanel-head {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .timeline-item.new {
     background: var(--gold-fill);
     border-color: var(--gold);
@@ -305,6 +320,10 @@ td {
     vertical-align: top;
     border-bottom: 1px solid var(--gold-line);
     color: var(--ink);
+    /* Long unbreakable tokens (event types such as github.PullRequestReviewCommentEvent, ids and
+       timestamps) must wrap instead of widening the page: at 320px they pushed the document to
+       411px even though every panel is already a single column there. */
+    overflow-wrap: anywhere;
 }
 
 th {
@@ -878,3 +897,124 @@ details pre {
         width: 100%;
     }
 }
+
+
+/* ---------------------------------------------------------------- P5.3 additions */
+
+/* Narrow screens: tables scroll inside their own labelled container, never the page. */
+.table-shell {
+    overflow-x: auto;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+}
+
+.panel, .content, .main-area, .shell {
+    min-width: 0;
+}
+
+/* Visible focus on every interactive control (mouse and keyboard alike). */
+:focus,
+:focus-visible,
+a:focus,
+button:focus,
+input:focus,
+select:focus,
+[tabindex]:focus {
+    outline: 2px solid var(--gold-bright);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* Lucide icons inherit the surrounding colour and size. */
+.rail-link i, .ghost-button i {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Usable light tokens; dark stays the brand default. */
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg-0: #F7F5F0;
+        --bg-1: #FFFFFF;
+        --bg-2: #F1EEE6;
+        --bg-3: #E9E4D8;
+        --bg-elev: #FFFFFF;
+        --ink: #1B1A17;
+        --ink-soft: #3A3833;
+        --muted: #6B675E;
+        --gold: #6F530F;
+        --gold-deep: #5F4A0B;
+        --gold-bright: #7A5C10;
+        --gold-line: rgba(111, 83, 15, 0.30);
+        --gold-fill: rgba(111, 83, 15, 0.08);
+        --ok: #2F6B55;
+        --warn: #6F530F;
+        --err: #8F3323;
+        --muted: #5F574D;
+        --shadow-panel: 0 1px 0 rgba(111,83,15,0.10) inset, 0 18px 40px rgba(0,0,0,0.10);
+        --glow-gold: 0 0 0 1px var(--gold-line), 0 0 18px rgba(111,83,15,0.10);
+    }
+}
+
+/* Explicit override wins over the media query when the user picked a theme. */
+html[data-theme="light"] {
+    --bg-0: #F7F5F0;
+    --bg-1: #FFFFFF;
+    --bg-2: #F1EEE6;
+    --bg-3: #E9E4D8;
+    --bg-elev: #FFFFFF;
+    --ink: #1B1A17;
+    --ink-soft: #3A3833;
+    --muted: #6B675E;
+    --gold: #6F530F;
+    --gold-deep: #5F4A0B;
+    --gold-bright: #7A5C10;
+    --gold-line: rgba(111, 83, 15, 0.30);
+    --gold-fill: rgba(111, 83, 15, 0.08);
+    --ok: #2F6B55;
+    --warn: #6F530F;
+    --err: #8F3323;
+    --muted: #5F574D;
+}
+
+/* An explicit dark choice must restore the whole dark palette, not just the surfaces: a user
+   whose system prefers light and then picks dark would otherwise keep light-theme gold and
+   semantic colours on dark panels (measured 2.9-3.5:1). */
+html[data-theme="dark"] {
+    --bg-0: #0A0A0B;
+    --bg-1: #101012;
+    --bg-2: #16161A;
+    --bg-3: #1C1C22;
+    --bg-elev: #20202A;
+    --ink: #E8E4D9;
+    --ink-soft: #B8B2A4;
+    --muted: #8B8576;
+    --gold: #D4AF37;
+    --gold-deep: #B8860B;
+    --gold-bright: #F0C75E;
+    --gold-line: rgba(212, 175, 55, 0.28);
+    --gold-fill: rgba(212, 175, 55, 0.10);
+    --ok: #7FC8A9;
+    --warn: #E0B84C;
+    --err: #E8836F;
+}
+
+/* Evaluation coverage: excluded rows are the point of the panel, so they read as warnings. */
+.coverage-panel { margin-top: 1rem; }
+.coverage-note { max-width: 70ch; margin: 0.25rem 0 0.75rem; }
+.coverage-table td:first-child { white-space: normal; }
+.coverage-table .coverage-excluded td:nth-child(2) { color: var(--gold-bright); }
+
+.dead-letter-detail { margin-top: 1rem; }
+.dead-letter-detail pre { max-height: 22rem; overflow: auto; text-align: left; }
+.dead-letter-detail pre:focus-visible,
+.data-table pre:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
+.action-error { color: var(--gold-bright); }
+.status-chip { border: 1px solid currentColor; border-radius: 999px; padding: 0.05rem 0.5rem; font-size: 0.8rem; }
+
+/* A scroll container is a focusable region so keyboard users can reach the columns that
+   overflow at narrow widths (axe: scrollable-region-focusable). */
+.table-shell:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }

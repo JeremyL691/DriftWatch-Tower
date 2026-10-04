@@ -1,8 +1,9 @@
 package com.driftwatch.quality;
 
+import com.driftwatch.config.DriftwatchProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -17,8 +18,12 @@ public class LateEventDetector implements QualityDetector {
     private final ObjectMapper objectMapper;
     private final Duration threshold;
 
-    public LateEventDetector(ObjectMapper objectMapper,
-                             @Value("${driftwatch.detector.late.threshold:PT5M}") Duration threshold) {
+    @Autowired
+    public LateEventDetector(ObjectMapper objectMapper, DriftwatchProperties properties) {
+        this(objectMapper, properties.detector().late().threshold());
+    }
+
+    public LateEventDetector(ObjectMapper objectMapper, Duration threshold) {
         this.objectMapper = objectMapper;
         this.threshold = threshold;
     }
@@ -34,6 +39,7 @@ public class LateEventDetector implements QualityDetector {
         evidence.put("received_at", ctx.receivedAt().toString());
         evidence.put("lateness_seconds", lateness.getSeconds());
         evidence.put("threshold", threshold.toString());
+        evidence.put("rule_version", RuleVersions.RULES_VERSION);
         return List.of(new DraftAlert(
                 AlertType.LATE_EVENT,
                 lateness.compareTo(threshold.multipliedBy(10)) > 0 ? Severity.WARN : Severity.INFO,

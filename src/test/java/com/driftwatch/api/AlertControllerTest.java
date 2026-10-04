@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -40,7 +41,9 @@ class AlertControllerTest {
             default -> unsupported(method.getName());
         });
 
-        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new AlertController(repository)).build();
+        com.driftwatch.source.AlertIncidentService incidentService =
+                mock(com.driftwatch.source.AlertIncidentService.class);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new AlertController(repository, incidentService)).build();
 
         mockMvc.perform(get("/api/v1/alerts")
                         .param("type", "SCHEMA_DRIFT")

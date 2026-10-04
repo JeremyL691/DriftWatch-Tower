@@ -1,0 +1,22 @@
+# Test profile: lightweight credentials and no live GitHub collection. The container-backed
+# integration tests override the datasource and Kafka bootstrap servers dynamically.
+
+spring:
+  datasource:
+    password: driftwatch-test
+  kafka:
+    streams:
+      # Each Spring test context gets its own application id and state directory: sharing one
+      # consumer group made contexts rebalance against each other and delayed readiness.
+      application-id: driftwatch-streams-test-${random.uuid}
+
+driftwatch:
+  security:
+    admin:
+      username: test-admin
+      password: test-admin-password
+    ingest-tokens:
+      - test-ingest-token-0123456789
+  source:
+    github:
+      enabled: false

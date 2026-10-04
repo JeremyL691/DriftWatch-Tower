@@ -1,13 +1,13 @@
 package com.driftwatch.quality;
 
+import com.driftwatch.config.DriftwatchProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -31,23 +31,14 @@ public class FieldFormatDetector implements QualityDetector {
     private final ObjectMapper objectMapper;
     private final Map<String, Pattern> patterns;
 
-    public FieldFormatDetector(ObjectMapper objectMapper,
-                               @Value("${driftwatch.detector.field-format.patterns:}") String spec) {
+    @Autowired
+    public FieldFormatDetector(ObjectMapper objectMapper, DriftwatchProperties properties) {
+        this(objectMapper, properties.detector().fieldFormat().patterns());
+    }
+
+    public FieldFormatDetector(ObjectMapper objectMapper, String spec) {
         this.objectMapper = objectMapper;
-        Map<String, Pattern> compiled = new LinkedHashMap<>();
-        if (spec != null && !spec.isBlank()) {
-            for (String entry : spec.split(",")) {
-                String trimmed = entry.trim();
-                if (trimmed.isEmpty()) continue;
-                int eq = trimmed.indexOf('=');
-                if (eq <= 0 || eq == trimmed.length() - 1) continue;
-                String field = trimmed.substring(0, eq).trim();
-                String regex = trimmed.substring(eq + 1).trim();
-                if (field.isEmpty() || regex.isEmpty()) continue;
-                compiled.put(field, Pattern.compile(regex));
-            }
-        }
-        this.patterns = compiled;
+        this.patterns = FieldFormatPatterns.parse(spec);
     }
 
     @Override
@@ -71,6 +62,7 @@ public class FieldFormatDetector implements QualityDetector {
             evidence.put("field_path", fieldPath);
             evidence.put("reason", "NOT_A_STRING");
             evidence.put("value_type", node.getNodeType().name());
+            evidence.put("rule_version", RuleVersions.RULES_VERSION);
             return List.of(new DraftAlert(
                     AlertType.FIELD_FORMAT_MISMATCH,
                     Severity.WARN,
@@ -90,6 +82,7 @@ public class FieldFormatDetector implements QualityDetector {
         evidence.put("reason", "PATTERN_MISMATCH");
         evidence.put("value", value);
         evidence.put("pattern", pattern.pattern());
+        evidence.put("rule_version", RuleVersions.RULES_VERSION);
         return List.of(new DraftAlert(
                 AlertType.FIELD_FORMAT_MISMATCH,
                 Severity.WARN,

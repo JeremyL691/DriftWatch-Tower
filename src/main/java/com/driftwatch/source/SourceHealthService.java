@@ -50,6 +50,7 @@ public class SourceHealthService {
         this.objectMapper = objectMapper;
     }
 
+    /** Full scan used by the scheduler: every registered source is checked. */
     @Transactional
     public List<QualityAlertEntity> refreshAllAndPersist(Instant now) {
         List<DraftAlert> drafts = new ArrayList<>();
@@ -65,18 +66,25 @@ public class SourceHealthService {
         return alerts;
     }
 
-    // TODO: the refresh-on-read pattern here is a quick hack for the demo; real implementation
-    //   should use a scheduled @Scheduled method or publish a domain event after ingestion
-    @Transactional
+    /** Pure read: a GET must never change state or add alerts (guide 7.2). */
+    @Transactional(readOnly = true)
     public List<SourceHealthEntity> list() {
-        refreshAllAndPersist(Instant.now());
         return sourceHealthRepository.findAllByOrderByHealthScoreAscSourceAsc();
     }
 
-    @Transactional
+    /** Pure read for one source. */
+    @Transactional(readOnly = true)
     public Optional<SourceHealthEntity> get(String source) {
-        refreshAllAndPersist(Instant.now());
         return sourceHealthRepository.findById(source);
+    }
+
+    /**
+     * Refresh used by the scheduler: scans the registered sources and persists the health rows and
+     * transition alerts. Never called from a query path.
+     */
+    @Transactional
+    public List<QualityAlertEntity> refreshScheduled(Instant now) {
+        return refreshAllAndPersist(now);
     }
 
     private Optional<DraftAlert> refreshSource(String source, Instant now) {

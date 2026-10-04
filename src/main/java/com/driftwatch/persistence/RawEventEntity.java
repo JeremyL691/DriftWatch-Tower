@@ -23,6 +23,22 @@ public class RawEventEntity {
     @Column(name = "event_id", nullable = false)
     private String eventId;
 
+    @Column(name = "ingestion_id", nullable = false, length = 64)
+    private String ingestionId;
+
+    @Column(name = "origin", length = 16)
+    private String origin;
+
+    @Column(name = "mode", length = 16)
+    private String mode;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "window_evaluation", columnDefinition = "jsonb")
+    private JsonNode windowEvaluation;
+
+    @Column(name = "baseline_status", length = 16)
+    private String baselineStatus;
+
     @Column(nullable = false)
     private String source;
 
@@ -48,6 +64,16 @@ public class RawEventEntity {
     public Long getId() { return id; }
     public String getEventId() { return eventId; }
     public void setEventId(String eventId) { this.eventId = eventId; }
+    public String getIngestionId() { return ingestionId; }
+    public void setIngestionId(String ingestionId) { this.ingestionId = ingestionId; }
+    public String getOrigin() { return origin; }
+    public void setOrigin(String origin) { this.origin = origin; }
+    public String getMode() { return mode; }
+    public void setMode(String mode) { this.mode = mode; }
+    public JsonNode getWindowEvaluation() { return windowEvaluation; }
+    public void setWindowEvaluation(JsonNode windowEvaluation) { this.windowEvaluation = windowEvaluation; }
+    public String getBaselineStatus() { return baselineStatus; }
+    public void setBaselineStatus(String baselineStatus) { this.baselineStatus = baselineStatus; }
     public String getSource() { return source; }
     public void setSource(String source) { this.source = source; }
     public String getEventType() { return eventType; }

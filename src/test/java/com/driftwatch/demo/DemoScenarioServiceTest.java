@@ -20,24 +20,27 @@ class DemoScenarioServiceTest {
     void nullSpikeEventsStayInOneEventTimeWindow() {
         RawEventProducer producer = mock(RawEventProducer.class);
         DemoScenarioService service = new DemoScenarioService(producer);
-        ArgumentCaptor<DataEvent> events = ArgumentCaptor.forClass(DataEvent.class);
+        ArgumentCaptor<com.driftwatch.event.RawEnvelope> events =
+                ArgumentCaptor.forClass(com.driftwatch.event.RawEnvelope.class);
 
         service.runNullSpike();
 
         verify(producer, times(6)).publish(events.capture());
-        assertThat(eventTimeMinutes(events.getAllValues())).hasSize(1);
+        assertThat(eventTimeMinutes(events.getAllValues().stream().map(com.driftwatch.event.RawEnvelope::event).toList())).hasSize(1);
     }
 
     @Test
     void anomalyScenarioUsesTwoBaselineWindowsAndOneBurstWindow() {
         RawEventProducer producer = mock(RawEventProducer.class);
         DemoScenarioService service = new DemoScenarioService(producer);
-        ArgumentCaptor<DataEvent> events = ArgumentCaptor.forClass(DataEvent.class);
+        ArgumentCaptor<com.driftwatch.event.RawEnvelope> events =
+                ArgumentCaptor.forClass(com.driftwatch.event.RawEnvelope.class);
 
         service.runAnomalySpike();
 
         verify(producer, times(12)).publish(events.capture());
         Map<Long, Long> countsByWindow = events.getAllValues().stream()
+                .map(com.driftwatch.event.RawEnvelope::event)
                 .collect(Collectors.groupingBy(
                         event -> event.eventTimestamp().getEpochSecond() / 60,
                         Collectors.counting()
