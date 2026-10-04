@@ -2,9 +2,21 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
+## 当前阻断与修复 (2026-10-04 15:05 PDT)
+
+G16/G02/G13/G15与PR1发布均已通过，但G17实际FAILED。公开v1.0.0在成功管理请求后删除XSRF-TOKEN Cookie，随后Dashboard确认/解决操作返回403。原始证据：`.execution/verify/failed-final-release-dashboard-resolve/`；独立浏览器诊断`.execution/verify/g17-action-diagnostic/browser-fifth/diagnostic-mutation-trace.json`和独立HTTP Cookie Jar `.execution/verify/g17-action-diagnostic/cookie-lifecycle.json`。Cookie清除现象在GET与POST均已复现；现有mock CSRF测试没有覆盖真实Cookie生命周期。
+
+v1.0.0保持公开预发布，tag、镜像和G15 bundle不可变，禁止正式promotion。按已批准的应用缺陷恢复规则，修复使用v1.0.1，需重新冻结并重跑受影响门禁及完整24小时；旧G16成功记录仅证明原v1.0.0候选，不能借作新候选通过证据。本聊天继续接管修复，旧ZCode自动化保持暂停。
+
+## 当前公开制品验收 (2026-10-04)
+
+G02/G13/G15/G16均已通过。PR1已合并，发布SHA `7e1051de36880eaf8303d75c46d67934da41e24f`，五项CI属于确切head c1dc0fff。v1.0.0保持预发布；公开镜像`ghcr.io/jeremyl691/driftwatch-tower@sha256:aac36766669cc2990e35449d8ce1f2e9858f08c894bf0d73324a599a844b1f39`已用空认证配置拉取并确认jar内容身份匹配。公开amd64，本地冻结arm64，G17使用本机共享Docker引擎的amd64模拟。五项公开附件已上传并匿名校验，G17真实轮询与重启通过，Dashboard受保护操作失败；详见当前阻断。
+
+早期G17工具失败记录保留于`.execution/verify/failed-final-release-*`：无认证Docker配置缺少本机插件路径、Trivy旧Docker归档读取兼容性、官方ID规范前缀比较、临时证据目录扫描竞态、重启连接关闭处理。它们均为收尾工具问题；应用与公开tag/digest未改动。33项发布安全回归通过。最终报告和正式Release promotion仍须G17通过。
+
 ## 最新正式验收 (2026-10-04 13:31 PDT)
 
-G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒，2709次采样，最大双时钟间隔36.2秒；327真实事件（198 BOOTSTRAP/129 LIVE），三次故障均通过。20:31:44Z确认outbox/DLT/lag均0，账本327 raw=processed，无OOM；末小时均值790.2MiB，增长35.7MiB符合阈值。正式报告`.execution/verify/final-soak/soak-report.json`。13条NO_OVERLAP为已披露的分类缺陷，不能据此声明上游无缺失。数据库已备份，当前窗口自有容器停止，卷与证据保留。正在串行完成G02/G15，尚未合并或公开发布。
+G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒，2709次采样，最大双时钟间隔36.2秒；327真实事件（198 BOOTSTRAP/129 LIVE），三次故障均通过。20:31:44Z确认outbox/DLT/lag均0，账本327 raw=processed，无OOM；末小时均值790.2MiB，增长35.7MiB符合阈值。正式报告`.execution/verify/final-soak/soak-report.json`。13条NO_OVERLAP为已披露的分类缺陷，不能据此声明上游无缺失。数据库已备份，当前窗口自有容器停止，卷与证据保留。此段为G16完成时快照；后续G02/G15、合并与公开预发布已完成，最新状态见上节。
 
 ## 历史恢复窗口 (2026-10-03 13:31 PDT)
 
@@ -48,10 +60,10 @@ G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒�
 |---|---|
 | document_revision | 1.3 |
 | handoff_date | 2026-10-01，本聊天接管，America/Los_Angeles |
-| product_goal_status | RUNNING（主机条件恢复，新完整窗口进行中）；冻结应用 573154b9 的短门禁已通过；G16 已通过，最终 G02/G15 正在重跑，P7 尚未完成 |
-| current_phase | P6 |
-| current_task | P6.1 final G15 |
-| next_action | G16/G02已通过；final-package、发布预检、最终提交五项CI、合并、预发布及G17 |
+| product_goal_status | RUNNING；G02/G13/G15/G16通过，PR1已合并、公开预发布已上传；G17公开安装验收进行中 |
+| current_phase | P7 |
+| current_task | P7.3 G17 |
+| next_action | 完成G17，上传最终报告与补充证据，匿名复核最终附件后提升正式Release |
 | local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
 | remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
 | execution_branch | codex/release-v1（已推送到 origin；PR #1 已开） |
@@ -122,11 +134,11 @@ G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compos
 | P5.1 | incident / scheduler | PASSED | G10 PASSED（163/0/0/0；IncidentLifecycle 6、Scheduler 2、CollectorStatus 3）；`.execution/verify/p5-gate3/` |
 | P5.2 | 指标、保留、备份恢复 | PASSED | G11 PASSED（165/0/0/0 + 备份/新卷恢复演练）；`.execution/verify/p5b-gate3/`、`.execution/runs/p52-drill/` |
 | P5.3 | Dashboard 操作与响应式 | PASSED | G12 PASSED（8/8 页面，0 console 错误、无溢出、2px focus、socket connected）；before `.execution/runs/p53-before/`、after `.execution/verify/p5c-gate6/` |
-| P6.1 | 冻结候选、短门槛、负载 | RUNNING | 当前冻结应用 573154b9；G13/G14 已通过，旧候选与旧 bundle 不代替 final G02/G15，G16 后重跑 |
+| P6.1 | 冻结候选、短门槛、负载 | PASSED | final-compose/final-security/final-package与冻结应用一致，负载数字见发布说明 |
 | P6.2 | 24 小时真实验收 | PASSED | 20261003T203107Z-soak24-r2，86413.6秒，327真实事件；final-soak正式报告；前两FAILED保留。 |
-| P7.1 | 合并自己的重构 PR | NOT_STARTED | - |
-| P7.2 | 公共 Release / GHCR | NOT_STARTED | - |
-| P7.3 | 匿名安装及最终报告 | NOT_STARTED | - |
+| P7.1 | 合并自己的重构 PR | PASSED | PR1，release SHA 7e1051de，c1dc0fff五项CI全绿 |
+| P7.2 | 公共 Release / GHCR | RUNNING | v1.0.0预发布，digest匿名拉取已通过，等待G17最终promotion |
+| P7.3 | 匿名安装及最终报告 | RUNNING | `.execution/verify/final-release`，原始失败记录保留 |
 
 ## 门禁状态
 
@@ -149,7 +161,7 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G12 浏览器与四断点 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P5c/gate.json` |
 | G13 安全与漏洞 | PASSED | 记录提交 `6af0d40e` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-P6/gate.json` |
 | G14 100/s、30分钟 | PASSED | 记录提交 `c1b0b517` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-load/gate.json` |
-| G15 制品安装 | RUNNING | 当前应用 p7-package2 有历史通过证据；收尾工具/文档更新后须重生成并验收 final-package 的原始 bundle 字节 |
+| G15 制品安装 | PASSED | final-package，bundle SHA256 dbcfef4130635087143c687840b7eb45bd598fe51b0fb4d4dbaf32c123d2e611；指定身份落库/重启通过 |
 | G16 24h | PASSED | `20261003T203107Z-soak24-r2`；`.execution/verify/final-soak/soak-report.json`，327真实事件、三次故障、零积压 |
 | G17 公开独立安装 | NOT_STARTED | `.execution/verify/final-release`，必须使用明确 context、匿名附件及公开 digest |
 
