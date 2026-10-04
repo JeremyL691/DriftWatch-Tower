@@ -19,6 +19,14 @@ def require_receipt(row, identity):
         raise ValueError('specified ingestion did not persist exactly once in raw/processed/API receipt')
 
 
+def require_official_link(status, api, official):
+    expected = 'github:' + official['github_event_id']
+    if (status != 200 or api.get('origin') != 'GITHUB'
+            or official.get('event_id') != expected or api.get('event_id') != expected
+            or api.get('ingestion_id') != official['ingestion_id']):
+        raise ValueError('official event ID did not correlate inbox/raw/API')
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--project', required=True)
@@ -91,9 +99,8 @@ def main():
         evidence['ingestion_api'] = api
         official = wait_for(lambda: db("select row_to_json(t) from (select r.ingestion_id,r.event_id,i.github_event_id,i.poll_run_id,p.status poll_status,c.last_poll_success,c.etag_applied from raw_events r join source_inbox i using(ingestion_id) join source_poll_runs p on p.id=i.poll_run_id join collector_state c on c.source=i.source where r.origin='GITHUB' and c.last_poll_success is not null order by r.id desc limit 1) t"), timeout=600)
         status, api = request('/api/v1/events/' + official['ingestion_id'], admin)
-        if status != 200 or api.get('origin') != 'GITHUB' or api.get('event_id') != official['github_event_id']:
-            raise ValueError('official event ID did not correlate inbox/raw/API')
-        evidence['official_event'] = {'database': official, 'api': api, 'collectors': request('/api/v1/sources/collectors', admin)[1]}
+        evidence['official_event'] = {'database': official, 'api': api, 'api_status': status, 'collectors': request('/api/v1/sources/collectors', admin)[1]}
+        require_official_link(status, api, official)
         before = db("select json_build_object('bootstrap',(select count(*) from source_poll_runs where mode='BOOTSTRAP'),'polls',(select count(*) from source_poll_runs),'checkpoint',(select last_poll_success from collector_state limit 1))")
         run(*compose, 'restart', 'app')
         wait_for(lambda: request('/actuator/health/readiness')[0] == 200)

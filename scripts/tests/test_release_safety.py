@@ -85,6 +85,14 @@ class ReleaseSafety(unittest.TestCase):
             with self.subTest(last=last): self.assertFalse(self.continuity([first,last])['continuity_valid'])
         self.assertFalse(self.continuity([first])['continuity_valid'])
 
+    def test_official_identity_checks_canonical_prefix_and_ingestion(self):
+        official={'github_event_id':'123','event_id':'github:123','ingestion_id':'identity'}
+        api={'origin':'GITHUB','event_id':'github:123','ingestion_id':'identity'}
+        runtime.require_official_link(200,api,official)
+        for changed in [dict(api,event_id='github:456'),dict(api,ingestion_id='other'),dict(api,origin='REST')]:
+            with self.assertRaises(ValueError): runtime.require_official_link(200,changed,official)
+        with self.assertRaises(ValueError): runtime.require_official_link(404,api,official)
+
     def test_complete_bound_evidence_passes(self): self.validate()
     def test_absolute_gate_evidence_is_bound_and_summary_serializable(self):
         gate=json.loads((self.root/'gates/G16.json').read_text())
