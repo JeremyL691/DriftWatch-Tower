@@ -51,7 +51,7 @@ if docker image inspect "$IMAGE" >/dev/null 2>&1; then
     || die "image scan failed; see $OUT_DIR/trivy-image.err"
   # Credential material must not be baked into the runtime image.
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" \
-    image --scanners secret --format json "$IMAGE" > "$OUT_DIR/trivy-image-secrets.json" 2>&1 \
+    image --scanners secret --format json "$IMAGE" > "$OUT_DIR/trivy-image-secrets.json" 2> "$OUT_DIR/trivy-image-secrets.err" \
     || die "image secret scan failed; see $OUT_DIR/trivy-image-secrets.json"
   docker run --rm "$IMAGE" sh -c 'ls -la /app 2>/dev/null; find / -maxdepth 3 -name "*.env" -o -maxdepth 3 -name "credentials*" 2>/dev/null | head' \
     > "$OUT_DIR/image-file-list.txt" 2>&1 || true
@@ -70,6 +70,10 @@ docker run --rm -v "$OUT_DIR/tracked-tree":/tree:ro "$TRIVY_IMAGE" fs --scanners
   > "$OUT_DIR/trivy-repo-secrets.json" 2> "$OUT_DIR/trivy-repo-secrets.err" \
   || die "repository secret scan failed; see $OUT_DIR/trivy-repo-secrets.err"
 rm -rf "$OUT_DIR/tracked-tree"
+
+# Record the database actually used after any automatic update during scans.
+docker run --rm -v dwt-trivy-cache:/root/.cache "$TRIVY_IMAGE" --version \
+  > "$OUT_DIR/trivy-version.txt" 2>&1
 
 python3 "$SCRIPT_DIR/check-security.py" --dir "$OUT_DIR" --out "$OUT_DIR/g13-summary.json"
 check_exit=$?
