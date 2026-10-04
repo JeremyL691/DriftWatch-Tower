@@ -185,7 +185,7 @@ for (const theme of themes) {
         while (true) {
           const ready = await page.evaluate(async () => {
             const rows = await fetch('/api/v1/alerts?status=OPEN').then(r => r.json());
-            return rows.some(a => a.source.includes('demo'));
+            return rows.some(a => a.source.includes('demo') && a.severity !== 'INFO' && a.alert_type !== 'STALE_SOURCE');
           });
           if (ready) break;
           if (Date.now() >= deadline) throw new Error('demo alert did not persist within 60 seconds');
@@ -200,7 +200,7 @@ for (const theme of themes) {
       }
       const action = await page.evaluate(async () => {
         const rows = await fetch('/api/v1/alerts').then(r => r.json());
-        const alert = rows.find(a => a.status === 'OPEN' && a.source.includes('demo'));
+        const alert = rows.find(a => a.status === 'OPEN' && a.source.includes('demo') && a.severity !== 'INFO' && a.alert_type !== 'STALE_SOURCE');
         if (!alert) throw new Error('no demo alert available for action');
         const token = document.cookie.split('; ').find(c => c.startsWith('XSRF-TOKEN='));
         const headers = { 'Content-Type': 'application/json' };
