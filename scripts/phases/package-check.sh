@@ -15,7 +15,7 @@ OUT_DIR=""
 ARTIFACTS=""
 VERSION="v1.0.0"
 PORT=18082
-PROJECT="dwt-package-check-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+PROJECT="dwt-package-check-$(date -u +%Y%m%dt%H%M%Sz)-$$"
 while [ $# -gt 0 ]; do
   case "$1" in
     --out) OUT_DIR="$2"; shift 2 ;;
