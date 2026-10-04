@@ -40,7 +40,7 @@ scan() { # name extra-args...
 docker run --rm -v dwt-trivy-cache:/root/.cache "$TRIVY_IMAGE" --version \
   > "$OUT_DIR/trivy-version.txt" 2>&1
 
-if ! scan trivy-dependencies fs --scanners vuln --severity HIGH,CRITICAL --format json /repo; then
+if ! scan trivy-dependencies fs --skip-dirs /repo/.execution --skip-dirs /repo/.git --scanners vuln --severity HIGH,CRITICAL --format json /repo; then
   write_gate "$OUT_DIR" PHASE-P6 NOT_RUN "phase-P6.sh --out $OUT_DIR" "$started" "$(utc_now)" 2 \
     "$OUT_DIR/trivy-version.txt" "$OUT_DIR/trivy-dependencies.err" >/dev/null
   die "vulnerability database unavailable; a failed scan is NOT_RUN, never zero findings"
