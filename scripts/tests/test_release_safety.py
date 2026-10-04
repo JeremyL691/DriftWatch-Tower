@@ -93,6 +93,14 @@ class ReleaseSafety(unittest.TestCase):
             with self.assertRaises(ValueError): runtime.require_official_link(200,changed,official)
         with self.assertRaises(ValueError): runtime.require_official_link(404,api,official)
 
+    def test_restart_disconnect_wait_is_bounded_and_opt_in(self):
+        from unittest.mock import Mock, patch
+        callback=Mock(side_effect=[runtime.http.client.RemoteDisconnected(),True])
+        with patch.object(runtime.time,'sleep'): self.assertTrue(runtime.wait_for(callback,transient=True))
+        with self.assertRaises(runtime.http.client.RemoteDisconnected): runtime.wait_for(Mock(side_effect=runtime.http.client.RemoteDisconnected()))
+        with patch.object(runtime.time,'monotonic',side_effect=[0,181]), patch.object(runtime.time,'sleep'):
+            with self.assertRaises(ValueError): runtime.wait_for(Mock(side_effect=runtime.http.client.RemoteDisconnected()),transient=True)
+
     def test_complete_bound_evidence_passes(self): self.validate()
     def test_absolute_gate_evidence_is_bound_and_summary_serializable(self):
         gate=json.loads((self.root/'gates/G16.json').read_text())
