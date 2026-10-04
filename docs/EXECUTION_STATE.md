@@ -2,11 +2,17 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
+## 当前阻断与修复 (2026-10-04 15:05 PDT)
+
+G16/G02/G13/G15与PR1发布均已通过，但G17实际FAILED。公开v1.0.0在成功管理请求后删除XSRF-TOKEN Cookie，随后Dashboard确认/解决操作返回403。原始证据：`.execution/verify/failed-final-release-dashboard-resolve/`；独立浏览器诊断`.execution/verify/g17-action-diagnostic/browser-fifth/diagnostic-mutation-trace.json`和独立HTTP Cookie Jar `.execution/verify/g17-action-diagnostic/cookie-lifecycle.json`。Cookie清除现象在GET与POST均已复现；现有mock CSRF测试没有覆盖真实Cookie生命周期。
+
+v1.0.0保持公开预发布，tag、镜像和G15 bundle不可变，禁止正式promotion。按已批准的应用缺陷恢复规则，修复使用v1.0.1，需重新冻结并重跑受影响门禁及完整24小时；旧G16成功记录仅证明原v1.0.0候选，不能借作新候选通过证据。本聊天继续接管修复，旧ZCode自动化保持暂停。
+
 ## 当前公开制品验收 (2026-10-04)
 
-G02/G13/G15/G16均已通过。PR1已合并，发布SHA `7e1051de36880eaf8303d75c46d67934da41e24f`，五项CI属于确切head c1dc0fff。v1.0.0保持预发布；公开镜像`ghcr.io/jeremyl691/driftwatch-tower@sha256:aac36766669cc2990e35449d8ce1f2e9858f08c894bf0d73324a599a844b1f39`已用空认证配置拉取并确认jar内容身份匹配。公开amd64，本地冻结arm64，G17使用本机共享Docker引擎的amd64模拟。五项公开附件已上传并匿名校验，G17正在独立安装中验证真实轮询与重启。
+G02/G13/G15/G16均已通过。PR1已合并，发布SHA `7e1051de36880eaf8303d75c46d67934da41e24f`，五项CI属于确切head c1dc0fff。v1.0.0保持预发布；公开镜像`ghcr.io/jeremyl691/driftwatch-tower@sha256:aac36766669cc2990e35449d8ce1f2e9858f08c894bf0d73324a599a844b1f39`已用空认证配置拉取并确认jar内容身份匹配。公开amd64，本地冻结arm64，G17使用本机共享Docker引擎的amd64模拟。五项公开附件已上传并匿名校验，G17真实轮询与重启通过，Dashboard受保护操作失败；详见当前阻断。
 
-G17工具失败记录保留于`.execution/verify/failed-final-release-*`：无认证Docker配置缺少本机插件路径、Trivy旧Docker归档读取兼容性、官方ID规范前缀比较、临时证据目录扫描竞态、重启连接关闭处理。它们均为收尾工具问题；应用与公开tag/digest未改动。33项发布安全回归通过。最终报告和正式Release promotion仍须G17通过。
+早期G17工具失败记录保留于`.execution/verify/failed-final-release-*`：无认证Docker配置缺少本机插件路径、Trivy旧Docker归档读取兼容性、官方ID规范前缀比较、临时证据目录扫描竞态、重启连接关闭处理。它们均为收尾工具问题；应用与公开tag/digest未改动。33项发布安全回归通过。最终报告和正式Release promotion仍须G17通过。
 
 ## 最新正式验收 (2026-10-04 13:31 PDT)
 

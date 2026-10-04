@@ -44,7 +44,7 @@ transaction; failures retry four times and then go to a durable dead-letter topi
 | Browser | 8/8 captures at 320/768/1024/1440 px in dark and light, no console errors, no horizontal overflow, visible focus, live socket connected |
 | Security | Trivy 0.58.1, database 2026-10-04: no HIGH/CRITICAL in the dependency tree or the runtime image, no secret in the image or the tracked tree |
 | Continuous 24-hour run | PASSED, `20261003T203107Z-soak24-r2`: 86,413.6 s, 2,709 samples, maximum gap 36.2 s; 327 real IDs (129 LIVE), all three planned faults recovered, outbox/DLT/lag zero within 22 s of completion. 13 NO_OVERLAP classifications retain the disclosed limitation. |
-| Public installation | G17 RUNNING against anonymously downloaded public attachments and the public amd64 digest; formal promotion remains pending. |
+| Public installation | G17 FAILED: authenticated Dashboard mutations lose their CSRF cookie and return 403 after preceding successful requests. v1.0.0 remains a prerelease; a new candidate/version and full acceptance are required. |
 
 Performance conditions: single node, 11 CPU / 19.327 GB RAM / 41 GiB free disk at freeze time on macOS arm64, Docker Desktop, images pinned by digest,
 one Kafka broker and one PostgreSQL instance in the same compose project. The load figures are
