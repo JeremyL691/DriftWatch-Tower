@@ -1,5 +1,14 @@
 # DriftWatch Tower 执行状态
 
+
+## Current recovery checkpoint (2026-10-05 14:09 PDT)
+
+The earlier v1.0.1 window `20261005T111102Z-v101-soak24` FAILED. Its sampler and completion watcher disappeared after the last sample at2026-10-05T20:20:36Z; no successful runner result exists. The cause remains unconfirmed. The scoped power history contains no Sleep/Wake transition at the loss time, and the host boot time did not change. Preserve `.execution/finalize/v101-runner-loss-20261005T210737Z/`, the failed formal report at `.execution/verify/v101-soak/`, all original samples/faults, database backup and original owned volumes. Only that failed owned stack was stopped.
+
+Replacement `20261005T210849Z-v101-soak24-r2` started its real sampler at2026-10-05T21:08:51Z on fresh project `dwt-v101-soak-r2`, fresh volumes/env, port18096 and the unchanged frozen image. A one-shot user launchd supervisor (`com.driftwatch.v101.soak-r2.20261005`, PID62444, parent PID1) now owns the background process lifecycle independently of the chat application. It does not automatically restart a failed window. Current runner/watcher identities and sampling must be read dynamically from context and OS state. The earliest full-window end is2026-10-06T21:08:51Z (Oct6 14:08 PDT), followed by formal G16 and all remaining release gates. This is a complete new86400s window; old elapsed time and completed faults do not carry forward.
+
+The user-authorized closed-lid policy remains in force; retain AC, network, runner-bound awake assertions and actual UTC/monotonic continuity. G00/G02-G15 remain bound to the unchanged application freeze; do not rerun passed load or certify completion from syntax checks. PR3 merge, public v1.0.1 prerelease, anonymous real G17 and final promotion remain pending. Historical checkpoints below describe their original observation times.
+
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
 ## Current v1.0.1 execution (2026-10-05 04:13 PDT)
