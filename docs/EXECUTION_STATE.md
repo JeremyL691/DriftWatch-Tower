@@ -2,13 +2,17 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
-## Current v1.0.1 execution (2026-10-04 21:52 PDT)
+## Current v1.0.1 execution (2026-10-04 22:53 PDT)
 
 The frozen application candidate is `e3166d3269ac1ea919c0741cea8bcd5aa277af4e`, image `sha256:32cf329151d3da8960dd29f487429baa77bb614372ddbf0ced32420f0e8a6b95`; application/config/dependency identities remain unchanged. The CSRF repair and real-HTTP context closure pass the actual container suite: 176 tests, zero failures/errors/skips. All G00 and G02-G13 short gates passed. New-candidate actual Dashboard demo ingestion returns202, acknowledgment200 and incident resolution200; all three requests retain matching CSRF Cookie/header, and all eight viewport/theme captures pass. Explicit G12 evidence is `.execution/verify/v101-browser-actions/`. G02 includes actual image and exclusive named/anonymous-volume identity; G13 includes actual image identity, raw vulnerability/secret scans and zero blocking findings.
 
 Actual G06/G07/G11 recovery supplements passed in `.execution/verify/v101-recovery-drills/attempt-3/recovery-report.json`, completed at 2026-10-05T00:19:04Z. They prove historical database and stopped-Kafka backup/rollback, preserved old rows and V1-V7 checksums, per-partition backlog bridge with stable identities across repeat, prolonged sink outage followed by two protected replays and exactly one raw/processed receipt, fifteen-table row-content equality after fresh-volume restore, unresolved evidence/checkpoint retention, and required runtime metrics. The executed tool and eighteen raw artifacts are explicitly hashed and revalidated. Failed attempts and their owned volumes remain preserved. All43 release/recovery safety regressions pass; these supplement actual runtime proof.
 
-Original scheduler PID9563, created Oct4 16:48:16 PDT, was identity-checked and resumed at 2026-10-05T04:43:37Z after tooling/docs commit `d7127ba`. It finished P5/P5b/browser/security/unit gates and retired only the temporary owned gate stack. G14 is now RUNNING on fresh `dwt-v101-load` resources with the exact frozen image, starting 2026-10-05T04:50:13Z (Oct4 21:50 PDT), 100 offered events/s for1,800 continuous seconds. No v1.0.1 soak has started. The same scheduler must pass load and package before starting one fresh complete86,400-second window; do not start a duplicate process. Actual progress is `.execution/finalize/v101-chain-state.json`, current log `v101-chain-r2.log`, and the context. The earlier P4 orchestrator wall duration includes the deliberate scheduler hold; its independently timestamped gate report records actual test execution.
+G14 PASSED: the continuous timed window was 2026-10-05T04:50:26Z to05:20:26Z, with180,000 offers and acceptances at100/s, zero failed requests, and every specified ingestion ID persisted. Including100 warm-up events, raw/processed/receipt counts are180,100. Ack p95 is87.7ms; processing commit p95 is3.937s. Backlog drained in38.2s to outbox/DLT/lag0. UTC/monotonic continuity passed (suspend difference0.006s). Evidence: `.execution/verify/v101-load/`. This is one local shared Docker engine; its resource curve reports a7.75GiB limit.
+
+G15 failed at2026-10-05T05:23:34Z before starting installation: the export correctly contained `driftwatch-tower:csrf-v101`, but the package checker inspected hardcoded historical `driftwatch-tower:local`, and the package manifest also declared that old tag. Preserve `.execution/verify/v101-package/` and the original failed chain state. Scheduler PID9563 and its awake assertion have exited. The release tools now preserve the requested image reference, validate classic/OCI export identities, and inspect the declared reference;51 safety regressions and actual exported-tar identity validation passed. A fresh G15 installation in `.execution/verify/v101-package-r2/` must pass before a unique new full86,400-second window starts. No v1.0.1 soak has started. The frozen app/config/dependencies remain unchanged; the historical v1.0.0 tag is preserved.
+
+Actual progress remains `.execution/finalize/v101-chain-state.json`, original log `v101-chain-r2.log`, and the explicit release context. Never resume the exited process or repeat the full gate/load chain. Once G15 passes and host/process ownership is verified, invoke the orchestrator's soak-only continuation. The earlier P4 wall duration includes the deliberate hold; its separately timestamped gate records actual test execution.
 
 PR3 remains OPEN/DRAFT. Five CI jobs were successful on the frozen app commit; later tooling/docs heads require their own fresh checks before merge. Public v1.0.0 remains an unpromoted immutable prerelease after actual G17 failed. v1.0.1 formal G16, final G02/G15, merge/publication, public G17 and final promotion remain incomplete.
 
@@ -19,8 +23,8 @@ PR3 remains OPEN/DRAFT. Five CI jobs were successful on the frozen app commit; l
 | P1.2 / CSRF repair | PASSED | Actual HTTP auth/CSRF boundaries and new-image browser mutations passed |
 | P5.2 / isolation and recovery | PASSED | Clean-commit suite176/0/0/0, fresh G11 and actual bound recovery supplement passed |
 | G00 / G02-G13 | PASSED | Explicit new-candidate gates, actual browser operations and raw security/image evidence |
-| P6.1 / G14 | RUNNING | Same scheduler, fresh owned load project, continuous100/s for1,800s |
-| P6.1 / G15 | NOT_STARTED | Same scheduler must package/install after load passes |
+| P6.1 / G14 | PASSED | 180,000 timed offers persisted, p95 ack87.7ms/commit3.937s,38.2s drain, continuity passed |
+| P6.1 / G15 | FAILED | Original failure retained; tested package-reference repair awaits fresh artifact-only install |
 | P6.2 / G16 | NOT_STARTED | New complete86,400-second candidate-specific window required |
 | P7.1 | RUNNING | PR3 draft; final-head CI and gate-qualified merge pending |
 | P7.2 | NOT_STARTED | v1.0.1 public image/prerelease pending |
@@ -89,17 +93,17 @@ G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒�
 | document_revision | 1.4 |
 | product_goal_status | RUNNING: v1.0.1 acceptance recovery; public v1.0.0 remains a prerelease after G17 failed |
 | current_phase | P6: new-candidate acceptance |
-| current_task | P6.1: commit validated P5b isolation repair, rebuild/refreeze and rerun gates |
-| next_action | Commit the validated context closure and updated plan; rebuild/refreeze; execute bound gates and a fresh full86400s window |
+| current_task | P6.1: repair package-reference tooling and rerun fresh G15; unchanged app freeze |
+| next_action | Commit tested package tooling, pass fresh G15, verify host/ownership and start unique full86400s window |
 | execution_branch | codex/csrf-release-v1-0-1; PR #3 OPEN/DRAFT |
 | remote_snapshot_sha | 5a40f734d31778d702bc9273a418af10d2baa589, remote main verified 2026-10-04 |
-| candidate_sha | fed951fd6ae5e0f12769ea2d09d58eec6c91313c before committing the validated test-context closure |
-| source_tree_hash | Revised tree NOT_FROZEN; first attempt archived in `.execution/verify/v101-attempt1/freeze/` |
+| candidate_sha | e3166d3269ac1ea919c0741cea8bcd5aa277af4e |
+| source_tree_hash | d7bc5aaa54d96377089db4cdd033a8ee9316ef13def5082d70e164948b3de394; manifest `.execution/runs/v101-freeze/manifest.json` |
 | config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
-| candidate_image_id / public_digest | First-attempt local image sha256:c4501e15c040038a96d2499e9821a071317e2003de467a620af512fea2058ed2; rebuild/refreeze pending; v1.0.1 public digest absent |
+| candidate_image_id / public_digest | Local sha256:32cf329151d3da8960dd29f487429baa77bb614372ddbf0ced32420f0e8a6b95; v1.0.1 public digest absent |
 | target_release | v1.0.1; no existing remote tag or Release verified 2026-10-04 |
 | release_authorization | User-authorized repository commits/push, own PR merge, Actions, public GitHub/GHCR release and isolated acceptance resources |
-| docs_delivery_status | Detailed v1.0.1 plan and actual status updated; commit pending |
+| docs_delivery_status | Current v1.0.1 plan/status updated with G14 pass and retained G15 tooling failure |
 | active_soak_run | NONE for v1.0.1; passed historical v1.0.0 r2 window is stopped and archived |
 | external_blocker | None currently verified; approved Docker/process/network access restored |
 

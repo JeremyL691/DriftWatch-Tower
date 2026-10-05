@@ -2,9 +2,9 @@
 
 This schedule executes the existing P0-P7 tasks. [PROJECT_EXECUTION_GUIDE.md](PROJECT_EXECUTION_GUIDE.md), especially sections 8, 11 and 12, remains the acceptance specification. [EXECUTION_STATE.md](EXECUTION_STATE.md) records actual progress; `.execution/finalize/release-context.json` binds candidate identity and evidence. Completion requires a formal public v1.0.1 Release, anonymous installation of its exact image and assets, and a passing G17 report.
 
-## Current checkpoint (2026-10-04 21:52 PDT)
+## Current checkpoint (2026-10-04 22:53 PDT)
 
-Actual recovery supplement and all G00/G02-G13 gates passed on the unchanged frozen application. The same scheduler PID9563 was identity-checked and resumed at2026-10-05T04:43:37Z, and is executing fresh-volume G14 at100 offered events/s for1,800 continuous seconds, started2026-10-05T04:50:13Z. The new image's protected Dashboard operations and all eight captures passed. No new soak exists yet. After load/package pass, use the actual new run and its schedule from context. Earlier hold records below describe history; do not blindly resume or duplicate an already-running process.
+Actual recovery supplement and G00/G02-G14 passed on the unchanged frozen application. G14 delivered180,000 timed offers at100/s for1,800 continuous seconds, all persisted; ack p95 is87.7ms, commit p95 is3.937s, and drain38.2s. The original scheduler exited when G15 inspected a hardcoded historical image reference rather than its correctly exported candidate. Preserve `.execution/verify/v101-package/`. The package-reference/OCI identity repair passes51 tool regressions and verification of the actual exported tar. Fresh artifact-only G15 retry `.execution/verify/v101-package-r2/` is pending. No new soak exists. After the retry passes, verify host and unique process ownership, archive the original failed chain state, and use only `--start-soak-only` to start one complete window. Earlier scheduler hold/load records are historical; do not send SIGCONT to the exited PID or rerun passed load. The new image's protected Dashboard operations and all eight captures passed; public G17 remains required.
 
 ## Starting evidence
 
@@ -58,7 +58,7 @@ Store the generated report and raw artifacts under `.execution/verify/v101-recov
 | G13 | `phase-P6.sh`, secrets/auth and dependency/image SCA | `.execution/verify/v101-P6/` |
 | G00 | `verify.sh unit`, full suite with Docker required and zero skips | `.execution/verify/v101-unit/` |
 | G14 | 100 offered events/s for 1,800 continuous seconds, 180,000 offers, latency/resource and ingestion-ID reconciliation | `.execution/verify/v101-load/` |
-| G15 | Image-only package, SBOM/checksums and fresh artifact installation | `.execution/verify/v101-package/` |
+| G15 | Image-only package, SBOM/checksums and fresh artifact installation | Retry `.execution/verify/v101-package-r2/`; original failure preserved |
 
 G01 remains the preserved original expected-failure demonstration; current G03 must prove repaired detection. Every gate must have exit 0, PASSED, raw evidence and the same frozen candidate identity. Failed tests or a host-suspended load stop the sequence. Do not run complete suites/load/install tests concurrently with G16.
 
