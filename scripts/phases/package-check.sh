@@ -39,6 +39,8 @@ bundle="$ARTIFACTS/bundle"
 [ -d "$bundle" ] || die "bundle directory missing in $ARTIFACTS"
 expected_image_id="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["image"]["id"])' \
   "$ARTIFACTS/release-manifest.json")"
+expected_image_name="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["image"]["local_name"])' \
+  "$ARTIFACTS/release-manifest.json")"
 expected_tar_sha="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["image"]["exported_tar_sha256"])' \
   "$ARTIFACTS/release-manifest.json")"
 
@@ -61,9 +63,15 @@ print(d.hexdigest())" "$ARTIFACTS/driftwatch-tower-${VERSION}.tar")"
 [ "$actual_tar_sha" = "$expected_tar_sha" ] \
   || fail "image export hash mismatch: manifest=$expected_tar_sha actual=$actual_tar_sha"
 
+python3 "$SCRIPT_DIR/check-image-export.py" \
+  --tar "$ARTIFACTS/driftwatch-tower-${VERSION}.tar" \
+  --image-id "$expected_image_id" --image-name "$expected_image_name" \
+  --out "$OUT_DIR/image-export-identity.json" \
+  || fail "exported image identity does not match the release manifest"
+
 docker load -i "$ARTIFACTS/driftwatch-tower-${VERSION}.tar" > "$OUT_DIR/docker-load.txt" 2>&1 \
   || fail "docker load failed; see $OUT_DIR/docker-load.txt"
-loaded_id="$(docker image inspect --format '{{.Id}}' driftwatch-tower:local)"
+loaded_id="$(docker image inspect --format '{{.Id}}' "$expected_image_name")"
 [ "$loaded_id" = "$expected_image_id" ] \
   || fail "loaded image id $loaded_id does not match the frozen id $expected_image_id"
 
@@ -182,9 +190,9 @@ check_exit=$?
 
 if [ "$check_exit" -eq 0 ]; then
   write_gate "$OUT_DIR" PACKAGE PASSED "package-check.sh --out $OUT_DIR" "$started" "$(utc_now)" 0 \
-    "$OUT_DIR/install-summary.json" "$OUT_DIR/checksums-verify.txt" "$OUT_DIR/docker-load.txt" >/dev/null
+    "$OUT_DIR/install-summary.json" "$OUT_DIR/checksums-verify.txt" "$OUT_DIR/docker-load.txt" "$OUT_DIR/image-export-identity.json" >/dev/null
   exit 0
 fi
 write_gate "$OUT_DIR" PACKAGE FAILED "package-check.sh --out $OUT_DIR" "$started" "$(utc_now)" 1 \
-  "$OUT_DIR/install-summary.json" "$OUT_DIR/checksums-verify.txt" "$OUT_DIR/docker-load.txt" >/dev/null
+  "$OUT_DIR/install-summary.json" "$OUT_DIR/checksums-verify.txt" "$OUT_DIR/docker-load.txt" "$OUT_DIR/image-export-identity.json" >/dev/null
 fail "candidate package gate failed; see $OUT_DIR/install-summary.json"

@@ -48,6 +48,41 @@ def same_surface(sha, candidate):
     if not sha or subprocess.run(['git', '-C', str(ROOT), 'diff', '--quiet', sha, candidate, '--', *ROOTS], capture_output=True).returncode:
         raise ValueError(f'application surface differs or commit unavailable: {sha}')
 
+def validate_recovery(c, freeze):
+    """Require the actual operating drills in addition to phase-suite evidence."""
+    if c.get('version') != 'v1.0.1' and 'recovery_drills' not in c:
+        return
+    path = c.get('recovery_drills', {}).get('report')
+    if not path:
+        raise ValueError('missing same-candidate recovery drill report')
+    report = read(path)
+    if report.get('status') != 'PASSED':
+        raise ValueError('recovery drills are not PASSED')
+    for key, expected in [('candidate_sha', c['candidate_application_sha']),
+                          ('image_id', freeze['image_id']), ('source_tree_hash', freeze['source_tree_hash'])]:
+        if report.get(key) != expected:
+            raise ValueError(f'recovery candidate mismatch: {key}')
+    required = ['legacy_backup_and_drain', 'historical_upgrade', 'legacy_backlog_bridge',
+                'backup_based_rollback', 'persistent_sink_outage_and_replay',
+                'candidate_backup_restore', 'protected_retention', 'source_metrics', 'restored_runtime']
+    checks = report.get('checks', {})
+    if any(checks.get(name, {}).get('status') != 'PASSED' for name in required):
+        raise ValueError('missing required actual recovery checks')
+    artifacts = report.get('artifacts', {})
+    expected_files = {'legacy-db.dump', 'legacy-kafka.tar.gz', 'candidate-db.dump', 'executed-tool.py',
+                      'bridge-0.json', 'bridge-1.json', 'sink-outage-kafka-dlt.json',
+                      'source-prometheus.txt', 'restored-prometheus.txt', 'commands.log'}
+    if not expected_files.issubset(artifacts):
+        raise ValueError('missing required raw recovery artifacts')
+    for name, digest in artifacts.items():
+        if Path(name).name != name or not isinstance(digest, str) or len(digest) != 64:
+            raise ValueError('unsafe recovery artifact or digest')
+        target = file_path(str(file_path(path).parent.relative_to(ROOT) / name))
+        if hashlib.sha256(target.read_bytes()).hexdigest() != digest:
+            raise ValueError(f'recovery artifact hash mismatch: {name}')
+    if report.get('tool_sha256') != artifacts['executed-tool.py']:
+        raise ValueError('recovery executed tool differs from recorded hash')
+
 def validate(context, published=False):
     c = read(context)
     freeze = read(c['freeze_manifest'])
@@ -59,6 +94,7 @@ def validate(context, published=False):
     for key, roots in [('source_tree_hash', ROOTS), ('config_hash', freeze['config_files']), ('dependency_lock_hash', ['pom.xml', '.mvn/wrapper/maven-wrapper.properties'])]:
         if tree_hash(roots) != freeze[key]:
             raise ValueError(f'working tree changed: {key}')
+    validate_recovery(c, freeze)
     summary = {}
     for gate_id, name in GATES.items():
         path = c['gates'][gate_id]

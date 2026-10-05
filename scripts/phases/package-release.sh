@@ -102,16 +102,16 @@ done
 [ -f "$DWT_REPO_ROOT/README.md" ] && cp "$DWT_REPO_ROOT/README.md" "$OUT_DIR/bundle/"
 
 python3 - "$OUT_DIR" "$VERSION" "$git_sha" "$image_id" "$image_tar" "$image_tar_sha" \
-        "$image_created" "${MANIFEST:-}" <<'PY'
+        "$image_created" "${MANIFEST:-}" "$IMAGE" <<'PY'
 import json, os, sys
-out_dir, version, git_sha, image_id, image_tar, image_tar_sha, image_created, manifest_path = sys.argv[1:9]
+out_dir, version, git_sha, image_id, image_tar, image_tar_sha, image_created, manifest_path, image_name = sys.argv[1:10]
 source = json.load(open(manifest_path)) if manifest_path and os.path.exists(manifest_path) else {}
 payload = {
     "version": version,
     "tag": version,
     "candidate_commit": git_sha,
     "image": {
-        "local_name": "driftwatch-tower:local",
+        "local_name": image_name,
         "id": image_id,
         "created": image_created,
         "exported_tar": image_tar,
