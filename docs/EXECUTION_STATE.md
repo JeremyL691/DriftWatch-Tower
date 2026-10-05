@@ -2,7 +2,7 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
-## Current v1.0.1 execution (2026-10-05 02:45 PDT)
+## Current v1.0.1 execution (2026-10-05 04:13 PDT)
 
 The frozen application candidate is `e3166d3269ac1ea919c0741cea8bcd5aa277af4e`, image `sha256:32cf329151d3da8960dd29f487429baa77bb614372ddbf0ced32420f0e8a6b95`; application/config/dependency identities remain unchanged. The CSRF repair and real-HTTP context closure pass the actual container suite: 176 tests, zero failures/errors/skips. All G00 and G02-G13 short gates passed. New-candidate actual Dashboard demo ingestion returns202, acknowledgment200 and incident resolution200; all three requests retain matching CSRF Cookie/header, and all eight viewport/theme captures pass. Explicit G12 evidence is `.execution/verify/v101-browser-actions/`. G02 includes actual image and exclusive named/anonymous-volume identity; G13 includes actual image identity, raw vulnerability/secret scans and zero blocking findings.
 
@@ -12,7 +12,9 @@ G14 PASSED: the continuous timed window was 2026-10-05T04:50:26Z to05:20:26Z, wi
 
 G15 PASSED on the fresh retry `.execution/verify/v101-package-r2/`, completed2026-10-05T05:57:31Z. The artifact-only stack ran the exact frozen image, administrator API returned200, specified ingestion `6d7c65a6-746e-4454-8ef9-c9b2b265fbb2` had one joined raw/processed receipt, and readiness recovered after restart. The accepted bundle hash is `76fdf8a1626738403dc8537e5323735de84cb373d787d24d0fa12ff63b638f19`; `artifact-binding.json` records explicit image/bundle/SBOM/manifest/checksum hashes. The original failure at05:23:34Z came from a hardcoded old image tag; preserve `.execution/verify/v101-package/`. Tool commit `9670a54` fixes exported/loaded references and classic/OCI identity checking. The strict release validator's Dashboard identifier now matches the producer's `PHASE-P5C`, committed at `ead0fcc`;53 release/recovery/export safety regressions pass. Actual runtime evidence was retained unchanged. App/config/dependencies remain frozen.
 
-G16 BLOCKED_HOST before launch: at2026-10-05T09:45:24Z hardware reports `AppleClamshellState=Yes`, `AppleClamshellCausesSleep=No`, AC Power100%. The approved window requires actual open lid and AC. No v1.0.1 soak, runner or watcher exists. The original scheduler PID9563 and its assertion have exited; its FAILED package state/log remain historical. Heartbeat waits quietly, then rechecks actual host/network/process ownership and fresh resources, archives the exited original chain, and uses only `--start-soak-only` to start one full86,400-second window. Do not SIGCONT the old PID or repeat the passed load. Current entry is repair-status/context; old `v101-chain-state.json` is retained failure evidence until this continuation actually launches.
+G16 RUNNING: fresh run `20261005T111102Z-v101-soak24`, project `dwt-v101-soak`, port18095, new volumes and exact frozen image. Independent runner PID66829 was created Oct5 04:11:03 PDT; actual first sample2026-10-05T11:11:03Z. Initial real polling proves one BOOTSTRAP round/99 official events, READY, pending0/failures0. Four samples have valid UTC/monotonic continuity, maximum32s gap. Faults are planned Oct5 06:11 application restart,12:11 Kafka interruption,20:11 database interruption. Earliest full-window completion is Oct6 04:11 PDT (2026-10-06T11:11:03Z); formal G16 is still required.
+
+The user explicitly authorized closed-lid operation and continued delivery. Open lid is no longer a prerequisite; retain AC power, runner-bound awake assertions and actual UTC/monotonic continuity. Earlier lid-block records are historical. Launcher PID66573 exited after an immediate startup observation/watcher race; preserve `.execution/finalize/v101-startup-observation-race/`. The independent runner remained healthy and was never restarted. Same-run `prefault-takeover.json` is saved, observer now passes, and the sole recovered finish watcher PID67396 (created04:12:53 PDT) and its awake PID67397 are registered in `finish-watch.pid.json`. Runner awake PID66831 is bound to66829. Dynamic context/run state and actual processes are authoritative; do not launch another chain/window.
 
 PR3 remains OPEN/DRAFT. Five CI jobs were successful on the frozen app commit; later tooling/docs heads require their own fresh checks before merge. Public v1.0.0 remains an unpromoted immutable prerelease after actual G17 failed. v1.0.1 formal G16, final G02/G15, merge/publication, public G17 and final promotion remain incomplete.
 
@@ -25,7 +27,7 @@ PR3 remains OPEN/DRAFT. Five CI jobs were successful on the frozen app commit; l
 | G00 / G02-G13 | PASSED | Explicit new-candidate gates, actual browser operations and raw security/image evidence |
 | P6.1 / G14 | PASSED | 180,000 timed offers persisted, p95 ack87.7ms/commit3.937s,38.2s drain, continuity passed |
 | P6.1 / G15 | PASSED | Fresh artifact-only retry, exact image, specified raw/receipt and restart recovery; explicit bundle hash |
-| P6.2 / G16 | BLOCKED | Actual lid closed; waits for open lid and AC before unique full86,400-second window |
+| P6.2 / G16 | RUNNING | Unique fresh run20261005T111102Z-v101-soak24;99 initial official events, dual clocks valid; full window pending |
 | P7.1 | RUNNING | PR3 draft; final-head CI and gate-qualified merge pending |
 | P7.2 | NOT_STARTED | v1.0.1 public image/prerelease pending |
 | P7.3 / G17 | NOT_STARTED | Public install, final reports/anonymous asset verification and formal promotion pending |
@@ -93,8 +95,8 @@ G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒�
 | document_revision | 1.4 |
 | product_goal_status | RUNNING: v1.0.1 acceptance recovery; public v1.0.0 remains a prerelease after G17 failed |
 | current_phase | P6.2: new-candidate continuous acceptance |
-| current_task | P6.2: wait for actual open lid and AC, then launch unique full86400s window |
-| next_action | All pre-soak gates passed; verify actual open lid/AC/network/ownership before soak-only continuation |
+| current_task | P6.2: observe unique independent full86400s window and planned faults |
+| next_action | Observe context-bound run and preserve same-run evidence; formal G16 before final checks/public release |
 | execution_branch | codex/csrf-release-v1-0-1; PR #3 OPEN/DRAFT |
 | remote_snapshot_sha | 5a40f734d31778d702bc9273a418af10d2baa589, remote main verified 2026-10-04 |
 | candidate_sha | e3166d3269ac1ea919c0741cea8bcd5aa277af4e |
@@ -103,13 +105,13 @@ G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒�
 | candidate_image_id / public_digest | Local sha256:32cf329151d3da8960dd29f487429baa77bb614372ddbf0ced32420f0e8a6b95; v1.0.1 public digest absent |
 | target_release | v1.0.1; no existing remote tag or Release verified 2026-10-04 |
 | release_authorization | User-authorized repository commits/push, own PR merge, Actions, public GitHub/GHCR release and isolated acceptance resources |
-| docs_delivery_status | Current v1.0.1 plan/status updated with G14/G15 pass and actual host preflight block |
-| active_soak_run | NONE for v1.0.1; passed historical v1.0.0 r2 window is stopped and archived |
-| external_blocker | Actual lid closed at2026-10-05T09:45:24Z; AC confirmed. Open lid required before new window |
+| docs_delivery_status | Current v1.0.1 plan/status updated with actual new window and user-authorized closed-lid policy |
+| active_soak_run | 20261005T111102Z-v101-soak24; runner66829, watcher67396, fresh dwt-v101-soak project |
+| external_blocker | None currently; closed-lid operation explicitly authorized, actual continuity required |
 
 > **接管规则**：旧 ZCode 自动化已暂停。本聊天 heartbeat 以执行计划和 release context 为准；同时验证 PID、创建时间、命令、采样更新、项目与镜像。不得根据旧投递文字或单个 RUNNING 状态启动第二个窗口。
 
-> **Evidence ownership**: all v1.0.0 windows, including passed r2, are historical for v1.0.1. Read faults/observations only from the new run explicitly bound in the current release context. No new run exists yet.
+> **Evidence ownership**: all v1.0.0 windows, including passed r2, are historical for v1.0.1. Read faults/observations only from the new run explicitly bound in the current release context. Current new run is explicitly bound in release context.
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
 
