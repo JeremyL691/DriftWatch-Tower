@@ -2,6 +2,10 @@
 
 This schedule executes the existing P0-P7 tasks. [PROJECT_EXECUTION_GUIDE.md](PROJECT_EXECUTION_GUIDE.md), especially sections 8, 11 and 12, remains the acceptance specification. [EXECUTION_STATE.md](EXECUTION_STATE.md) records actual progress; `.execution/finalize/release-context.json` binds candidate identity and evidence. Completion requires a formal public v1.0.1 Release, anonymous installation of its exact image and assets, and a passing G17 report.
 
+## Current checkpoint (2026-10-04 21:52 PDT)
+
+Actual recovery supplement and all G00/G02-G13 gates passed on the unchanged frozen application. The same scheduler PID9563 was identity-checked and resumed at2026-10-05T04:43:37Z, and is executing fresh-volume G14 at100 offered events/s for1,800 continuous seconds, started2026-10-05T04:50:13Z. The new image's protected Dashboard operations and all eight captures passed. No new soak exists yet. After load/package pass, use the actual new run and its schedule from context. Earlier hold records below describe history; do not blindly resume or duplicate an already-running process.
+
 ## Starting evidence
 
 - Branch `codex/csrf-release-v1-0-1`, frozen application commit `e3166d3269ac1ea919c0741cea8bcd5aa277af4e`, including the CSRF repair and validated test-context closure. PR #3 is OPEN/DRAFT; all five CI jobs passed on that exact head, freshly checked in `.execution/verify/v101-recovery-drills/pr3-live.json`. A later head requires fresh CI.

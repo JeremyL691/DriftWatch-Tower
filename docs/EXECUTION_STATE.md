@@ -2,22 +2,26 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
-## Current v1.0.1 execution (2026-10-04 21:44 PDT)
+## Current v1.0.1 execution (2026-10-04 21:52 PDT)
 
-The CSRF repair and real-HTTP context closure are committed at frozen application candidate `e3166d3269ac1ea919c0741cea8bcd5aa277af4e`; the current image is `sha256:32cf329151d3da8960dd29f487429baa77bb614372ddbf0ced32420f0e8a6b95`. Fresh Compose/P2/P3/P4 and the candidate's five CI jobs passed. Public v1.0.0 remains an unpromoted immutable prerelease after actual G17 failed. No v1.0.1 soak has started.
+The frozen application candidate is `e3166d3269ac1ea919c0741cea8bcd5aa277af4e`, image `sha256:32cf329151d3da8960dd29f487429baa77bb614372ddbf0ced32420f0e8a6b95`; application/config/dependency identities remain unchanged. The CSRF repair and real-HTTP context closure pass the actual container suite: 176 tests, zero failures/errors/skips. All G00 and G02-G13 short gates passed. New-candidate actual Dashboard demo ingestion returns202, acknowledgment200 and incident resolution200; all three requests retain matching CSRF Cookie/header, and all eight viewport/theme captures pass. Explicit G12 evidence is `.execution/verify/v101-browser-actions/`. G02 includes actual image and exclusive named/anonymous-volume identity; G13 includes actual image identity, raw vulnerability/secret scans and zero blocking findings.
 
-Actual G06/G07/G11 recovery supplements passed in `.execution/verify/v101-recovery-drills/attempt-3/recovery-report.json`, completed at 2026-10-05T00:19:04Z. They prove historical database and stopped-Kafka backup/rollback, preserved old rows and V1-V7 checksums, per-partition backlog bridge with stable identities across repeat, prolonged sink outage followed by two protected replays and exactly one raw/processed receipt, fifteen-table row-content equality after fresh-volume restore, unresolved evidence/checkpoint retention, and required runtime metrics. The executed tool and eighteen raw artifacts are explicitly hashed. Failed attempts and their owned volumes remain preserved. The context validator rechecked the successful report, every bound artifact hash, the exact candidate/image/source hash and the unchanged frozen application tree. All 43 release/recovery safety regressions pass; they supplement these runtime proofs.
+Actual G06/G07/G11 recovery supplements passed in `.execution/verify/v101-recovery-drills/attempt-3/recovery-report.json`, completed at 2026-10-05T00:19:04Z. They prove historical database and stopped-Kafka backup/rollback, preserved old rows and V1-V7 checksums, per-partition backlog bridge with stable identities across repeat, prolonged sink outage followed by two protected replays and exactly one raw/processed receipt, fifteen-table row-content equality after fresh-volume restore, unresolved evidence/checkpoint retention, and required runtime metrics. The executed tool and eighteen raw artifacts are explicitly hashed and revalidated. Failed attempts and their owned volumes remain preserved. All43 release/recovery safety regressions pass; these supplement actual runtime proof.
 
-At 21:41 PDT, actual inspection verified scheduler PID9563 (created Oct4 16:48:16 PDT) in held OS state `Ts`, no live recovery drill or soak runner, healthy owned gate containers and the exact frozen image. The Mac has an open lid and AC Power. The existing scheduler is ready to resume after the tooling/docs commit; a fresh process/hold check must precede SIGCONT. It will finish P5/P5b/browser/security/unit gates, continuous 1,800-second load and package before starting one new complete 86,400-second window. State/run IDs and timing come from the actual chain and context, never the historical v1.0.0 run.
+Original scheduler PID9563, created Oct4 16:48:16 PDT, was identity-checked and resumed at 2026-10-05T04:43:37Z after tooling/docs commit `d7127ba`. It finished P5/P5b/browser/security/unit gates and retired only the temporary owned gate stack. G14 is now RUNNING on fresh `dwt-v101-load` resources with the exact frozen image, starting 2026-10-05T04:50:13Z (Oct4 21:50 PDT), 100 offered events/s for1,800 continuous seconds. No v1.0.1 soak has started. The same scheduler must pass load and package before starting one fresh complete86,400-second window; do not start a duplicate process. Actual progress is `.execution/finalize/v101-chain-state.json`, current log `v101-chain-r2.log`, and the context. The earlier P4 orchestrator wall duration includes the deliberate scheduler hold; its independently timestamped gate report records actual test execution.
+
+PR3 remains OPEN/DRAFT. Five CI jobs were successful on the frozen app commit; later tooling/docs heads require their own fresh checks before merge. Public v1.0.0 remains an unpromoted immutable prerelease after actual G17 failed. v1.0.1 formal G16, final G02/G15, merge/publication, public G17 and final promotion remain incomplete.
 
 ## Current v1.0.1 task and gate status
 
 | Task / gate | Status | Evidence / remaining work |
 |---|---|---|
-| P1.2 / CSRF repair | RUNNING | Real HTTP and local browser actions pass; final candidate acceptance pending |
-| P5.2 / test isolation | RUNNING | Full clean-commit suite176/0/0/0; actual recovery supplement passed; fresh G11 gate pending |
-| P6.1 / G00, G02-G15 | RUNNING | Clean freeze and Compose/P2/P3/P4 passed; actual recovery supplements passed; existing scheduler resumes remaining gates |
-| P6.2 / G16 | NOT_STARTED | New complete86400s candidate-specific window required |
+| P1.2 / CSRF repair | PASSED | Actual HTTP auth/CSRF boundaries and new-image browser mutations passed |
+| P5.2 / isolation and recovery | PASSED | Clean-commit suite176/0/0/0, fresh G11 and actual bound recovery supplement passed |
+| G00 / G02-G13 | PASSED | Explicit new-candidate gates, actual browser operations and raw security/image evidence |
+| P6.1 / G14 | RUNNING | Same scheduler, fresh owned load project, continuous100/s for1,800s |
+| P6.1 / G15 | NOT_STARTED | Same scheduler must package/install after load passes |
+| P6.2 / G16 | NOT_STARTED | New complete86,400-second candidate-specific window required |
 | P7.1 | RUNNING | PR3 draft; final-head CI and gate-qualified merge pending |
 | P7.2 | NOT_STARTED | v1.0.1 public image/prerelease pending |
 | P7.3 / G17 | NOT_STARTED | Public install, final reports/anonymous asset verification and formal promotion pending |
