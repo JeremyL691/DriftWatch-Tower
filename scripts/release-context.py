@@ -9,7 +9,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOTS = ['src', 'pom.xml', 'Dockerfile', 'docker-compose.yml', 'docker-compose.dev.yml', '.mvn']
-GATES = dict(zip(['G00', 'G02', 'G03', 'G04', 'G05', 'G06', 'G07', 'G08', 'G09', 'G10', 'G11', 'G12', 'G13', 'G14', 'G15', 'G16'], ['UNIT', 'COMPOSE', 'PHASE-P2', 'PHASE-P2', 'PHASE-P3', 'PHASE-P3', 'PHASE-P3', 'PHASE-P4', 'PHASE-P4', 'PHASE-P5', 'PHASE-P5b', 'PHASE-P5c', 'PHASE-P6', 'LOAD', 'PACKAGE', 'SOAK']))
+GATES = dict(zip(['G00', 'G02', 'G03', 'G04', 'G05', 'G06', 'G07', 'G08', 'G09', 'G10', 'G11', 'G12', 'G13', 'G14', 'G15', 'G16'], ['UNIT', 'COMPOSE', 'PHASE-P2', 'PHASE-P2', 'PHASE-P3', 'PHASE-P3', 'PHASE-P3', 'PHASE-P4', 'PHASE-P4', 'PHASE-P5', 'PHASE-P5b', 'PHASE-P5C', 'PHASE-P6', 'LOAD', 'PACKAGE', 'SOAK']))
 
 def file_path(value):
     path = (ROOT / value).resolve()
