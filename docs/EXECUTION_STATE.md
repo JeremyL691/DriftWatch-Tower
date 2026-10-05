@@ -2,7 +2,7 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
-## Current v1.0.1 execution (2026-10-04 22:53 PDT)
+## Current v1.0.1 execution (2026-10-05 02:45 PDT)
 
 The frozen application candidate is `e3166d3269ac1ea919c0741cea8bcd5aa277af4e`, image `sha256:32cf329151d3da8960dd29f487429baa77bb614372ddbf0ced32420f0e8a6b95`; application/config/dependency identities remain unchanged. The CSRF repair and real-HTTP context closure pass the actual container suite: 176 tests, zero failures/errors/skips. All G00 and G02-G13 short gates passed. New-candidate actual Dashboard demo ingestion returns202, acknowledgment200 and incident resolution200; all three requests retain matching CSRF Cookie/header, and all eight viewport/theme captures pass. Explicit G12 evidence is `.execution/verify/v101-browser-actions/`. G02 includes actual image and exclusive named/anonymous-volume identity; G13 includes actual image identity, raw vulnerability/secret scans and zero blocking findings.
 
@@ -10,9 +10,9 @@ Actual G06/G07/G11 recovery supplements passed in `.execution/verify/v101-recove
 
 G14 PASSED: the continuous timed window was 2026-10-05T04:50:26Z to05:20:26Z, with180,000 offers and acceptances at100/s, zero failed requests, and every specified ingestion ID persisted. Including100 warm-up events, raw/processed/receipt counts are180,100. Ack p95 is87.7ms; processing commit p95 is3.937s. Backlog drained in38.2s to outbox/DLT/lag0. UTC/monotonic continuity passed (suspend difference0.006s). Evidence: `.execution/verify/v101-load/`. This is one local shared Docker engine; its resource curve reports a7.75GiB limit.
 
-G15 failed at2026-10-05T05:23:34Z before starting installation: the export correctly contained `driftwatch-tower:csrf-v101`, but the package checker inspected hardcoded historical `driftwatch-tower:local`, and the package manifest also declared that old tag. Preserve `.execution/verify/v101-package/` and the original failed chain state. Scheduler PID9563 and its awake assertion have exited. The release tools now preserve the requested image reference, validate classic/OCI export identities, and inspect the declared reference;51 safety regressions and actual exported-tar identity validation passed. A fresh G15 installation in `.execution/verify/v101-package-r2/` must pass before a unique new full86,400-second window starts. No v1.0.1 soak has started. The frozen app/config/dependencies remain unchanged; the historical v1.0.0 tag is preserved.
+G15 PASSED on the fresh retry `.execution/verify/v101-package-r2/`, completed2026-10-05T05:57:31Z. The artifact-only stack ran the exact frozen image, administrator API returned200, specified ingestion `6d7c65a6-746e-4454-8ef9-c9b2b265fbb2` had one joined raw/processed receipt, and readiness recovered after restart. The accepted bundle hash is `76fdf8a1626738403dc8537e5323735de84cb373d787d24d0fa12ff63b638f19`; `artifact-binding.json` records explicit image/bundle/SBOM/manifest/checksum hashes. The original failure at05:23:34Z came from a hardcoded old image tag; preserve `.execution/verify/v101-package/`. Tool commit `9670a54` fixes exported/loaded references and classic/OCI identity checking. The strict release validator's Dashboard identifier now matches the producer's `PHASE-P5C`, committed at `ead0fcc`;53 release/recovery/export safety regressions pass. Actual runtime evidence was retained unchanged. App/config/dependencies remain frozen.
 
-Actual progress remains `.execution/finalize/v101-chain-state.json`, original log `v101-chain-r2.log`, and the explicit release context. Never resume the exited process or repeat the full gate/load chain. Once G15 passes and host/process ownership is verified, invoke the orchestrator's soak-only continuation. The earlier P4 wall duration includes the deliberate hold; its separately timestamped gate records actual test execution.
+G16 BLOCKED_HOST before launch: at2026-10-05T09:45:24Z hardware reports `AppleClamshellState=Yes`, `AppleClamshellCausesSleep=No`, AC Power100%. The approved window requires actual open lid and AC. No v1.0.1 soak, runner or watcher exists. The original scheduler PID9563 and its assertion have exited; its FAILED package state/log remain historical. Heartbeat waits quietly, then rechecks actual host/network/process ownership and fresh resources, archives the exited original chain, and uses only `--start-soak-only` to start one full86,400-second window. Do not SIGCONT the old PID or repeat the passed load. Current entry is repair-status/context; old `v101-chain-state.json` is retained failure evidence until this continuation actually launches.
 
 PR3 remains OPEN/DRAFT. Five CI jobs were successful on the frozen app commit; later tooling/docs heads require their own fresh checks before merge. Public v1.0.0 remains an unpromoted immutable prerelease after actual G17 failed. v1.0.1 formal G16, final G02/G15, merge/publication, public G17 and final promotion remain incomplete.
 
@@ -24,8 +24,8 @@ PR3 remains OPEN/DRAFT. Five CI jobs were successful on the frozen app commit; l
 | P5.2 / isolation and recovery | PASSED | Clean-commit suite176/0/0/0, fresh G11 and actual bound recovery supplement passed |
 | G00 / G02-G13 | PASSED | Explicit new-candidate gates, actual browser operations and raw security/image evidence |
 | P6.1 / G14 | PASSED | 180,000 timed offers persisted, p95 ack87.7ms/commit3.937s,38.2s drain, continuity passed |
-| P6.1 / G15 | FAILED | Original failure retained; tested package-reference repair awaits fresh artifact-only install |
-| P6.2 / G16 | NOT_STARTED | New complete86,400-second candidate-specific window required |
+| P6.1 / G15 | PASSED | Fresh artifact-only retry, exact image, specified raw/receipt and restart recovery; explicit bundle hash |
+| P6.2 / G16 | BLOCKED | Actual lid closed; waits for open lid and AC before unique full86,400-second window |
 | P7.1 | RUNNING | PR3 draft; final-head CI and gate-qualified merge pending |
 | P7.2 | NOT_STARTED | v1.0.1 public image/prerelease pending |
 | P7.3 / G17 | NOT_STARTED | Public install, final reports/anonymous asset verification and formal promotion pending |
@@ -92,9 +92,9 @@ G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒�
 |---|---|
 | document_revision | 1.4 |
 | product_goal_status | RUNNING: v1.0.1 acceptance recovery; public v1.0.0 remains a prerelease after G17 failed |
-| current_phase | P6: new-candidate acceptance |
-| current_task | P6.1: repair package-reference tooling and rerun fresh G15; unchanged app freeze |
-| next_action | Commit tested package tooling, pass fresh G15, verify host/ownership and start unique full86400s window |
+| current_phase | P6.2: new-candidate continuous acceptance |
+| current_task | P6.2: wait for actual open lid and AC, then launch unique full86400s window |
+| next_action | All pre-soak gates passed; verify actual open lid/AC/network/ownership before soak-only continuation |
 | execution_branch | codex/csrf-release-v1-0-1; PR #3 OPEN/DRAFT |
 | remote_snapshot_sha | 5a40f734d31778d702bc9273a418af10d2baa589, remote main verified 2026-10-04 |
 | candidate_sha | e3166d3269ac1ea919c0741cea8bcd5aa277af4e |
@@ -103,9 +103,9 @@ G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒�
 | candidate_image_id / public_digest | Local sha256:32cf329151d3da8960dd29f487429baa77bb614372ddbf0ced32420f0e8a6b95; v1.0.1 public digest absent |
 | target_release | v1.0.1; no existing remote tag or Release verified 2026-10-04 |
 | release_authorization | User-authorized repository commits/push, own PR merge, Actions, public GitHub/GHCR release and isolated acceptance resources |
-| docs_delivery_status | Current v1.0.1 plan/status updated with G14 pass and retained G15 tooling failure |
+| docs_delivery_status | Current v1.0.1 plan/status updated with G14/G15 pass and actual host preflight block |
 | active_soak_run | NONE for v1.0.1; passed historical v1.0.0 r2 window is stopped and archived |
-| external_blocker | None currently verified; approved Docker/process/network access restored |
+| external_blocker | Actual lid closed at2026-10-05T09:45:24Z; AC confirmed. Open lid required before new window |
 
 > **接管规则**：旧 ZCode 自动化已暂停。本聊天 heartbeat 以执行计划和 release context 为准；同时验证 PID、创建时间、命令、采样更新、项目与镜像。不得根据旧投递文字或单个 RUNNING 状态启动第二个窗口。
 
