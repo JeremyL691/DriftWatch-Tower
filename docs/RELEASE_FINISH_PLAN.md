@@ -4,7 +4,7 @@ Owner: this Codex chat. Authorization: the user approved implementation, own-PR 
 
 ## Current v1.0.1 recovery
 
-Follow [RELEASE_V1_0_1_PLAN.md](RELEASE_V1_0_1_PLAN.md) for the detailed repair, refreeze, short-gate, full-window and publication schedule. Current state/context are authoritative. PR #3 carries the repair; v1.0.0 stays an immutable prerelease after actual G17 failed. Approved runtime inspection and the full176-test development isolation validation have completed. Commit/refreeze and fresh bound acceptance gates are next.
+Follow [RELEASE_V1_0_1_PLAN.md](RELEASE_V1_0_1_PLAN.md) for the detailed repair, refreeze, short-gate, full-window and publication schedule. Current state/context are authoritative. PR #3 carries the repair; v1.0.0 stays an immutable prerelease after actual G17 failed. Clean application commit `e3166d3` is frozen; fresh Compose/P2/P3/P4 gates and its five CI jobs passed. The approved runtime inspection confirms healthy owned containers, matching candidate image, isolated volumes/networks and suitable host conditions. The existing scheduler is held for actual G06/G07/G11 recovery supplements before remaining gates/load/G16. Bind the generated successful recovery report and artifact hashes in context; the release validator requires it for v1.0.1. Resume the same verified process after supplements pass, then run the complete new window and public G17.
 
 ## Historical v1.0.0 frozen identity and evidence
 

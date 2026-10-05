@@ -2,19 +2,21 @@
 
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
 
-## Current v1.0.1 execution (2026-10-04 16:45 PDT)
+## Current v1.0.1 execution (2026-10-04 21:44 PDT)
 
-The detailed development and release schedule is [RELEASE_V1_0_1_PLAN.md](RELEASE_V1_0_1_PLAN.md); the execution guide remains the acceptance specification. Approved runtime inspection completed at 16:20 PDT: PID80166 is absent, no active gate/soak process was found, and the three owned `dwt-v101-gates` containers are healthy. Compose directory/config, named-volume labels and the candidate app image match this repository. Historical soak stacks/volumes are retained and stopped. The host has open lid, AC power and idle-sleep prevention; GitHub connectivity is available. Evidence: `.execution/verify/20261004232049Z-runtime-ownership/report.json`. The earlier approval-availability blocker is resolved.
+The CSRF repair and real-HTTP context closure are committed at frozen application candidate `e3166d3269ac1ea919c0741cea8bcd5aa277af4e`; the current image is `sha256:32cf329151d3da8960dd29f487429baa77bb614372ddbf0ced32420f0e8a6b95`. Fresh Compose/P2/P3/P4 and the candidate's five CI jobs passed. Public v1.0.0 remains an unpromoted immutable prerelease after actual G17 failed. No v1.0.1 soak has started.
 
-The pending real-HTTP context closure passed full Java21/Docker-required validation: 176 tests, zero failures/errors/skips, including the CSRF lifecycle, OpenAPI, idempotency and detection-contract classes. Evidence: `.execution/verify/v101-isolation-validation-r1/`. This development validation precedes clean-commit acceptance gates. PR3 is OPEN/DRAFT at `fed951f`, with five CI successes on that exact head; a new head requires fresh CI. Remote main is `5a40f734d31778d702bc9273a418af10d2baa589`. Public v1.0.0 remains a prerelease, and no v1.0.1 Release/tag exists. No v1.0.1 soak is active. Next: commit, rebuild/refreeze, run fresh bound gates and a complete new window.
+Actual G06/G07/G11 recovery supplements passed in `.execution/verify/v101-recovery-drills/attempt-3/recovery-report.json`, completed at 2026-10-05T00:19:04Z. They prove historical database and stopped-Kafka backup/rollback, preserved old rows and V1-V7 checksums, per-partition backlog bridge with stable identities across repeat, prolonged sink outage followed by two protected replays and exactly one raw/processed receipt, fifteen-table row-content equality after fresh-volume restore, unresolved evidence/checkpoint retention, and required runtime metrics. The executed tool and eighteen raw artifacts are explicitly hashed. Failed attempts and their owned volumes remain preserved. The context validator rechecked the successful report, every bound artifact hash, the exact candidate/image/source hash and the unchanged frozen application tree. All 43 release/recovery safety regressions pass; they supplement these runtime proofs.
+
+At 21:41 PDT, actual inspection verified scheduler PID9563 (created Oct4 16:48:16 PDT) in held OS state `Ts`, no live recovery drill or soak runner, healthy owned gate containers and the exact frozen image. The Mac has an open lid and AC Power. The existing scheduler is ready to resume after the tooling/docs commit; a fresh process/hold check must precede SIGCONT. It will finish P5/P5b/browser/security/unit gates, continuous 1,800-second load and package before starting one new complete 86,400-second window. State/run IDs and timing come from the actual chain and context, never the historical v1.0.0 run.
 
 ## Current v1.0.1 task and gate status
 
 | Task / gate | Status | Evidence / remaining work |
 |---|---|---|
 | P1.2 / CSRF repair | RUNNING | Real HTTP and local browser actions pass; final candidate acceptance pending |
-| P5.2 / test isolation | RUNNING | Full development suite 176/0/0/0; clean-commit G11 pending |
-| P6.1 / G00, G02-G15 | RUNNING | Commit/refreeze and fresh bound gates required; first-attempt results remain archived |
+| P5.2 / test isolation | RUNNING | Full clean-commit suite176/0/0/0; actual recovery supplement passed; fresh G11 gate pending |
+| P6.1 / G00, G02-G15 | RUNNING | Clean freeze and Compose/P2/P3/P4 passed; actual recovery supplements passed; existing scheduler resumes remaining gates |
 | P6.2 / G16 | NOT_STARTED | New complete86400s candidate-specific window required |
 | P7.1 | RUNNING | PR3 draft; final-head CI and gate-qualified merge pending |
 | P7.2 | NOT_STARTED | v1.0.1 public image/prerelease pending |

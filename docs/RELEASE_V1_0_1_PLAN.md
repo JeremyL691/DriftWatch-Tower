@@ -4,22 +4,24 @@ This schedule executes the existing P0-P7 tasks. [PROJECT_EXECUTION_GUIDE.md](PR
 
 ## Starting evidence
 
-- Branch `codex/csrf-release-v1-0-1`, committed CSRF repair `fed951fd6ae5e0f12769ea2d09d58eec6c91313c`. PR #3 is OPEN/DRAFT; five CI jobs passed on that head. A later head requires fresh CI.
+- Branch `codex/csrf-release-v1-0-1`, frozen application commit `e3166d3269ac1ea919c0741cea8bcd5aa277af4e`, including the CSRF repair and validated test-context closure. PR #3 is OPEN/DRAFT; all five CI jobs passed on that exact head, freshly checked in `.execution/verify/v101-recovery-drills/pr3-live.json`. A later head requires fresh CI.
 - Public v1.0.0 remains an immutable prerelease after its actual G17 Dashboard operations failed. Preserve the tag, public digest, accepted bundle and failure evidence.
 - The first v1.0.1 attempt passed Compose and P2/P3/P4/P5 but failed P5b. Preserve `.execution/verify/v101-attempt1/`. A TRUNCATE cleanup subsequently deadlocked and was reverted; preserve `.execution/verify/v101-isolation-deadlock/`.
 - The separate real-HTTP test context now closes after its class. Development validation at 2026-10-04 16:42 PDT passed all 176 tests with zero failures, errors or skips. Evidence: `.execution/verify/v101-isolation-validation-r1/`. The real-HTTP CSRF, OpenAPI, idempotency and detection-contract classes actually ran. This dirty-tree validation precedes the clean-commit acceptance gates.
-- Approved runtime inspection confirmed the gate PID exited, three healthy owned `dwt-v101-gates` containers, matching candidate image/volume labels, stopped historical stacks, open lid, AC power and GitHub connectivity. Evidence: `.execution/verify/20261004232049Z-runtime-ownership/report.json`.
-- No v1.0.1 24-hour window has started. The current context's future freeze manifest is absent and must be recreated and bound before the acceptance chain.
+- Approved runtime inspection at 16:58 PDT confirmed three healthy owned `dwt-v101-gates` containers, the matching new candidate image, twenty mounted volumes and four networks without cross-project sharing. Nine historical containers remain stopped. The host has open lid, AC power, sleep assertions and GitHub connectivity. Evidence: `.execution/verify/20261004T235803Z-runtime-ownership/report.json`.
+- The freeze manifest exists at `.execution/runs/v101-freeze/manifest.json`, with image `sha256:32cf329151d3da8960dd29f487429baa77bb614372ddbf0ced32420f0e8a6b95`. Fresh Compose/P2/P3/P4 gates passed. PID9563 (created Oct4 16:48:16 PDT) is deliberately held before further gates to supplement actual recovery drills; see `v101-chain-hold.json`. No v1.0.1 24-hour window has started.
+
+Recovery supplement completed: `.execution/verify/v101-recovery-drills/attempt-3/recovery-report.json` PASSED on the frozen candidate, with eighteen raw artifacts verified against their recorded hashes. The prior attempts remain preserved. All 43 release/recovery safety regressions pass. Resume only the existing identity-checked scheduler after committing tooling/docs; no new soak exists until the remaining gates, load and package pass.
 
 ## 1. Commit the durable repair (P1.2, P5.2)
 
-Keep the real-HTTP cookie lifecycle regression and invalid/missing-token rejection. Commit the validated `@DirtiesContext(AFTER_CLASS)` change and current plan/state documentation. Push the existing PR branch, preserve the failed attempts, and require five CI successes on the final head: unit/topology, real integration, migration/retry/dead letter, four-viewport Dashboard, and image/SCA. PR #3 stays unmerged until required local gates and G16 pass.
+The validated `@DirtiesContext(AFTER_CLASS)` change and initial plan/state are committed and pushed at `e3166d3`. Keep the real-HTTP cookie lifecycle regression and invalid/missing-token rejection. Preserve the failed attempts, and require five CI successes on the final head: unit/topology, real integration, migration/retry/dead letter, four-viewport Dashboard, and image/SCA. PR #3 stays unmerged until required local gates and G16 pass.
 
 Any new isolation failure must be diagnosed from raw evidence and corrected without removing the real-HTTP test, weakening assertions or restoring the failed locking cleanup. Container-start retries follow the existing verifier's bounded policy and retain the original failure.
 
 ## 2. Rebuild and freeze one candidate (P6.1)
 
-Build `driftwatch-tower:csrf-v101` from the committed tree, then run:
+The candidate was rebuilt and frozen from clean commit `e3166d3`. The freeze command is:
 
 ```sh
 ./scripts/verify.sh freeze --out .execution/runs/v101-freeze \
@@ -30,7 +32,15 @@ Bind the actual committed SHA, source/config/dependency hashes, image ID, JAR co
 
 ## 3. Execute short gates and load (P6.1)
 
-The local orchestrator `.execution/v101-gate-chain.py` writes `.execution/finalize/v101-chain-state.json`. Before launching, archive prior attempts and confirm no live chain or soak runner. Revalidate ownership before removing only temporary `dwt-v101-*` test resources. Preserve historical soak volumes and reports.
+The local orchestrator `.execution/v101-gate-chain.py` writes `.execution/finalize/v101-chain-state.json`. Resume the verified existing scheduler after the recovery supplement passes; do not launch a duplicate. Its state says RUNNING/P4, but the OS state `Ts` and separate hold marker are authoritative for the intentional hold. Before any future launch, archive prior attempts and confirm no live chain or soak runner. Revalidate ownership before removing only owned temporary test resources. Preserve historical soak volumes and reports.
+
+The phase suites prove integration contracts but do not execute every guide-required operating procedure. Before load/G16, run the additional real drills with `scripts/phases/check-recovery.py` against the exact frozen image and a separately built historical image from `082fd84`. Use new project names, ports 18111-18114, fresh volumes and mode-0600 credentials. Preserve each failed attempt and executed tool source. Require:
+
+1. G07: old ingestion stopped, per-partition cutoff and committed offsets recorded with no nonempty backlog; old PostgreSQL dump and stopped Kafka-volume backup; V1-V7 checksums, historical PK/payload/alerts/schema and old topics preserved; bridge begins at the saved cutoff, publishes exactly the controlled backlog, and a repeat preserves logical IDs/counts; old application works after restoring both backups to fresh resources.
+2. G06: actual prolonged database outage, acknowledged controlled Kafka input, durable SINK DLT with the same identity, no partial receipt, two real CSRF-protected replays and exactly one raw row/processing receipt. This transport drill is separate from real-source acceptance and does not claim HTTP acknowledgment during a database outage.
+3. G11: actual official-source inbox/checkpoint plus controlled event/alert/receipt evidence; custom-format dump restored into a new database on a new volume; equal counts and row-content hashes for the fifteen named evidence tables; candidate starts against that restored database; live retention prunes expired raw rows while preserving unresolved alerts, schema and collector checkpoints; required metrics and evidence secret scan pass.
+
+Store the generated report and raw artifacts under `.execution/verify/v101-recovery-drills/`, bind the successful attempt as explicit release evidence, and retain the report's candidate SHA/image/source and tool hash. A word match for `Flyway`/`migration`, a suite-only gate or historical drill cannot substitute for these results. Tool/docs-only changes retain the unchanged application freeze after verifying the application-root hash and relevant tooling checks.
 
 | Gates | Verification | Explicit output |
 |---|---|---|
