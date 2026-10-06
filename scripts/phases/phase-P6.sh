@@ -36,6 +36,10 @@ scan() { # name extra-args...
     "$TRIVY_IMAGE" "$@" > "$OUT_DIR/$name.json" 2> "$OUT_DIR/$name.err"
 }
 
+# Verify the exact accepted content and actual runtime XSLT conditions; raw CVE findings stay in the scans.
+python3 "$SCRIPT_DIR/check-xslt-reachability.py" --image "$IMAGE" --out "$OUT_DIR/xslt-reachability" \
+  > "$OUT_DIR/xslt-reachability.log" 2>&1 || die "runtime reachability proof failed; no CVE assessment allowed"
+
 # Tool identity: a scan without a version and a database timestamp is not evidence.
 docker run --rm -v dwt-trivy-cache:/root/.cache "$TRIVY_IMAGE" --version \
   > "$OUT_DIR/trivy-version.txt" 2>&1
