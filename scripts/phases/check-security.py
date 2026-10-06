@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sys
+import importlib.util
 
 SEVERITIES = ("HIGH", "CRITICAL")
 
@@ -20,8 +21,8 @@ def load(path: str) -> dict:
     try:
         with open(path) as handle:
             return json.load(handle)
-    except Exception:
-        return {}
+    except Exception as error:
+        raise ValueError('invalid or missing raw security JSON: ' + path) from error
 
 
 def vuln_findings(path: str) -> list[str]:
@@ -91,10 +92,25 @@ def main() -> int:
             f"{result.get('Target')} ({result.get('Class')}/{result.get('Type')})"
             for result in results]
 
+    proof_path = os.path.join(args.dir, 'xslt-reachability', 'report.json')
+    proof = None
+    if os.path.exists(proof_path):
+        spec = importlib.util.spec_from_file_location('xslt_proof', os.path.join(os.path.dirname(__file__), 'check-xslt-reachability.py'))
+        policy = importlib.util.module_from_spec(spec); spec.loader.exec_module(policy)
+        try:
+            proof = policy.validate_proof(proof_path)
+        except (ValueError, KeyError, OSError, TypeError) as error:
+            problems.append('reachability proof rejected: ' + str(error))
     for name in ("trivy-dependencies.json", "trivy-image.json"):
-        findings = vuln_findings(os.path.join(args.dir, name))
-        summary[name] = {"findings": findings}
-        problems.extend(f"{name}: {finding}" for finding in findings)
+        if proof is not None:
+            assessment = policy.scan_findings(os.path.join(args.dir, name), proof)
+            summary[name] = assessment
+            problems.extend(f"{name}: {finding}" for finding in assessment['blocking'])
+        else:
+            findings = vuln_findings(os.path.join(args.dir, name))
+            summary[name] = {"findings": findings}
+            problems.extend(f"{name}: {finding}" for finding in findings)
+    summary['conditional_reachability'] = proof
 
     image_secrets = secret_findings(os.path.join(args.dir, "trivy-image-secrets.json"))
     summary["image_secrets"] = image_secrets

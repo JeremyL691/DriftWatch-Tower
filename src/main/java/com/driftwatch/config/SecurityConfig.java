@@ -21,6 +21,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.session.SessionManagementFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
@@ -92,7 +93,7 @@ public class SecurityConfig {
                 .addFilterBefore(new IngestTokenAuthenticationFilter(
                                 properties.security().ingestTokens(), entryPoint),
                         UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(new CsrfCookieFilter(csrfTokenRepository), UsernamePasswordAuthenticationFilter.class);
+                .addFilterAfter(new CsrfCookieFilter(csrfTokenRepository), SessionManagementFilter.class);
         return http.build();
     }
 
@@ -122,7 +123,9 @@ public class SecurityConfig {
      * token value, which makes issuance depend on request handling order. This filter renders
      * the deferred token and, when the request arrived without a token cookie, generates and
      * saves one so a browser always has a value to replay in the {@code X-XSRF-TOKEN} header.
-     * Requests that already carry a valid cookie keep it; no token is rotated mid-session.
+     * Authentication can rotate the token through CsrfAuthenticationStrategy. Run after
+     * SessionManagementFilter so its replacement deferred token is rendered before the
+     * response is committed, leaving the browser a usable cookie for its next mutation.
      */
     static final class CsrfCookieFilter extends OncePerRequestFilter {
 

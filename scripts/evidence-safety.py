@@ -9,7 +9,7 @@ PATTERN = re.compile(r'(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,
 
 def allowed_evidence(path):
     path = Path(path)
-    if path.suffix not in {'.json', '.jsonl', '.txt', '.md', '.log', '.png', '.svg'} or any(word in path.name.lower() for word in ['credential', 'auth.json', '.env']):
+    if path.suffix not in {'.json', '.jsonl', '.txt', '.md', '.log', '.png', '.svg', '.xml', '.err'} or any(word in path.name.lower() for word in ['credential', 'auth.json', '.env']):
         raise ValueError(f'unsafe evidence file: {path.name}')
 
 def redact_and_scan(stage, secrets):
