@@ -181,6 +181,18 @@ class ReleaseSafety(unittest.TestCase):
         (stage/'record.json').write_text('{"token":"real-secret-value"}')
         safety.redact_and_scan(stage,{'real-secret-value'})
         self.assertNotIn('real-secret-value',(stage/'record.json').read_text())
+    def test_xml_and_scanner_errors_are_scanned_and_redacted(self):
+        stage=self.root/'stage';stage.mkdir()
+        for name in ['tests.xml','scan.err']:
+            (stage/name).write_text('<test token="real-secret-value"/>')
+        safety.redact_and_scan(stage,{'real-secret-value'})
+        for name in ['tests.xml','scan.err']:
+            self.assertNotIn('real-secret-value',(stage/name).read_text())
+    def test_unknown_credential_in_xml_or_error_fails_closed(self):
+        for name in ['tests.xml','scan.err']:
+            with tempfile.TemporaryDirectory() as directory:
+                Path(directory,name).write_text('ghp_'+'abcdefghijklmnopqrstuvwxyz012345')
+                with self.assertRaises(ValueError): safety.redact_and_scan(directory,set())
     def test_unknown_credential_blocks_evidence(self):
         stage=self.root/'stage';stage.mkdir()
         (stage/'record.json').write_text(json.dumps({'leaked':'ghp_'+'abcdefghijklmnopqrstuvwxyz012345'}))
