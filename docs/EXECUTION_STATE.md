@@ -1,12 +1,64 @@
 # DriftWatch Tower 执行状态
 
+## Current post-soak checkpoint (2026-10-06 14:23 PDT)
+
+Formal G16 PASSED for `20261005T210849Z-v101-soak24-r2`: 86,407.7 continuous seconds, 2,693 samples, maximum dual-clock gap37.5s, 478 distinct official events (99 BOOTSTRAP/379 LIVE). All three planned faults recovered; final raw/processed ledgers matched478 and outbox/DLT/lag were0 at21:09:20Z. Final-hour memory723.372MiB is20.0MiB below the early reference. Formal evidence is `.execution/verify/v101-soak-r2/soak-report.json` and its PASSED gate. The supervisor and runner exited normally after completion.
+
+Before stopping only the passed owned stack, the final database, runtime identities and gap classifications were archived in `.execution/finalize/v101-g16-completion-20261006T212225Z/`; original volumes and all failed windows remain preserved. The formal report counts28 source gaps; the later backup snapshot has29, all `NO_OVERLAP`, with unknown missing counts. These retain the disclosed classification limitation and do not prove actual lost events or absence of upstream omissions.
+
+The frozen application/image remain unchanged. Final fresh G02 and rebuilt-artifact G15 now run serially, followed by final-head five-job CI, PR3 merge, exact-main public prerelease, anonymous G17 and final promotion. Public v1.0.0 remains immutable and unaccepted. Formal v1.0.1 delivery is not yet complete. Older dated checkpoints below are historical.
+
+
+
+## Current recovery checkpoint (2026-10-05 14:09 PDT)
+
+The earlier v1.0.1 window `20261005T111102Z-v101-soak24` FAILED. Its sampler and completion watcher disappeared after the last sample at2026-10-05T20:20:36Z; no successful runner result exists. The cause remains unconfirmed. The scoped power history contains no Sleep/Wake transition at the loss time, and the host boot time did not change. Preserve `.execution/finalize/v101-runner-loss-20261005T210737Z/`, the failed formal report at `.execution/verify/v101-soak/`, all original samples/faults, database backup and original owned volumes. Only that failed owned stack was stopped.
+
+Replacement `20261005T210849Z-v101-soak24-r2` started its real sampler at2026-10-05T21:08:51Z on fresh project `dwt-v101-soak-r2`, fresh volumes/env, port18096 and the unchanged frozen image. A one-shot user launchd supervisor (`com.driftwatch.v101.soak-r2.20261005`, PID62444, parent PID1) now owns the background process lifecycle independently of the chat application. It does not automatically restart a failed window. Current runner/watcher identities and sampling must be read dynamically from context and OS state. The earliest full-window end is2026-10-06T21:08:51Z (Oct6 14:08 PDT), followed by formal G16 and all remaining release gates. This is a complete new86400s window; old elapsed time and completed faults do not carry forward.
+
+The user-authorized closed-lid policy remains in force; retain AC, network, runner-bound awake assertions and actual UTC/monotonic continuity. G00/G02-G15 remain bound to the unchanged application freeze; do not rerun passed load or certify completion from syntax checks. PR3 merge, public v1.0.1 prerelease, anonymous real G17 and final promotion remain pending. Historical checkpoints below describe their original observation times.
+
 本文件只记录事实，不另行定义范围。[执行指南](PROJECT_EXECUTION_GUIDE.md)是唯一规范，[启动提示词](AGENT_REFACTOR_PROMPT.md)交给接手 Agent。
+
+## Current v1.0.1 execution (2026-10-05 04:13 PDT)
+
+The frozen application candidate is `e3166d3269ac1ea919c0741cea8bcd5aa277af4e`, image `sha256:32cf329151d3da8960dd29f487429baa77bb614372ddbf0ced32420f0e8a6b95`; application/config/dependency identities remain unchanged. The CSRF repair and real-HTTP context closure pass the actual container suite: 176 tests, zero failures/errors/skips. All G00 and G02-G13 short gates passed. New-candidate actual Dashboard demo ingestion returns202, acknowledgment200 and incident resolution200; all three requests retain matching CSRF Cookie/header, and all eight viewport/theme captures pass. Explicit G12 evidence is `.execution/verify/v101-browser-actions/`. G02 includes actual image and exclusive named/anonymous-volume identity; G13 includes actual image identity, raw vulnerability/secret scans and zero blocking findings.
+
+Actual G06/G07/G11 recovery supplements passed in `.execution/verify/v101-recovery-drills/attempt-3/recovery-report.json`, completed at 2026-10-05T00:19:04Z. They prove historical database and stopped-Kafka backup/rollback, preserved old rows and V1-V7 checksums, per-partition backlog bridge with stable identities across repeat, prolonged sink outage followed by two protected replays and exactly one raw/processed receipt, fifteen-table row-content equality after fresh-volume restore, unresolved evidence/checkpoint retention, and required runtime metrics. The executed tool and eighteen raw artifacts are explicitly hashed and revalidated. Failed attempts and their owned volumes remain preserved. All43 release/recovery safety regressions pass; these supplement actual runtime proof.
+
+G14 PASSED: the continuous timed window was 2026-10-05T04:50:26Z to05:20:26Z, with180,000 offers and acceptances at100/s, zero failed requests, and every specified ingestion ID persisted. Including100 warm-up events, raw/processed/receipt counts are180,100. Ack p95 is87.7ms; processing commit p95 is3.937s. Backlog drained in38.2s to outbox/DLT/lag0. UTC/monotonic continuity passed (suspend difference0.006s). Evidence: `.execution/verify/v101-load/`. This is one local shared Docker engine; its resource curve reports a7.75GiB limit.
+
+G15 PASSED on the fresh retry `.execution/verify/v101-package-r2/`, completed2026-10-05T05:57:31Z. The artifact-only stack ran the exact frozen image, administrator API returned200, specified ingestion `6d7c65a6-746e-4454-8ef9-c9b2b265fbb2` had one joined raw/processed receipt, and readiness recovered after restart. The accepted bundle hash is `76fdf8a1626738403dc8537e5323735de84cb373d787d24d0fa12ff63b638f19`; `artifact-binding.json` records explicit image/bundle/SBOM/manifest/checksum hashes. The original failure at05:23:34Z came from a hardcoded old image tag; preserve `.execution/verify/v101-package/`. Tool commit `9670a54` fixes exported/loaded references and classic/OCI identity checking. The strict release validator's Dashboard identifier now matches the producer's `PHASE-P5C`, committed at `ead0fcc`;53 release/recovery/export safety regressions pass. Actual runtime evidence was retained unchanged. App/config/dependencies remain frozen.
+
+G16 RUNNING: fresh run `20261005T111102Z-v101-soak24`, project `dwt-v101-soak`, port18095, new volumes and exact frozen image. Independent runner PID66829 was created Oct5 04:11:03 PDT; actual first sample2026-10-05T11:11:03Z. Initial real polling proves one BOOTSTRAP round/99 official events, READY, pending0/failures0. Four samples have valid UTC/monotonic continuity, maximum32s gap. Faults are planned Oct5 06:11 application restart,12:11 Kafka interruption,20:11 database interruption. Earliest full-window completion is Oct6 04:11 PDT (2026-10-06T11:11:03Z); formal G16 is still required.
+
+The user explicitly authorized closed-lid operation and continued delivery. Open lid is no longer a prerequisite; retain AC power, runner-bound awake assertions and actual UTC/monotonic continuity. Earlier lid-block records are historical. Launcher PID66573 exited after an immediate startup observation/watcher race; preserve `.execution/finalize/v101-startup-observation-race/`. The independent runner remained healthy and was never restarted. Same-run `prefault-takeover.json` is saved, observer now passes, and the sole recovered finish watcher PID67396 (created04:12:53 PDT) and its awake PID67397 are registered in `finish-watch.pid.json`. Runner awake PID66831 is bound to66829. Dynamic context/run state and actual processes are authoritative; do not launch another chain/window.
+
+PR3 remains OPEN/DRAFT. Five CI jobs were successful on the frozen app commit; later tooling/docs heads require their own fresh checks before merge. Public v1.0.0 remains an unpromoted immutable prerelease after actual G17 failed. v1.0.1 formal G16, final G02/G15, merge/publication, public G17 and final promotion remain incomplete.
+
+## Current v1.0.1 task and gate status
+
+| Task / gate | Status | Evidence / remaining work |
+|---|---|---|
+| P1.2 / CSRF repair | PASSED | Actual HTTP auth/CSRF boundaries and new-image browser mutations passed |
+| P5.2 / isolation and recovery | PASSED | Clean-commit suite176/0/0/0, fresh G11 and actual bound recovery supplement passed |
+| G00 / G02-G13 | PASSED | Explicit new-candidate gates, actual browser operations and raw security/image evidence |
+| P6.1 / G14 | PASSED | 180,000 timed offers persisted, p95 ack87.7ms/commit3.937s,38.2s drain, continuity passed |
+| P6.1 / G15 | PASSED | Fresh artifact-only retry, exact image, specified raw/receipt and restart recovery; explicit bundle hash |
+| P6.2 / G16 | PASSED | Replacement20261005T210849Z-v101-soak24-r2;86407.7s,478 real IDs,three faults,formal report and final backup |
+| P7.1 | RUNNING | PR3 draft; final-head CI and gate-qualified merge pending |
+| P7.2 | NOT_STARTED | v1.0.1 public image/prerelease pending |
+| P7.3 / G17 | NOT_STARTED | Public install, final reports/anonymous asset verification and formal promotion pending |
+
+## Historical v1.0.1 recovery (2026-10-04 15:45 PDT)
+
+The repaired image passed actual browser demo ingestion (202), acknowledgment (200), and resolution (200). The first v1.0.1 gate chain passed Compose and P2/P3/P4/P5, then failed P5b in test setup: separate cleanup deletes allowed a background consumer to recreate a `baseline_outbox` reference before deleting its schema version. The failed gate and original freeze are preserved under `.execution/verify/v101-attempt1/`. A proposed atomic TRUNCATE cleanup also failed with a deadlock (176 tests, one error); its log and XML reports are preserved under `.execution/verify/v101-isolation-deadlock/`, and that unsuccessful cleanup change was reverted. The dedicated real-HTTP test context closure remains uncommitted and requires runtime validation. No new 24-hour window has started and no gate chain is currently running. Automatic approval review could not complete the next runtime inspection because of an account usage limit; the action was not executed. Resolve that external availability condition before further privileged runtime work. The revised tree must be committed and refrozen, with fresh gates, before starting a new complete window. `repair-status.json` and `v101-chain-state.json` record the current block. Public v1.0.0 remains an unpromoted prerelease with the CSRF blocker disclosed.
 
 ## 当前阻断与修复 (2026-10-04 15:05 PDT)
 
 G16/G02/G13/G15与PR1发布均已通过，但G17实际FAILED。公开v1.0.0在成功管理请求后删除XSRF-TOKEN Cookie，随后Dashboard确认/解决操作返回403。原始证据：`.execution/verify/failed-final-release-dashboard-resolve/`；独立浏览器诊断`.execution/verify/g17-action-diagnostic/browser-fifth/diagnostic-mutation-trace.json`和独立HTTP Cookie Jar `.execution/verify/g17-action-diagnostic/cookie-lifecycle.json`。Cookie清除现象在GET与POST均已复现；现有mock CSRF测试没有覆盖真实Cookie生命周期。
 
-v1.0.0保持公开预发布，tag、镜像和G15 bundle不可变，禁止正式promotion。按已批准的应用缺陷恢复规则，修复使用v1.0.1，需重新冻结并重跑受影响门禁及完整24小时；旧G16成功记录仅证明原v1.0.0候选，不能借作新候选通过证据。本聊天继续接管修复，旧ZCode自动化保持暂停。
+v1.0.0保持公开预发布，tag、镜像和G15 bundle不可变，禁止正式promotion。按已批准的应用缺陷恢复规则，修复使用v1.0.1，需重新冻结并重跑受影响门禁及完整24小时；旧G16成功记录仅证明原v1.0.0候选，不能借作新候选通过证据。本聊天继续接管修复，旧ZCode自动化保持暂停。后端Cookie渲染移至SessionManagementFilter之后；真实HTTP生命周期在旧应用失败、修复后通过，缺失/错误CSRF仍403（安全测试13项通过）。新分支`codex/csrf-release-v1-0-1`，新镜像及完整门禁待执行。PR2已在e6b99b5确切head五项CI全绿后合并。
 
 ## 当前公开制品验收 (2026-10-04)
 
@@ -54,50 +106,44 @@ G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒�
 
 当前表格已按 release context 对齐。替换前的旧入口、任务、门禁与恢复表逐字保存在 [历史状态表](HISTORICAL_EXECUTION_TABLES.md)；下方有日期的运行记录继续保留为历史。
 
-## 当前入口
+## Current execution entry
 
-| 字段 | 当前值 |
+| Field | Current value |
 |---|---|
-| document_revision | 1.3 |
-| handoff_date | 2026-10-01，本聊天接管，America/Los_Angeles |
-| product_goal_status | RUNNING；G02/G13/G15/G16通过，PR1已合并、公开预发布已上传；G17公开安装验收进行中 |
-| current_phase | P7 |
-| current_task | P7.3 G17 |
-| next_action | 完成G17，上传最终报告与补充证据，匿名复核最终附件后提升正式Release |
-| local_baseline_sha | 84400133d9aab140e6e7d8bd34550c178c89a69a（历史本地基线） |
-| remote_snapshot_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e，2026-09-30 执行时经 git fetch 重新核验 |
-| execution_branch | codex/release-v1（已推送到 origin；PR #1 已开） |
-| execution_base_sha | 082fd84d7fabee7d94e05b4dba842f0995a3775e |
-| handoff_commit_sha | 0a2bb07b45fb44576a5a6e909fdf836e6557e14c（文档交接 rebase 到 origin/main） |
-| original_worktree_backup_ref | backup/handoff-worktree-20260930 -> 1967034bda95b135a939bc34f4a9d7e3b5949b68（rebase 前的交接提交，含全部未提交变更） |
-| candidate_sha | 573154b9（应用面；GitHub 适配器字段路径 + 320px 布局两处修复后冻结，全部受影响门禁已在其上重跑 PASSED） |
-| source_tree_hash | bb6d14e7c7c02ed0f3aa26073c206f99976aa0ec493440b72a0d9a013b1483b7（见 `.execution/runs/p7-freeze/manifest.json`；204 文件） |
+| document_revision | 1.4 |
+| product_goal_status | RUNNING: v1.0.1 acceptance recovery; public v1.0.0 remains a prerelease after G17 failed |
+| current_phase | P7.1: final fresh artifacts and gate-qualified merge |
+| current_task | Serial final fresh G02/G15 and latest-head CI |
+| next_action | Fresh final Compose/package acceptance, then PR3 merge and public G17 |
+| execution_branch | codex/csrf-release-v1-0-1; PR #3 OPEN/DRAFT |
+| remote_snapshot_sha | 5a40f734d31778d702bc9273a418af10d2baa589, remote main verified 2026-10-04 |
+| candidate_sha | e3166d3269ac1ea919c0741cea8bcd5aa277af4e |
+| source_tree_hash | d7bc5aaa54d96377089db4cdd033a8ee9316ef13def5082d70e164948b3de394; manifest `.execution/runs/v101-freeze/manifest.json` |
 | config_hash | 7457349dd3f231585251cf832909aacebe71c3d4b9e6ccf08aa5b0d65ab9a659 |
-| candidate_image_id / public_digest | 本地镜像 sha256:2901be88df52de693b892825700ab8101fd72efb7bb944ad639b6018ad77d0d3（未发布；`content_identity.jar_content_hash` = 1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d；发布断言使用该值） |
-| target_release | v1.0.0；2026-09-30 核验远端仅有 tag v0.1.0，无冲突 |
-| docs_delivery_status | VERIFIED，本轮文档交付核验通过，且 rebase 后内容逐字节一致 |
-| release_authorization | 用户已授权接手 Agent 提交、推送、合并自己的 PR、公开 Release/GHCR |
-| application_changes_in_handoff | 无业务代码、依赖、配置、CI、迁移改动 |
-| active_soak_run | `20261003T203107Z-soak24-r2` PASSED，86413.6秒；20:31:44Z正式报告；数据库归档、自有栈已停止。 |
-| external_blocker | 当前无主机阻塞；lid open与AC Power已核验。未来首次GHCR推送后须公开包并核验匿名digest拉取。 |
+| candidate_image_id / public_digest | Local sha256:32cf329151d3da8960dd29f487429baa77bb614372ddbf0ced32420f0e8a6b95; v1.0.1 public digest absent |
+| target_release | v1.0.1; no existing remote tag or Release verified 2026-10-04 |
+| release_authorization | User-authorized repository commits/push, own PR merge, Actions, public GitHub/GHCR release and isolated acceptance resources |
+| docs_delivery_status | Current v1.0.1 plan/status updated with actual new window and user-authorized closed-lid policy |
+| active_soak_run | None: replacement20261005T210849Z-v101-soak24-r2 PASSED; owned stack stopped after backup |
+| external_blocker | None currently; closed-lid operation explicitly authorized, actual continuity required |
 
 > **接管规则**：旧 ZCode 自动化已暂停。本聊天 heartbeat 以执行计划和 release context 为准；同时验证 PID、创建时间、命令、采样更新、项目与镜像。不得根据旧投递文字或单个 RUNNING 状态启动第二个窗口。
 
-> **证据归属**：旧 run `20261001T182403Z-soak24` 的三次故障均保留为历史，不能计入当前恢复窗口。当前故障仅从 release context 指定 run 的 `faults.jsonl` 读取；使用 `scripts/poller-state.sh --project dwt-soak-r2 --env-file .execution/soak-r2.env` 比较同一 run 的 `prefault-takeover.json` 和故障前后观察。
+> **Evidence ownership**: all v1.0.0 windows, including passed r2, are historical for v1.0.1. Read faults/observations only from the new run explicitly bound in the current release context. Current new run is explicitly bound in release context.
 
 文档交付不等于 P0/P7 完成。接手 Agent 不要把本文件的历史审核结果移入新候选的 PASSED 门禁。
 
-## 当前窗口第一次故障证据 (13:26 PDT)
+## Historical first-window fault evidence (2026-10-01 13:26 PDT)
 
 `app-restart` 于 `2026-10-01T20:24:11Z` 完成，outage32.6s、readiness恢复10.2s。前后 BOOTSTRAP 轮数1→1，LIVE事件23→26，inbox119→122，pending0、failures0、READY，容器与冻结镜像保持一致。证据：`.execution/soak/20261001T182403Z-soak24/faults.jsonl` 与 `observation-20261001T202601Z.json`；G16 仍 RUNNING，不能从一次故障推断整窗通过。
 
 ## 收尾程序
 
-按 [RELEASE_FINISH_PLAN.md](RELEASE_FINISH_PLAN.md) 执行。历史程序已迁至 [历史交接](HISTORICAL_RELEASE_HANDOFF.md)，不得再使用其中旧 manifest、mtime 门禁选择、无效 visibility PATCH 或源码安装路径。
+Follow [RELEASE_V1_0_1_PLAN.md](RELEASE_V1_0_1_PLAN.md) and [RELEASE_FINISH_PLAN.md](RELEASE_FINISH_PLAN.md).历史程序已迁至 [历史交接](HISTORICAL_RELEASE_HANDOFF.md)，不得再使用其中旧 manifest、mtime 门禁选择、无效 visibility PATCH 或源码安装路径。
 
-正式预检: `python3 scripts/release-context.py --context .execution/finalize/release-context.json`。正式证据打包: `./scripts/evidence-pack.sh --context .execution/finalize/release-context.json --out .execution/evidence/final-release --run-id final-release`。
+正式预检: `python3 scripts/release-context.py --context .execution/finalize/release-context.json`。正式证据打包: `./scripts/evidence-pack.sh --context .execution/finalize/release-context.json --out .execution/evidence/v101-release --run-id v101-release`。
 
-G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compose / final-package。上传必须指定具体 evidence tar 文件，不能按目录时间挑包。发布安装: `./scripts/verify.sh release --context .execution/finalize/release-context.json --out .execution/verify/final-release --version v1.0.0 --pr 1`。
+G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compose / final-package。上传必须指定具体 evidence tar 文件，不能按目录时间挑包。发布安装: `./scripts/verify.sh release --context .execution/finalize/release-context.json --out .execution/verify/v101-final-release --version v1.0.1 --pr 3`。
 
 ## 历史审核快照
 
@@ -112,7 +158,7 @@ G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compos
 - 原始 [GitHub CI](https://github.com/JeremyL691/DriftWatch-Tower/actions/runs/33464634754)属于远端快照，不属于未来候选。
 - 可移植的复现输入与判断已写进指南；不得依赖当前机器 /private/tmp 里的文件才能执行。
 
-## 任务状态
+## Historical task status (v1.0.0 candidate)
 
 允许状态：NOT_STARTED / RUNNING / PASSED / FAILED / BLOCKED。任务从以下列表更新，不再另建竞争路线图。
 
@@ -138,9 +184,9 @@ G16 真正结束并报告后再释放本窗口自有资源，重跑 final-compos
 | P6.2 | 24 小时真实验收 | PASSED | 20261003T203107Z-soak24-r2，86413.6秒，327真实事件；final-soak正式报告；前两FAILED保留。 |
 | P7.1 | 合并自己的重构 PR | PASSED | PR1，release SHA 7e1051de，c1dc0fff五项CI全绿 |
 | P7.2 | 公共 Release / GHCR | RUNNING | v1.0.0预发布，digest匿名拉取已通过，等待G17最终promotion |
-| P7.3 | 匿名安装及最终报告 | RUNNING | `.execution/verify/final-release`，原始失败记录保留 |
+| P7.3 | 匿名安装及最终报告 | FAILED | Actual CSRF-cookie failure; `.execution/verify/failed-final-release-dashboard-resolve/`; v1.0.1 recovery required |
 
-## 门禁状态
+## Historical gate status (v1.0.0 candidate)
 
 NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修复后G03必须通过。
 
@@ -163,11 +209,11 @@ NOT_RUN不是PASSED。EXPECTED_FAILURE仅允许G01旧版本的已知回归；修
 | G14 100/s、30分钟 | PASSED | 记录提交 `c1b0b517` 的应用面已核对等于冻结 573154b9；明确证据 `.execution/verify/p7-load/gate.json` |
 | G15 制品安装 | PASSED | final-package，bundle SHA256 dbcfef4130635087143c687840b7eb45bd598fe51b0fb4d4dbaf32c123d2e611；指定身份落库/重启通过 |
 | G16 24h | PASSED | `20261003T203107Z-soak24-r2`；`.execution/verify/final-soak/soak-report.json`，327真实事件、三次故障、零积压 |
-| G17 公开独立安装 | NOT_STARTED | `.execution/verify/final-release`，必须使用明确 context、匿名附件及公开 digest |
+| G17 公开独立安装 | FAILED | Protected Dashboard operations failed; public v1.0.0 remains a prerelease |
 
-## 长任务与恢复字段
+## Historical long-running fields (first v1.0.0 window)
 
-24 小时 run 进行中（P6.2）。已作废的 run 保留为历史，不作证据。
+The fields below refer to the failed first v1.0.0 window; they do not describe an active v1.0.1 run.
 
 | 字段 | 值 |
 |---|---|
