@@ -1,5 +1,14 @@
 # Release finishing plan
 
+## Current post-soak checkpoint (2026-10-06 14:23 PDT)
+
+Formal G16 PASSED for `20261005T210849Z-v101-soak24-r2`: 86,407.7 continuous seconds, 2,693 samples, maximum dual-clock gap37.5s, 478 distinct official events (99 BOOTSTRAP/379 LIVE). All three planned faults recovered; final raw/processed ledgers matched478 and outbox/DLT/lag were0 at21:09:20Z. Final-hour memory723.372MiB is20.0MiB below the early reference. Formal evidence is `.execution/verify/v101-soak-r2/soak-report.json` and its PASSED gate. The supervisor and runner exited normally after completion.
+
+Before stopping only the passed owned stack, the final database, runtime identities and gap classifications were archived in `.execution/finalize/v101-g16-completion-20261006T212225Z/`; original volumes and all failed windows remain preserved. The formal report counts28 source gaps; the later backup snapshot has29, all `NO_OVERLAP`, with unknown missing counts. These retain the disclosed classification limitation and do not prove actual lost events or absence of upstream omissions.
+
+The frozen application/image remain unchanged. Final fresh G02 and rebuilt-artifact G15 now run serially, followed by final-head five-job CI, PR3 merge, exact-main public prerelease, anonymous G17 and final promotion. Public v1.0.0 remains immutable and unaccepted. Formal v1.0.1 delivery is not yet complete. Older dated checkpoints below are historical.
+
+
 
 ## Current recovery checkpoint (2026-10-05 14:09 PDT)
 

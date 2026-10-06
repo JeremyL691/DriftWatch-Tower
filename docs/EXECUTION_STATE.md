@@ -1,5 +1,14 @@
 # DriftWatch Tower 执行状态
 
+## Current post-soak checkpoint (2026-10-06 14:23 PDT)
+
+Formal G16 PASSED for `20261005T210849Z-v101-soak24-r2`: 86,407.7 continuous seconds, 2,693 samples, maximum dual-clock gap37.5s, 478 distinct official events (99 BOOTSTRAP/379 LIVE). All three planned faults recovered; final raw/processed ledgers matched478 and outbox/DLT/lag were0 at21:09:20Z. Final-hour memory723.372MiB is20.0MiB below the early reference. Formal evidence is `.execution/verify/v101-soak-r2/soak-report.json` and its PASSED gate. The supervisor and runner exited normally after completion.
+
+Before stopping only the passed owned stack, the final database, runtime identities and gap classifications were archived in `.execution/finalize/v101-g16-completion-20261006T212225Z/`; original volumes and all failed windows remain preserved. The formal report counts28 source gaps; the later backup snapshot has29, all `NO_OVERLAP`, with unknown missing counts. These retain the disclosed classification limitation and do not prove actual lost events or absence of upstream omissions.
+
+The frozen application/image remain unchanged. Final fresh G02 and rebuilt-artifact G15 now run serially, followed by final-head five-job CI, PR3 merge, exact-main public prerelease, anonymous G17 and final promotion. Public v1.0.0 remains immutable and unaccepted. Formal v1.0.1 delivery is not yet complete. Older dated checkpoints below are historical.
+
+
 
 ## Current recovery checkpoint (2026-10-05 14:09 PDT)
 
@@ -36,7 +45,7 @@ PR3 remains OPEN/DRAFT. Five CI jobs were successful on the frozen app commit; l
 | G00 / G02-G13 | PASSED | Explicit new-candidate gates, actual browser operations and raw security/image evidence |
 | P6.1 / G14 | PASSED | 180,000 timed offers persisted, p95 ack87.7ms/commit3.937s,38.2s drain, continuity passed |
 | P6.1 / G15 | PASSED | Fresh artifact-only retry, exact image, specified raw/receipt and restart recovery; explicit bundle hash |
-| P6.2 / G16 | RUNNING | Unique fresh run20261005T111102Z-v101-soak24;99 initial official events, dual clocks valid; full window pending |
+| P6.2 / G16 | PASSED | Replacement20261005T210849Z-v101-soak24-r2;86407.7s,478 real IDs,three faults,formal report and final backup |
 | P7.1 | RUNNING | PR3 draft; final-head CI and gate-qualified merge pending |
 | P7.2 | NOT_STARTED | v1.0.1 public image/prerelease pending |
 | P7.3 / G17 | NOT_STARTED | Public install, final reports/anonymous asset verification and formal promotion pending |
@@ -103,9 +112,9 @@ G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒�
 |---|---|
 | document_revision | 1.4 |
 | product_goal_status | RUNNING: v1.0.1 acceptance recovery; public v1.0.0 remains a prerelease after G17 failed |
-| current_phase | P6.2: new-candidate continuous acceptance |
-| current_task | P6.2: observe unique independent full86400s window and planned faults |
-| next_action | Observe context-bound run and preserve same-run evidence; formal G16 before final checks/public release |
+| current_phase | P7.1: final fresh artifacts and gate-qualified merge |
+| current_task | Serial final fresh G02/G15 and latest-head CI |
+| next_action | Fresh final Compose/package acceptance, then PR3 merge and public G17 |
 | execution_branch | codex/csrf-release-v1-0-1; PR #3 OPEN/DRAFT |
 | remote_snapshot_sha | 5a40f734d31778d702bc9273a418af10d2baa589, remote main verified 2026-10-04 |
 | candidate_sha | e3166d3269ac1ea919c0741cea8bcd5aa277af4e |
@@ -115,7 +124,7 @@ G16/P6.2 PASSED：当前窗口20261003T203107Z-soak24-r2实际运行86413.6秒�
 | target_release | v1.0.1; no existing remote tag or Release verified 2026-10-04 |
 | release_authorization | User-authorized repository commits/push, own PR merge, Actions, public GitHub/GHCR release and isolated acceptance resources |
 | docs_delivery_status | Current v1.0.1 plan/status updated with actual new window and user-authorized closed-lid policy |
-| active_soak_run | 20261005T111102Z-v101-soak24; runner66829, watcher67396, fresh dwt-v101-soak project |
+| active_soak_run | None: replacement20261005T210849Z-v101-soak24-r2 PASSED; owned stack stopped after backup |
 | external_blocker | None currently; closed-lid operation explicitly authorized, actual continuity required |
 
 > **接管规则**：旧 ZCode 自动化已暂停。本聊天 heartbeat 以执行计划和 release context 为准；同时验证 PID、创建时间、命令、采样更新、项目与镜像。不得根据旧投递文字或单个 RUNNING 状态启动第二个窗口。
