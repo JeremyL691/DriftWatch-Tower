@@ -102,6 +102,19 @@ class ReleaseSafety(unittest.TestCase):
             with self.assertRaises(ValueError): runtime.wait_for(Mock(side_effect=runtime.http.client.RemoteDisconnected()),transient=True)
 
     def test_complete_bound_evidence_passes(self): self.validate()
+    def test_actual_dashboard_phase_gate_name_is_accepted(self):
+        gate=json.loads((self.root/'gates/G12.json').read_text())
+        gate['id']='PHASE-P5C'
+        self.write('gates/G12.json',gate)
+        self.validate()
+
+    def test_wrong_dashboard_gate_name_fails_closed(self):
+        gate=json.loads((self.root/'gates/G12.json').read_text())
+        for name in ['PHASE-P5c','PHASE-P5','OTHER']:
+            with self.subTest(name=name):
+                self.write('gates/G12.json',dict(gate,id=name))
+                with self.assertRaises(ValueError): self.validate()
+
     def test_absolute_gate_evidence_is_bound_and_summary_serializable(self):
         gate=json.loads((self.root/'gates/G16.json').read_text())
         gate['evidence_paths']=[str(self.root/'report.json')]
@@ -168,6 +181,18 @@ class ReleaseSafety(unittest.TestCase):
         (stage/'record.json').write_text('{"token":"real-secret-value"}')
         safety.redact_and_scan(stage,{'real-secret-value'})
         self.assertNotIn('real-secret-value',(stage/'record.json').read_text())
+    def test_xml_and_scanner_errors_are_scanned_and_redacted(self):
+        stage=self.root/'stage';stage.mkdir()
+        for name in ['tests.xml','scan.err']:
+            (stage/name).write_text('<test token="real-secret-value"/>')
+        safety.redact_and_scan(stage,{'real-secret-value'})
+        for name in ['tests.xml','scan.err']:
+            self.assertNotIn('real-secret-value',(stage/name).read_text())
+    def test_unknown_credential_in_xml_or_error_fails_closed(self):
+        for name in ['tests.xml','scan.err']:
+            with tempfile.TemporaryDirectory() as directory:
+                Path(directory,name).write_text('ghp_'+'abcdefghijklmnopqrstuvwxyz012345')
+                with self.assertRaises(ValueError): safety.redact_and_scan(directory,set())
     def test_unknown_credential_blocks_evidence(self):
         stage=self.root/'stage';stage.mkdir()
         (stage/'record.json').write_text(json.dumps({'leaked':'ghp_'+'abcdefghijklmnopqrstuvwxyz012345'}))
