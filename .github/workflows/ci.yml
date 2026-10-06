@@ -106,13 +106,25 @@ jobs:
           path: content-identity.txt
       - name: Scan dependencies and image (HIGH, CRITICAL)
         run: |
+          python3 scripts/phases/check-xslt-reachability.py --image driftwatch-tower:ci --out target/xslt-reachability
           docker run --rm -v "$PWD":/repo:ro aquasec/trivy:0.58.1 fs \
-            --scanners vuln --severity HIGH,CRITICAL --exit-code 1 /repo
+            --skip-dirs /repo/target --scanners vuln --severity HIGH,CRITICAL --format json /repo > target/trivy-dependencies.json
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 \
-            image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 driftwatch-tower:ci
+            image --scanners vuln --severity HIGH,CRITICAL --format json driftwatch-tower:ci > target/trivy-image.json
+          python3 scripts/phases/check-xslt-reachability.py --out target/xslt-reachability \
+            --scan target/trivy-dependencies.json --scan target/trivy-image.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: raw-security-reachability
+          path: |
+            target/trivy-*.json
+            target/xslt-reachability/*.json
       - name: Scan the tracked tree for committed credentials
         run: |
-          docker run --rm -v "$PWD":/repo:ro aquasec/trivy:0.58.1 fs \
+          mkdir -p target/tracked-secret-scan
+          git archive HEAD | tar -x -C target/tracked-secret-scan
+          docker run --rm -v "$PWD/target/tracked-secret-scan":/repo:ro aquasec/trivy:0.58.1 fs \
             --scanners secret --exit-code 1 /repo
 
   browser:
