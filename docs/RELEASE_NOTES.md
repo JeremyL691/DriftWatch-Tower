@@ -1,4 +1,4 @@
-# DriftWatch Tower v1.0.0
+# DriftWatch Tower v1.0.1
 
 Single-node, self-hosted data-quality inspection for event streams and the official GitHub
 public-events API. Java 21, Spring Boot, Kafka Streams, PostgreSQL.
@@ -7,19 +7,19 @@ public-events API. Java 21, Spring Boot, Kafka Streams, PostgreSQL.
 
 | Item | Value |
 |---|---|
-| Release tag | `v1.0.0` |
-| Candidate commit | `573154b9b7db0cb78a6db1ad10bd09c8df12fe57` (application surface; frozen and gated) |
+| Release tag | `v1.0.1` |
+| Candidate commit | `e3166d3269ac1ea919c0741cea8bcd5aa277af4e` (application surface; frozen and gated) |
 | Source tree hash | recorded in `release-manifest.json` (`source_tree_hash`) |
 | Config hash | recorded in `release-manifest.json` (`config_hash`) |
-| Application content identity | `1070909c890c03cb64031949ff500d1b107fae53147e82c5d8afd6016e7d4c8d` (`content_identity.jar_content_hash`) |
+| Application content identity | `4d877b4d464b3b808d951f11b66fb50fcc635b3cac854a2782f55f07991afd4e` (`content_identity.jar_content_hash`) |
 | Image | `ghcr.io/jeremyl691/driftwatch-tower@<digest>` — the digest is recorded in the release body and in `release-manifest.json` (`image.published_digest`) |
-| Image tags | `v1.0.0` and `sha-<first 12 hex of the candidate SHA>` |
-| SBOM | `driftwatch-tower-v1.0.0.cdx.json` (CycloneDX) |
+| Image tags | `v1.0.1` and `sha-<first 12 hex of the candidate SHA>` |
+| SBOM | `driftwatch-tower-v1.0.1.cdx.json` (CycloneDX) |
 | Checksums | `checksums.txt` over every attached asset |
-| Deployment bundle | `driftwatch-tower-v1.0.0-bundle.tar.gz` (compose, `.env.example`, self-host tooling, runbook, guide) |
+| Deployment bundle | `driftwatch-tower-v1.0.1-bundle.tar.gz` (compose, `.env.example`, self-host tooling, runbook, guide) |
 | Acceptance evidence | `driftwatch-tower-<run>-evidence.tar.gz` (gate results, load and soak reports, browser captures, scan summaries; credentials redacted) |
 
-The public prerelease is available; formal promotion awaits G17 public installation acceptance. The release pipeline uses the accepted locked inputs: the release pipeline rebuilds from the
+Publication and formal promotion remain pending exact-main publication and G17 public installation acceptance. The immutable v1.0.0 prerelease failed Dashboard CSRF acceptance and will not be promoted. v1.0.1 retains authentication and CSRF enforcement and repairs the actual HTTP cookie lifecycle. The release pipeline uses the accepted locked inputs: the release pipeline rebuilds from the
 same locked inputs and refuses to push unless the application content identity inside the image
 matches the frozen candidate (`content_identity.jar_content_hash`). That content hash excludes archive timestamps. Local arm64 and published architecture/digest mappings will be recorded separately in the manifest.
 
@@ -38,13 +38,13 @@ transaction; failures retry four times and then go to a durable dead-letter topi
 
 | Gate | Result |
 |---|---|
-| Unit + container suite | 174 tests, 0 failures, 0 errors, 0 skipped, against real Kafka and PostgreSQL containers |
+| Unit + container suite | 176 tests, 0 failures, 0 errors, 0 skipped, against real Kafka and PostgreSQL containers |
 | Detection contract | Guide 5.4 matrix, including the two previously missed-alert cases, plus mode, window and identity boundaries |
-| Load (100 events/s for 30 minutes) | 180,000/180,000 offers at 100.0/s, 0 failures, acknowledgement p95 4.9 ms (limit 1 s), commit p95 112 ms (limit 5 s), ledger 180,100 accepted = processed = raw, 0 dead letters, consumer lag back to 0 in 30.1 s |
+| Load (100 events/s for 30 minutes) | 180,000/180,000 offers at 100.0/s, 0 failures, acknowledgement p95 87.7 ms (limit 1 s), commit p95 3.937 s (limit 5 s), ledger 180,100 accepted = processed = raw, 0 dead letters, consumer lag back to 0 in 38.2 s |
 | Browser | 8/8 captures at 320/768/1024/1440 px in dark and light, no console errors, no horizontal overflow, visible focus, live socket connected |
 | Security | Trivy 0.58.1, database 2026-10-04: no HIGH/CRITICAL in the dependency tree or the runtime image, no secret in the image or the tracked tree |
-| Continuous 24-hour run | PASSED, `20261003T203107Z-soak24-r2`: 86,413.6 s, 2,709 samples, maximum gap 36.2 s; 327 real IDs (129 LIVE), all three planned faults recovered, outbox/DLT/lag zero within 22 s of completion. 13 NO_OVERLAP classifications retain the disclosed limitation. |
-| Public installation | G17 FAILED: authenticated Dashboard mutations lose their CSRF cookie and return 403 after preceding successful requests. v1.0.0 remains a prerelease; a new candidate/version and full acceptance are required. |
+| Continuous 24-hour run | PASSED, `20261005T210849Z-v101-soak24-r2`: 86,407.7 s, 2,693 samples, maximum gap 37.5 s; 478 real IDs (379 LIVE), all three planned faults recovered, outbox/DLT/lag zero within 21 s of completion. 28 NO_OVERLAP classifications retain the disclosed limitation. |
+| Public installation | Pending: v1.0.1 public artifacts must pass anonymous installation and all actual Dashboard/security/persistence checks before promotion. The previous v1.0.0 failure remains preserved. |
 
 Performance conditions: single node, 11 CPU / 19.327 GB RAM / 41 GiB free disk at freeze time on macOS arm64, Docker Desktop, images pinned by digest,
 one Kafka broker and one PostgreSQL instance in the same compose project. The load figures are
