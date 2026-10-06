@@ -37,6 +37,7 @@ collect() { # destination-relative-path source
 python3 "$SCRIPT_DIR/release-context.py" --context "$CONTEXT" --out "$OUT_DIR/context-validation.json"
 python3 - "$SCRIPT_DIR" "$CONTEXT" "$stage" <<'PYCOLLECT'
 import sys, json, shutil
+import xml.etree.ElementTree as ET
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 import importlib.util
@@ -52,12 +53,14 @@ files.update(context['evidence_files'])
 run = context['soak']['run_id']
 for name in ['state.json', 'result.json', 'samples.jsonl', 'checkpoint.json', 'faults.jsonl', 'prefault-takeover.json', 'drain-confirmation.json']:
     files.add(f'.execution/soak/{run}/{name}')
-allowed = {'.json', '.jsonl', '.txt', '.md', '.log', '.png', '.svg'}
+allowed = {'.json', '.jsonl', '.txt', '.md', '.log', '.png', '.svg', '.xml', '.err'}
 for value in sorted(files):
     source = module.file_path(value)
     if source.suffix not in allowed or any(word in source.name.lower() for word in ['credential', 'auth.json', '.env']):
         raise ValueError(f'unsafe evidence file: {value}')
-    if source.suffix == '.json':
+    if source.suffix == '.xml':
+        ET.fromstring(source.read_text())
+    elif source.suffix == '.json':
         json.loads(source.read_text())
     elif source.suffix == '.jsonl':
         for line in source.read_text().splitlines():
