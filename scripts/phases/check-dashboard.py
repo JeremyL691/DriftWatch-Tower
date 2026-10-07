@@ -61,6 +61,30 @@ def main() -> int:
         if state != "connected":
             problems.append(f"{label}: live socket not connected (state={state}, label={label!r})")
 
+    actions = report.get("actions") or {}
+    if not actions.get("resolved"):
+        problems.append("actual protected dashboard actions were not completed")
+    else:
+        unhealthy = [page for page in pages if page.get("state") == "UNHEALTHY_SOURCE"]
+        unhealthy_seen = {(page.get("viewport"), page.get("theme")) for page in unhealthy}
+        for viewport in VIEWPORTS:
+            for theme in THEMES:
+                pair = (viewport, theme)
+                label = f"{viewport}-{theme} unhealthy state"
+                if pair not in unhealthy_seen:
+                    problems.append(f"{label}: no post-health-refresh capture")
+                    continue
+                page = next(item for item in unhealthy if (item.get("viewport"), item.get("theme")) == pair)
+                if not page.get("unhealthyBadge", {}).get("present"):
+                    problems.append(f"{label}: rendered unhealthy badge is missing")
+                observed = page.get("unhealthySources") or []
+                badge_source = page.get("unhealthyBadge", {}).get("source")
+                if not badge_source or not any(
+                    source.get("source") == badge_source and source.get("status") == "UNHEALTHY"
+                    for source in observed if isinstance(source, dict)
+                ):
+                    problems.append(f"{label}: badge is not bound to an observed unhealthy source")
+
     summary = {
         "captures": len(pages),
         "accessibility": {
@@ -74,6 +98,7 @@ def main() -> int:
         "viewports": sorted({page.get("viewport") for page in pages}),
         "themes": sorted({page.get("theme") for page in pages}),
         "problems": problems,
+        "unhealthy_state_captures": sum(page.get("state") == "UNHEALTHY_SOURCE" for page in pages),
     }
     with open(args.out, "w") as handle:
         json.dump(summary, handle, indent=2)

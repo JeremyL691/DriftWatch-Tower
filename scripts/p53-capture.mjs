@@ -31,6 +31,26 @@ const viewports = [
   { name: '1440', width: 1440, height: 1000 },
 ];
 
+async function scanAccessibility(page) {
+  return page.evaluate(async () => {
+    if (typeof window.axe === 'undefined') return { ran: false };
+    const result = await window.axe.run(document, {
+      runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] },
+    });
+    return {
+      ran: true,
+      violations: result.violations.map((v) => ({
+        id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.length,
+        nodeDetails: v.nodes.map((n) => ({
+          target: n.target, html: n.html, failureSummary: n.failureSummary,
+          checks: [...n.any, ...n.all, ...n.none].map((c) => ({ id: c.id, data: c.data, message: c.message })),
+        })),
+      })),
+      passes: result.passes.length,
+    };
+  }).catch((error) => ({ ran: false, error: String(error) }));
+}
+
 // Resolve the browser portably: an explicit override, then the Playwright cache on macOS or
 // Linux, then whatever Playwright itself would find. Nothing is downloaded at capture time.
 function resolveChromium() {
@@ -127,22 +147,7 @@ for (const theme of themes) {
 
     // Automated accessibility scan (guide 7.5): axe runs in the page against the vendored copy,
     // and the report carries the violations so the gate can fail on them.
-    const accessibility = await page.evaluate(async () => {
-      if (typeof window.axe === "undefined") return { ran: false };
-      const result = await window.axe.run(document, {
-        runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] },
-      });
-      return {
-        ran: true,
-        violations: result.violations.map((v) => ({
-          id: v.id,
-          impact: v.impact,
-          help: v.help,
-          nodes: v.nodes.length,
-        })),
-        passes: result.passes.length,
-      };
-    }).catch((error) => ({ ran: false, error: String(error) }));
+    const accessibility = await scanAccessibility(page);
 
     const file = join(outDir, `${label}-${viewport.name}-${theme}.png`);
     await page.screenshot({ path: file, fullPage: true });
@@ -262,6 +267,123 @@ for (const theme of themes) {
     });
     await context.close();
   }
+}
+
+// Healthy initial data can hide a contrast defect on a status variant that appears only after
+// source-health calculations settle. Verify the real API state and scan its rendered badge at every
+// required viewport and theme after the actual demo incident has been produced.
+if (get('exercise-actions') === 'true' && report.actions?.resolved) {
+  const unhealthyPages = [];
+  for (const theme of themes) {
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 1000 },
+      extraHTTPHeaders: user
+        ? { Authorization: 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64') }
+        : {},
+      colorScheme: theme === 'light' ? 'light' : 'dark',
+    });
+    await context.addCookies([{ name: 'dwt-theme', value: theme, url: base }]);
+
+    for (const viewport of viewports) {
+      const page = await context.newPage();
+      page.setDefaultNavigationTimeout(30000);
+      const consoleErrors = [];
+      const failedResponses = [];
+      page.on('console', message => {
+        if (message.type() === 'error') consoleErrors.push(message.text());
+      });
+      page.on('pageerror', error => consoleErrors.push(String(error)));
+      page.on('response', response => {
+        if (response.status() >= 400) failedResponses.push(`${response.status()} ${response.url()}`);
+      });
+
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      const response = await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForSelector('#wsStatus', { timeout: 20000 });
+      await page.waitForFunction(expected => document.documentElement.dataset.theme === expected, theme, { timeout: 10000 });
+      let unhealthySources;
+      try {
+        // Keep the exact API response that satisfied the wait. Fetching a second time here can
+        // race a scheduled health refresh and turn a real unhealthy observation into an empty
+        // list before the badge assertion runs.
+        const unhealthyState = await page.waitForFunction(async () => {
+          const response = await fetch('/api/v1/sources/health', { cache: 'no-store' });
+          if (!response.ok) return false;
+          const sources = await response.json();
+          const unhealthy = sources
+            .filter(source => source.source.startsWith('demo-') && source.status === 'UNHEALTHY')
+            .map(source => ({ source: source.source, status: source.status }));
+          return unhealthy.length > 0 ? unhealthy : false;
+        }, null, { timeout: 120000 });
+        unhealthySources = await unhealthyState.jsonValue();
+        await unhealthyState.dispose();
+      } catch (error) {
+        const healthSnapshot = await page.evaluate(async () => {
+          const response = await fetch('/api/v1/sources/health', { cache: 'no-store' });
+          return { httpStatus: response.status, sources: response.ok ? await response.json() : [] };
+        }).catch(snapshotError => ({ error: String(snapshotError) }));
+        writeFileSync(join(outDir, `${label}-unhealthy-state-failure-${viewport.name}-${theme}.json`),
+          JSON.stringify({ error: String(error), healthSnapshot }, null, 2));
+        throw new Error(`real unhealthy source state was not observed at ${viewport.name}-${theme}: ${error}`);
+      }
+      if (unhealthySources.length === 0) throw new Error(`no real unhealthy demo source at ${viewport.name}-${theme}`);
+      const sourceRow = page.locator('#sourceHealthTable tbody tr').filter({ hasText: unhealthySources[0].source });
+      const unhealthyBadge = sourceRow.locator('.pill.unhealthy');
+      await unhealthyBadge.waitFor({ state: 'visible', timeout: 20000 });
+      const badges = await unhealthyBadge.allTextContents();
+      await page.waitForFunction(() => document.getElementById('wsStatus')?.classList.contains('connected'), null, { timeout: 20000 });
+      const wsStatus = await page.evaluate(() => ({
+        state: document.getElementById('wsStatus')?.classList.contains('connected') ? 'connected' : 'disconnected',
+        label: document.querySelector('#wsStatus .ws-label')?.textContent.trim() || null,
+      }));
+      const overflow = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      const keyboard = await page.evaluate(() => {
+        const focusable = document.querySelector('button, a[href], input, select, [tabindex]:not([tabindex="-1"])');
+        if (!focusable) return { focusable: false };
+        focusable.focus();
+        const style = window.getComputedStyle(focusable);
+        return {
+          focusable: true,
+          tag: focusable.tagName,
+          outlineWidth: style.outlineWidth,
+          outlineStyle: style.outlineStyle,
+          activeElement: document.activeElement ? document.activeElement.tagName : null,
+        };
+      });
+      const accessibility = await scanAccessibility(page);
+      const file = join(outDir, `${label}-unhealthy-${viewport.name}-${theme}.png`);
+      await page.screenshot({ path: file, fullPage: true });
+      const entry = {
+        viewport: viewport.name,
+        theme,
+        state: 'UNHEALTHY_SOURCE',
+        status: response?.status() || 0,
+        consoleErrors,
+        failedResponses,
+        wsStatus,
+        horizontalOverflow: overflow.scrollWidth > overflow.clientWidth,
+        overflow,
+        keyboard,
+        unhealthySources,
+        unhealthyBadge: { present: badges.length > 0, source: unhealthySources[0].source, labels: badges.map(value => value.trim()) },
+        accessibility,
+        file,
+      };
+      unhealthyPages.push(entry);
+      report.pages.push(entry);
+      await page.close();
+    }
+    await context.close();
+  }
+  report.unhealthyStateCoverage = {
+    scenario: report.actions.scenario?.name || 'mixed-incident',
+    observedApiState: 'UNHEALTHY',
+    captures: unhealthyPages.map(({ viewport, theme }) => `${viewport}-${theme}`),
+    sources: [...new Set(unhealthyPages.flatMap(page => page.unhealthySources.map(source => source.source)))],
+  };
 }
 
 await browser.close();

@@ -387,7 +387,7 @@ tbody tr:last-child td {
 .pill.error,
 .pill.unhealthy {
     background: var(--err);
-    color: var(--ink);
+    color: var(--bg-0);
     border: 1px solid var(--err);
 }
 

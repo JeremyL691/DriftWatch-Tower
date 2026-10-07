@@ -10,6 +10,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 ROOTS = ['src', 'pom.xml', 'Dockerfile', 'docker-compose.yml', 'docker-compose.dev.yml', '.mvn']
 GATES = dict(zip(['G00', 'G02', 'G03', 'G04', 'G05', 'G06', 'G07', 'G08', 'G09', 'G10', 'G11', 'G12', 'G13', 'G14', 'G15', 'G16'], ['UNIT', 'COMPOSE', 'PHASE-P2', 'PHASE-P2', 'PHASE-P3', 'PHASE-P3', 'PHASE-P3', 'PHASE-P4', 'PHASE-P4', 'PHASE-P5', 'PHASE-P5b', 'PHASE-P5C', 'PHASE-P6', 'LOAD', 'PACKAGE', 'SOAK']))
+WAIVER_STATUS = 'WAIVED_BY_USER'
 
 def file_path(value):
     path = (ROOT / value).resolve()
@@ -83,6 +84,23 @@ def validate_recovery(c, freeze):
     if report.get('tool_sha256') != artifacts['executed-tool.py']:
         raise ValueError('recovery executed tool differs from recorded hash')
 
+def validate_g16_waiver(c, candidate):
+    waivers = c.get('user_authorized_gate_waivers', {})
+    if not isinstance(waivers, dict):
+        raise ValueError('invalid user-authorized gate waiver map')
+    waiver = waivers.get('G16')
+    if waiver is None:
+        return False
+    if not isinstance(waiver, dict):
+        raise ValueError('invalid G16 waiver record')
+    if c.get('version') != 'v1.0.2':
+        raise ValueError('G16 waiver is scoped to the v1.0.2 candidate only')
+    if waiver.get('status') != WAIVER_STATUS or waiver.get('candidate_application_sha') != candidate:
+        raise ValueError('invalid or incorrectly bound G16 waiver')
+    if c.get('gates', {}).get('G16') is not None or c.get('soak') is not None:
+        raise ValueError('a waived G16 must not be represented by a gate or soak report')
+    return True
+
 def validate(context, published=False):
     c = read(context)
     freeze = read(c['freeze_manifest'])
@@ -95,8 +113,22 @@ def validate(context, published=False):
         if tree_hash(roots) != freeze[key]:
             raise ValueError(f'working tree changed: {key}')
     validate_recovery(c, freeze)
+    g16_waived = validate_g16_waiver(c, candidate)
+    gate_paths = c.get('gates')
+    if not isinstance(gate_paths, dict):
+        raise ValueError('missing gate evidence map')
+    required_gate_ids = set(GATES) - ({'G16'} if g16_waived else set())
+    if set(gate_paths) != required_gate_ids:
+        raise ValueError('gate evidence map is incomplete or contains unrecognized gates')
     summary = {}
     for gate_id, name in GATES.items():
+        if gate_id == 'G16' and g16_waived:
+            summary[gate_id] = {
+                'id': name,
+                'status': WAIVER_STATUS,
+                'candidate_application_sha': candidate,
+            }
+            continue
         path = c['gates'][gate_id]
         gate = read(path)
         if gate.get('id') != name or gate.get('status') != 'PASSED' or gate.get('exit_code') != 0:
@@ -109,18 +141,19 @@ def validate(context, published=False):
             if path.suffix == '.json':
                 json.loads(path.read_text())
         summary[gate_id] = {**gate, 'path': c['gates'][gate_id]}
-    soak = c['soak']
-    state = read(f'.execution/soak/{soak["run_id"]}/state.json')
-    result = read(f'.execution/soak/{soak["run_id"]}/result.json')
-    report = read(soak['report'])
-    if state.get('run_id') != soak['run_id'] or report.get('run_id') != soak['run_id']:
-        raise ValueError('wrong soak run')
-    if state.get('image', {}).get('image_id') != freeze['image_id'] or state.get('status') != 'PASSED' or result.get('status') != 'PASSED':
-        raise ValueError('soak not complete or image differs')
-    if report.get('problems') != [] or report.get('measured_seconds', 0) < 86400:
-        raise ValueError('G16 report did not pass a full 24-hour window')
-    if file_path(soak['report']) not in [file_path(p) for p in summary['G16']['evidence_paths']]:
-        raise ValueError('G16 does not bind the designated report')
+    if not g16_waived:
+        soak = c['soak']
+        state = read(f'.execution/soak/{soak["run_id"]}/state.json')
+        result = read(f'.execution/soak/{soak["run_id"]}/result.json')
+        report = read(soak['report'])
+        if state.get('run_id') != soak['run_id'] or report.get('run_id') != soak['run_id']:
+            raise ValueError('wrong soak run')
+        if state.get('image', {}).get('image_id') != freeze['image_id'] or state.get('status') != 'PASSED' or result.get('status') != 'PASSED':
+            raise ValueError('soak not complete or image differs')
+        if report.get('problems') != [] or report.get('measured_seconds', 0) < 86400:
+            raise ValueError('G16 report did not pass a full 24-hour window')
+        if file_path(soak['report']) not in [file_path(p) for p in summary['G16']['evidence_paths']]:
+            raise ValueError('G16 does not bind the designated report')
     if published:
         same_surface(c['release_sha'], candidate)
         if not c.get('public_image_digest', '').startswith('sha256:') or len(c['public_image_digest']) != 71:

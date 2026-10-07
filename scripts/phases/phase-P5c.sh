@@ -33,6 +33,7 @@ set -a; source "$ENV_FILE"; set +a
 
 node "$DWT_REPO_ROOT/scripts/p53-capture.mjs" --out "$OUT_DIR" --label after --base "$BASE" \
   --user "$DWT_ADMIN_USERNAME" --password "$DWT_ADMIN_PASSWORD" --themes dark,light \
+  --exercise-actions true \
   > "$OUT_DIR/capture.log" 2>&1
 capture_exit=$?
 
