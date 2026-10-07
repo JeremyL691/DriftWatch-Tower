@@ -60,8 +60,9 @@ manifest['image']['publication_mapping']=c.get('publication_mapping') or {}
 manifest_path.write_text(json.dumps(manifest,indent=2))
 evidence=pathlib.Path(evidence).resolve()
 evidence_report=json.loads(pathlib.Path(str(evidence)+'.json').read_text())
-if evidence_report.get('status')!='PASSED' or evidence_report.get('remaining_credentials')!=0 or evidence_report.get('archive_sha256')!=sha(evidence) or evidence_report.get('source_tree_hash')!=c['source_tree_hash'] or evidence_report.get('soak_run_id')!=c['soak']['run_id'] or evidence_report.get('gates')!=c['gates']:
-    raise ValueError('evidence archive lacks a matching sanitized binding report')
+sys.path.insert(0, scripts)
+import evidence_pack
+evidence_pack.validate_evidence_report(evidence_report,c,sha(evidence))
 shutil.copyfile(evidence,root/evidence.name) if evidence.parent != root else None
 names=['release-manifest.json',bundle,manifest['sbom'],evidence.name]
 # Retain previously published immutable attachments in the explicit final checksum set.

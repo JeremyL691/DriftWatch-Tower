@@ -34,7 +34,7 @@ collect() { # destination-relative-path source
 }
 
 [ -n "$CONTEXT" ] || die "evidence-pack.sh requires --context FILE"
-python3 "$SCRIPT_DIR/release-context.py" --context "$CONTEXT" --out "$OUT_DIR/context-validation.json"
+python3 "$SCRIPT_DIR/release-context.py" --context "$CONTEXT" >/dev/null
 python3 - "$SCRIPT_DIR" "$CONTEXT" "$stage" <<'PYCOLLECT'
 import sys, json, shutil
 import xml.etree.ElementTree as ET
@@ -43,16 +43,10 @@ sys.path.insert(0, sys.argv[1])
 import importlib.util
 spec = importlib.util.spec_from_file_location('release_context', Path(sys.argv[1]) / 'release-context.py')
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+import evidence_pack
 context, gates = module.validate(sys.argv[2])
 stage = Path(sys.argv[3])
-files = {context['freeze_manifest'], context['soak']['report'], sys.argv[2]}
-for gate in gates.values():
-    files.add(gate['path'])
-    files.update(gate['evidence_paths'])
-files.update(context['evidence_files'])
-run = context['soak']['run_id']
-for name in ['state.json', 'result.json', 'samples.jsonl', 'checkpoint.json', 'faults.jsonl', 'prefault-takeover.json', 'drain-confirmation.json']:
-    files.add(f'.execution/soak/{run}/{name}')
+files = set(evidence_pack.collect_evidence_files(context, gates, sys.argv[2], module.ROOT))
 allowed = {'.json', '.jsonl', '.txt', '.md', '.log', '.png', '.svg', '.xml', '.err'}
 for value in sorted(files):
     source = module.file_path(value)
@@ -80,9 +74,15 @@ tar -czf "$OUT_DIR/driftwatch-tower-$RUN_ID-evidence.tar.gz" -C "$OUT_DIR" "$RUN
 log "evidence pack: $OUT_DIR/driftwatch-tower-$RUN_ID-evidence.tar.gz"
 du -sh "$stage" "$OUT_DIR/driftwatch-tower-$RUN_ID-evidence.tar.gz"
 
-python3 - "$CONTEXT" "$OUT_DIR/driftwatch-tower-$RUN_ID-evidence.tar.gz" <<'PYREPORT'
-import hashlib,json,sys
-context=json.load(open(sys.argv[1]));path=sys.argv[2]
-report={'status':'PASSED','archive_sha256':hashlib.sha256(open(path,'rb').read()).hexdigest(),'source_tree_hash':context['source_tree_hash'],'soak_run_id':context['soak']['run_id'],'gates':context['gates'],'remaining_credentials':0}
+python3 - "$SCRIPT_DIR" "$CONTEXT" "$OUT_DIR/driftwatch-tower-$RUN_ID-evidence.tar.gz" <<'PYREPORT'
+import hashlib,json,sys,importlib.util
+from pathlib import Path
+scripts=Path(sys.argv[1])
+sys.path.insert(0, str(scripts))
+spec=importlib.util.spec_from_file_location('release_context',scripts/'release-context.py')
+module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+import evidence_pack
+context,_=module.validate(sys.argv[2]);path=sys.argv[3]
+report=evidence_pack.build_evidence_report(context,hashlib.sha256(Path(path).read_bytes()).hexdigest())
 json.dump(report,open(path+'.json','w'),indent=2)
 PYREPORT

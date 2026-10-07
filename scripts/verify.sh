@@ -363,15 +363,20 @@ cmd_compose() {
 cmd_phase() {
   local started; started="$(utc_now)"
   [ -n "$PHASE_NAME" ] || die "phase requires a phase name (P2..P5)"
+  local gate_id
+  case "$PHASE_NAME" in
+    P5c) gate_id="PHASE-P5C" ;;
+    *) gate_id="PHASE-${PHASE_NAME}" ;;
+  esac
   local check_script="$DWT_REPO_ROOT/scripts/phases/phase-${PHASE_NAME}.sh"
   if [ ! -x "$check_script" ]; then
-    finish_gate "PHASE-${PHASE_NAME}" NOT_IMPLEMENTED "$started" 2 >/dev/null
+    finish_gate "$gate_id" NOT_IMPLEMENTED "$started" 2 >/dev/null
     die "no phase check script for ${PHASE_NAME} yet ($check_script); it is added by that phase's implementation"
   fi
   "$check_script" --project "$PROJECT" --env-file "$ENV_FILE" --out "$OUT_DIR" ${BASE:+--base "$BASE"}
   local exit_code=$?
-  [ "$exit_code" -eq 0 ] && finish_gate "PHASE-${PHASE_NAME}" PASSED "$started" 0 >/dev/null \
-                          || finish_gate "PHASE-${PHASE_NAME}" FAILED "$started" "$exit_code" >/dev/null
+  [ "$exit_code" -eq 0 ] && finish_gate "$gate_id" PASSED "$started" 0 >/dev/null \
+                          || finish_gate "$gate_id" FAILED "$started" "$exit_code" >/dev/null
   exit "$exit_code"
 }
 
