@@ -157,6 +157,15 @@ class ReleaseSafety(unittest.TestCase):
         self.write('context.json',self.context)
         with self.assertRaises(ValueError): self.validate()
 
+    def test_dockerfile_tracks_the_maven_application_jar_version(self):
+        import re
+        pom=(SCRIPTS.parent/'pom.xml').read_text()
+        dockerfile=(SCRIPTS.parent/'Dockerfile').read_text()
+        version=re.search(r'<artifactId>driftwatch-tower</artifactId>\s*<version>([^<]+)</version>',pom).group(1)
+        default=re.search(r'^ARG APP_VERSION=([^\s]+)$',dockerfile,re.MULTILINE).group(1)
+        self.assertEqual(default,version)
+        self.assertIn('/workspace/target/driftwatch-tower-${APP_VERSION}.jar app.jar',dockerfile)
+
     def test_invalid_json_fails(self):
         self.write('gates/G16.json', '{invalid')
         with self.assertRaises(ValueError): self.validate()
