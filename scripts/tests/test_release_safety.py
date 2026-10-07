@@ -258,6 +258,14 @@ class ReleaseSafety(unittest.TestCase):
     def test_evidence_env_and_auth_files_rejected(self):
         for name in ['actual.env', 'auth.json', 'credentials.json']:
             with self.assertRaises(ValueError): safety.allowed_evidence(name)
+    def test_yaml_evidence_is_allowed_and_scanned(self):
+        for name in ['diagnostics.yml', 'diagnostics.yaml']:
+            safety.allowed_evidence(name)
+        stage=self.root/'yaml-stage';stage.mkdir()
+        (stage/'diagnostics.yml').write_text('status: clear\n')
+        safety.redact_and_scan(stage,set())
+        (stage/'diagnostics.yml').write_text('token: ghp_'+'abcdefghijklmnopqrstuvwxyz012345')
+        with self.assertRaises(ValueError): safety.redact_and_scan(stage,set())
     def test_known_credential_is_redacted(self):
         stage=self.root/'stage';stage.mkdir()
         (stage/'record.json').write_text('{"token":"real-secret-value"}')
