@@ -34,7 +34,7 @@ collect() { # destination-relative-path source
 }
 
 [ -n "$CONTEXT" ] || die "evidence-pack.sh requires --context FILE"
-python3 "$SCRIPT_DIR/release-context.py" --context "$CONTEXT" --out "$OUT_DIR/context-validation.json"
+python3 "$SCRIPT_DIR/release-context.py" --context "$CONTEXT" >/dev/null
 python3 - "$SCRIPT_DIR" "$CONTEXT" "$stage" <<'PYCOLLECT'
 import sys, json, shutil
 import xml.etree.ElementTree as ET
