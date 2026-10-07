@@ -19,6 +19,7 @@ assets = load('assets', SCRIPTS / 'public-assets.py')
 runtime = load('runtime', SCRIPTS / 'phases/release-runtime.py')
 safety = load('safety', SCRIPTS / 'evidence-safety.py')
 acceptance = load('acceptance', SCRIPTS / 'acceptance.py')
+pack = load('pack', SCRIPTS / 'evidence_pack.py')
 
 class ReleaseSafety(unittest.TestCase):
     def setUp(self):
@@ -122,6 +123,80 @@ class ReleaseSafety(unittest.TestCase):
         _,summary=self.validate()
         json.dumps(summary)
         self.assertEqual(summary['G16']['path'],'gates/G16.json')
+
+    def test_user_authorized_g16_waiver_is_candidate_bound_and_never_reported_as_passed(self):
+        self.context['version']='v1.0.2'
+        self.context['user_authorized_gate_waivers']={'G16':{
+            'status':'WAIVED_BY_USER',
+            'candidate_application_sha':self.context['candidate_application_sha'],
+        }}
+        self.context['gates'].pop('G16')
+        self.context.pop('soak')
+        self.write('context.json',self.context)
+        _,summary=self.validate()
+        self.assertEqual(summary['G16']['status'],'WAIVED_BY_USER')
+        self.assertNotEqual(summary['G16']['status'],'PASSED')
+
+    def test_user_authorized_g16_waiver_cannot_be_reused_or_mixed_with_a_soak(self):
+        self.context['version']='v1.0.2'
+        self.context['user_authorized_gate_waivers']={'G16':{
+            'status':'WAIVED_BY_USER',
+            'candidate_application_sha':'a-different-candidate',
+        }}
+        self.context['gates'].pop('G16')
+        self.context.pop('soak')
+        self.write('context.json',self.context)
+        with self.assertRaises(ValueError): self.validate()
+
+        self.context['user_authorized_gate_waivers']['G16']['candidate_application_sha']=self.context['candidate_application_sha']
+        self.context['soak']={'run_id':'accepted','report':'report.json'}
+        self.write('context.json',self.context)
+        with self.assertRaises(ValueError): self.validate()
+
+    def test_missing_g16_requires_explicit_user_authorized_waiver(self):
+        self.context['gates'].pop('G16')
+        self.write('context.json',self.context)
+        with self.assertRaises(ValueError): self.validate()
+
+    def test_public_evidence_pack_excludes_private_context_and_user_waiver(self):
+        self.context['version']='v1.0.2'
+        self.context['user_authorized_gate_waivers']={'G16':{
+            'status':'WAIVED_BY_USER',
+            'candidate_application_sha':self.context['candidate_application_sha'],
+        }}
+        self.context['gates'].pop('G16')
+        self.context.pop('soak')
+        self.context['evidence_files']=['context.json','recovery/report.json']
+        gates={'G00':{'status':'PASSED','path':'gates/G00.json','evidence_paths':['raw/g00.log']},
+               'G16':{'status':'WAIVED_BY_USER'}}
+        files=pack.collect_evidence_files(self.context,gates,'context.json',self.root)
+        self.assertEqual(files,['freeze.json','gates/G00.json','raw/g00.log','recovery/report.json'])
+        report=pack.build_evidence_report(self.context,'archive-hash')
+        serialized=json.dumps(report)
+        self.assertNotIn('G16',serialized)
+        self.assertNotIn('WAIVED_BY_USER',serialized)
+        self.assertNotIn('soak',serialized.lower())
+        pack.validate_evidence_report(report,self.context,'archive-hash')
+
+    def test_public_evidence_pack_keeps_a_passed_soak_binding(self):
+        report_path=self.root/'report.json'
+        report_path.write_text('{}')
+        self.context['soak']={'run_id':'accepted','report':'report.json'}
+        self.write('context.json',self.context)
+        report=pack.build_evidence_report(self.context,'archive-hash')
+        pack.validate_evidence_report(report,self.context,'archive-hash')
+        report['soak_run_id']='different-run'
+        with self.assertRaises(ValueError):
+            pack.validate_evidence_report(report,self.context,'archive-hash')
+
+    def test_dockerfile_tracks_the_maven_application_jar_version(self):
+        import re
+        pom=(SCRIPTS.parent/'pom.xml').read_text()
+        dockerfile=(SCRIPTS.parent/'Dockerfile').read_text()
+        version=re.search(r'<artifactId>driftwatch-tower</artifactId>\s*<version>([^<]+)</version>',pom).group(1)
+        default=re.search(r'^ARG APP_VERSION=([^\s]+)$',dockerfile,re.MULTILINE).group(1)
+        self.assertEqual(default,version)
+        self.assertIn('/workspace/target/driftwatch-tower-${APP_VERSION}.jar app.jar',dockerfile)
 
     def test_invalid_json_fails(self):
         self.write('gates/G16.json', '{invalid')

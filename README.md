@@ -1,15 +1,36 @@
 # DriftWatch Tower
 
-A single-node data-quality inspection service built with Java 21, Spring Boot, Kafka Streams, and PostgreSQL.
+A self-hosted event-quality observability service built with Java 21, Spring Boot, Kafka Streams, and PostgreSQL.
 
 [![CI](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml/badge.svg)](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-DriftWatch Tower ingests events over HTTP and from the official GitHub public-events API, checks
-them against data-quality rules (duplicates, missing fields, null spikes, anomaly spikes, late
-arrivals, range/format rules and schema drift), and stores the events, alerts, incidents and
-metric projections in PostgreSQL. A static dashboard shows the live state; every mutating action
-is auditable and replayable.
+DriftWatch turns incoming events into traceable quality findings. It accepts events over HTTP and
+polls the official GitHub public-events API, evaluates quality rules in Kafka Streams, and stores
+events, alerts, incidents, and metric projections in PostgreSQL. The dashboard brings source
+health, incidents, dead letters, and live metrics into one view.
+
+## Dashboard preview
+
+![DriftWatch Tower dashboard in dark mode](docs/assets/dashboard-preview-dark.jpg)
+
+The preview uses generated demo events in an isolated acceptance stack; it is not a live feed.
+
+## At a glance
+
+- **Ingest and deduplicate:** broker-acknowledged HTTP ingestion with stable idempotency receipts.
+- **Detect data-quality issues:** duplicates, missing fields, null spikes, anomalies, late arrivals,
+  range and format violations, and schema drift.
+- **Keep duplicate findings distinct:** repeated event IDs and repeated payloads remain separate
+  findings, even when both apply to the same ingestion.
+- **Keep failures inspectable:** bounded retries, durable dead-letter records, replay, and explicit
+  source-gap tracking.
+- **Operate from one dashboard:** source health, alerts, incidents, metric windows, and collector
+  status with authenticated, auditable actions.
+
+## Data path
+
+![DriftWatch Tower data path](docs/assets/driftwatch-architecture.svg)
 
 ## Quick start
 
@@ -22,6 +43,10 @@ scripts/selfhost.sh init --env-file .execution/selfhost.env   # random credentia
 scripts/selfhost.sh up   --env-file .execution/selfhost.env
 ```
 
+For an immutable prebuilt install, set `DWT_APP_IMAGE` in the generated env file to the published
+image digest recorded in a GitHub release manifest. Otherwise Compose uses the local
+`driftwatch-tower:local` image and its build definition.
+
 The stack is ready when `curl -fsS http://127.0.0.1:18080/actuator/health/readiness` answers
 `{"status":"UP"}` (about 10–20 seconds on a warm image cache). Then open
 [http://127.0.0.1:18080/dashboard](http://127.0.0.1:18080/dashboard) and sign in with the admin
@@ -31,17 +56,19 @@ Send a first event with the ingest token from the same file:
 
 ```bash
 source .execution/selfhost.env
-curl -X POST http://127.0.0.1:18080/api/v1/events \
+EVENT_ID="demo-$(uuidgen)"
+EVENT_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+curl --fail-with-body -X POST http://127.0.0.1:18080/api/v1/events \
   -H "Authorization: Bearer $DWT_INGEST_TOKEN" -H 'Content-Type: application/json' \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"event_id":"demo-1","source":"demo","event_type":"PaymentEvent",
-       "event_timestamp":"2026-01-01T00:00:00Z","payload":{"amount":42.5,"currency":"USD"}}'
+  -d "{\"event_id\":\"$EVENT_ID\",\"source\":\"demo\",\"event_type\":\"PaymentEvent\",\
+       \"event_timestamp\":\"$EVENT_TIME\",\"payload\":{\"amount\":42.5,\"currency\":\"USD\"}}"
 ```
 
 The same request replayed with the same `Idempotency-Key` returns the original identity and
 creates no second row.
 
-## What is collected, and how fresh it is
+## Source behavior and freshness
 
 The default source is the official GitHub public-events API for `apache/kafka`, unauthenticated:
 
@@ -116,9 +143,8 @@ Every command writes a machine-readable `gate.json` plus its raw evidence into `
 `0` (pass), `1` (verification failure) or `2` (external prerequisite missing). Missing Docker or
 skipped container tests fail the gate instead of quietly reducing coverage.
 
-The acceptance harness in `scripts/` also drives the browser capture (`p53-capture.mjs`), the
-load generator (`loadgen.py`, 100 events/s for 30 minutes with ingestion-ledger reconciliation)
-and the resumable 24-hour runner (`acceptance.py`).
+The acceptance harness in `scripts/` includes responsive browser capture, a reconciliation-based
+load generator, and recovery drills for persistence, replay, and restore behavior.
 
 ## Project documents
 
@@ -142,25 +168,24 @@ and the resumable 24-hour runner (`acceptance.py`).
 - The GitHub source depends on a public API that can be delayed, rate-limited or unavailable;
   when that happens the collector records a gap and the dashboard shows the collector as lost
   rather than reporting success.
-- Gap recording currently over-reports: the collector flags a `NO_OVERLAP` gap whenever a live
+- **Gap recording can over-report.** The collector flags a `NO_OVERLAP` gap whenever a live
   poll finds an event newer than the start of its initial backfill, which for a busy repository
   happens on every poll that finds new events. Those rows stay open and mean "the API can no
   longer serve that range for re-reading", not "events were lost" — ingestion, deduplication and
-  replay are unaffected, and a follow-up release corrects the classifier. The count appears as
-  `open_gaps` on `GET /api/v1/sources/collectors`.
+  replay are unaffected. This release leaves that conservative classifier unchanged. The count
+  appears as `open_gaps` on `GET /api/v1/sources/collectors`.
 - Without a GitHub token the collector is limited to 60 requests/hour, which is why the default
   poll interval is five minutes.
-- The source health score is harsher than the alerting path. Its null-rate input is the highest
+- **Source health can be conservative.** Its null-rate input is the highest
   `NULL_RATE` window of the last hour, and event types legitimately omit fields — `action` does not
   exist on a `PushEvent` — so a field that is absent by design costs the source 25 of 100 points
-  even though no `NULL_SPIKE` alert is raised. Expect the GitHub source to score low while nothing
-  is wrong; the raw values are on `GET /api/v1/sources/health`, and a later release aggregates the
-  null rate only over fields the schema baseline confirms for each event type.
-- `STALE_SOURCE` alerts on the GitHub source are expected and do not mean the collector is broken:
-  the freshness threshold is five minutes while the public API publishes in bursts that can lag by
-  minutes to hours, so a quiet window moves the source healthy → STALE and raises one `WARN` per
-  transition. Polling keeps succeeding throughout; a late release tunes the threshold for delayed
-  polled sources.
+  even though no `NULL_SPIKE` alert is raised. The GitHub source can score low while nothing is
+  wrong; raw values are on `GET /api/v1/sources/health`. A future scoring change should aggregate
+  null rates only over fields the schema baseline confirms for each event type.
+- **`STALE_SOURCE` can reflect upstream quiet periods.** GitHub's public API can publish in bursts
+  that lag by minutes to hours, while the freshness threshold is five minutes. A quiet window can
+  move the source from healthy to `STALE` and raise one `WARN` per transition; polling may still be
+  succeeding throughout, and this release leaves the threshold unchanged.
 - Retention deletes raw payloads after 30 days; the deduplication identity is kept longer than
   the payload so replays remain correct, but old payload contents are not recoverable.
 - Browser support is verified on Chromium at 320/768/1024/1440 px in dark and light themes, on
