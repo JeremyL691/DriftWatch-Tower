@@ -101,6 +101,14 @@ def validate_g16_waiver(c, candidate):
         raise ValueError('a waived G16 must not be represented by a gate or soak report')
     return True
 
+def reportable_gate_summary(summary):
+    """Omit only the candidate-scoped G16 exception from reportable summaries."""
+    return {
+        gate_id: gate
+        for gate_id, gate in summary.items()
+        if not (gate_id == 'G16' and gate.get('status') == WAIVER_STATUS)
+    }
+
 def validate(context, published=False):
     c = read(context)
     freeze = read(c['freeze_manifest'])
@@ -172,7 +180,7 @@ def main():
     args = parser.parse_args()
     try:
         _, gates = validate(args.context, args.published)
-        payload = {'gates': gates, 'problems': []}
+        payload = {'gates': reportable_gate_summary(gates), 'problems': []}
         code = 0
     except (ValueError, KeyError, OSError, TypeError) as error:
         payload = {'gates': {}, 'problems': [str(error)]}
