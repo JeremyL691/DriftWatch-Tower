@@ -256,7 +256,7 @@ class ReleaseSafety(unittest.TestCase):
         with self.assertRaises(ValueError): runtime.require_receipt({'raw':1,'processed':1,'receipt':1,'ingestion_id':'other'},'accepted')
 
     def test_evidence_env_and_auth_files_rejected(self):
-        for name in ['actual.env', 'auth.json', 'credentials.json']:
+        for name in ['actual.env', 'auth.json', 'credentials.json', '._app.jar']:
             with self.assertRaises(ValueError): safety.allowed_evidence(name)
     def test_yaml_evidence_is_allowed_and_scanned(self):
         for name in ['diagnostics.yml', 'diagnostics.yaml']:
