@@ -84,6 +84,13 @@ class DashboardAcceptanceTests(unittest.TestCase):
         self.assertEqual(code, 0, summary['problems'])
         self.assertEqual(summary['unhealthy_state_captures'], 8)
 
+    def test_rejects_reports_that_never_exercised_protected_actions(self):
+        report = self.complete_report()
+        report['actions'] = {}
+        code, summary = self.run_checker(report)
+        self.assertEqual(code, 1)
+        self.assertTrue(any('protected dashboard actions were not completed' in problem for problem in summary['problems']))
+
 
 if __name__ == '__main__':
     unittest.main()
