@@ -301,19 +301,31 @@ if (get('exercise-actions') === 'true' && report.actions?.resolved) {
       const response = await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForSelector('#wsStatus', { timeout: 20000 });
       await page.waitForFunction(expected => document.documentElement.dataset.theme === expected, theme, { timeout: 10000 });
-      await page.waitForFunction(async () => {
-        const health = await fetch('/api/v1/sources/health');
-        if (!health.ok) return false;
-        const sources = await health.json();
-        return sources.some(source => source.source.startsWith('demo-') && source.status === 'UNHEALTHY');
-      }, null, { timeout: 120000 });
-      const unhealthySources = await page.evaluate(async () => {
-        const response = await fetch('/api/v1/sources/health');
-        if (!response.ok) return [];
-        const sources = await response.json();
-        return sources.filter(source => source.source.startsWith('demo-') && source.status === 'UNHEALTHY')
-          .map(source => ({ source: source.source, status: source.status }));
-      });
+      let unhealthySources;
+      try {
+        // Keep the exact API response that satisfied the wait. Fetching a second time here can
+        // race a scheduled health refresh and turn a real unhealthy observation into an empty
+        // list before the badge assertion runs.
+        const unhealthyState = await page.waitForFunction(async () => {
+          const response = await fetch('/api/v1/sources/health', { cache: 'no-store' });
+          if (!response.ok) return false;
+          const sources = await response.json();
+          const unhealthy = sources
+            .filter(source => source.source.startsWith('demo-') && source.status === 'UNHEALTHY')
+            .map(source => ({ source: source.source, status: source.status }));
+          return unhealthy.length > 0 ? unhealthy : false;
+        }, null, { timeout: 120000 });
+        unhealthySources = await unhealthyState.jsonValue();
+        await unhealthyState.dispose();
+      } catch (error) {
+        const healthSnapshot = await page.evaluate(async () => {
+          const response = await fetch('/api/v1/sources/health', { cache: 'no-store' });
+          return { httpStatus: response.status, sources: response.ok ? await response.json() : [] };
+        }).catch(snapshotError => ({ error: String(snapshotError) }));
+        writeFileSync(join(outDir, `${label}-unhealthy-state-failure-${viewport.name}-${theme}.json`),
+          JSON.stringify({ error: String(error), healthSnapshot }, null, 2));
+        throw new Error(`real unhealthy source state was not observed at ${viewport.name}-${theme}: ${error}`);
+      }
       if (unhealthySources.length === 0) throw new Error(`no real unhealthy demo source at ${viewport.name}-${theme}`);
       const sourceRow = page.locator('#sourceHealthTable tbody tr').filter({ hasText: unhealthySources[0].source });
       const unhealthyBadge = sourceRow.locator('.pill.unhealthy');
