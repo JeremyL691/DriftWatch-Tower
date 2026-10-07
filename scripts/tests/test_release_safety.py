@@ -250,6 +250,20 @@ class ReleaseSafety(unittest.TestCase):
         with self.assertRaises(ValueError): assets.verify_assets(self.root,expected)
         (self.root/'bundle.tar.gz').unlink()
         with self.assertRaises(FileNotFoundError): assets.verify_assets(self.root,expected)
+
+    def test_anonymous_release_download_bypasses_stale_cdn_cache_without_credentials(self):
+        from unittest.mock import patch
+        url='https://github.com/example/project/releases/download/v1.0.2/checksums.txt'
+        with patch.object(assets.subprocess,'run') as run:
+            assets.anonymous_download(url,self.root/'checksums.txt')
+        command=run.call_args.args[0]
+        self.assertEqual(command[1],'-q')
+        self.assertIn('dwt_cache_bust=',command[-1])
+        self.assertTrue(command[-1].startswith(url+'?'))
+        self.assertNotIn('Authorization',command)
+        self.assertFalse(any(option in command for option in ['--user','--netrc','--header','--cookie']))
+        self.assertTrue(run.call_args.kwargs['check'])
+
     def test_202_without_specific_receipt_fails(self):
         with self.assertRaises(ValueError): runtime.require_receipt({'raw':0,'processed':0,'receipt':1,'ingestion_id':'accepted'},'accepted')
     def test_other_events_cannot_satisfy_receipt(self):

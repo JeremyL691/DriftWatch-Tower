@@ -8,6 +8,7 @@ import re
 import subprocess
 import tarfile
 import sys
+import time
 
 
 def verify_assets(directory, assets):
@@ -42,7 +43,11 @@ def extract_bundle(bundle, directory):
 
 def anonymous_download(url, target):
     # -q must be the first curl option: it suppresses existing user curlrc credentials.
-    subprocess.run(['curl', '-q', '--fail', '--location', '--retry', '2', '--max-time', '300', '--proto', '=https', '--proto-redir', '=https', '--output', str(target), url], check=True, stdout=subprocess.DEVNULL)
+    # GitHub can briefly serve a replaced release asset from a stale CDN cache. A unique query
+    # string keeps anonymous revalidation bound to the current asset bytes.
+    separator = '&' if '?' in url else '?'
+    fresh_url = f'{url}{separator}dwt_cache_bust={time.time_ns()}'
+    subprocess.run(['curl', '-q', '--fail', '--location', '--retry', '2', '--max-time', '300', '--proto', '=https', '--proto-redir', '=https', '--output', str(target), fresh_url], check=True, stdout=subprocess.DEVNULL)
 
 
 def main():
