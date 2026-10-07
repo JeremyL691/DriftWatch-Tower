@@ -275,6 +275,61 @@ class ReleaseSafety(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 Path(directory,name).write_text('ghp_'+'abcdefghijklmnopqrstuvwxyz012345')
                 with self.assertRaises(ValueError): safety.redact_and_scan(directory,set())
+
+    def test_application_jar_evidence_is_scanned_recursively(self):
+        import io, zipfile
+        nested=io.BytesIO()
+        with zipfile.ZipFile(nested,'w',zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('application.properties','server.port=8080')
+            archive.writestr('org/example/KeyFormat.class','-----BEGIN PRIVATE KEY-----')
+        outer=io.BytesIO()
+        with zipfile.ZipFile(outer,'w',zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('BOOT-INF/lib/dependency.jar',nested.getvalue())
+        stage=self.root/'jar-stage';stage.mkdir()
+        (stage/'app.jar').write_bytes(outer.getvalue())
+        self.assertEqual(safety.redact_and_scan(stage,set())['remaining_credentials'],0)
+
+    def test_credential_in_nested_application_jar_blocks_evidence(self):
+        import io, zipfile
+        nested=io.BytesIO()
+        with zipfile.ZipFile(nested,'w',zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('application.properties','token=ghp_'+'abcdefghijklmnopqrstuvwxyz012345')
+        outer=io.BytesIO()
+        with zipfile.ZipFile(outer,'w',zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('BOOT-INF/lib/dependency.jar',nested.getvalue())
+        stage=self.root/'jar-stage';stage.mkdir()
+        (stage/'app.jar').write_bytes(outer.getvalue())
+        with self.assertRaises(ValueError): safety.redact_and_scan(stage,set())
+
+    def test_complete_private_key_in_jar_blocks_evidence(self):
+        import io, zipfile
+        content='-----BEGIN PRIVATE KEY-----\n'+'A'*80+'\n-----END PRIVATE KEY-----'
+        archive=io.BytesIO()
+        with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as handle:
+            handle.writestr('META-INF/private.pem',content)
+        stage=self.root/'jar-stage';stage.mkdir()
+        (stage/'app.jar').write_bytes(archive.getvalue())
+        with self.assertRaises(ValueError): safety.redact_and_scan(stage,set())
+
+    def test_private_windows_style_jar_paths_block_evidence(self):
+        import io, zipfile
+        for member in ('config\\runtime.env','config\\auth.json','config\\credentials.json'):
+            archive=io.BytesIO()
+            with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as handle:
+                handle.writestr(member,'private configuration')
+            stage=self.root/'jar-stage';stage.mkdir()
+            (stage/'app.jar').write_bytes(archive.getvalue())
+            with self.subTest(member=member), self.assertRaises(ValueError):
+                safety.redact_and_scan(stage,set())
+            (stage/'app.jar').unlink()
+            stage.rmdir()
+
+    def test_public_evidence_paths_exclude_private_env_and_auth_files(self):
+        context={'freeze_manifest':'freeze.json','evidence_files':[
+            'private/runtime.env','private/auth.json','private/credentials.json',
+            'docs/sample.env.example','reports/gate.json']}
+        files=pack.collect_evidence_files(context,{},'context.json',self.root)
+        self.assertEqual(files,['docs/sample.env.example','freeze.json','reports/gate.json'])
     def test_unknown_credential_blocks_evidence(self):
         stage=self.root/'stage';stage.mkdir()
         (stage/'record.json').write_text(json.dumps({'leaked':'ghp_'+'abcdefghijklmnopqrstuvwxyz012345'}))

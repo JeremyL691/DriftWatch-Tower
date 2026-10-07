@@ -47,7 +47,7 @@ import evidence_pack
 context, gates = module.validate(sys.argv[2])
 stage = Path(sys.argv[3])
 files = set(evidence_pack.collect_evidence_files(context, gates, sys.argv[2], module.ROOT))
-allowed = {'.json', '.jsonl', '.txt', '.md', '.log', '.png', '.svg', '.xml', '.err'}
+allowed = {'.json', '.jsonl', '.txt', '.md', '.log', '.png', '.svg', '.xml', '.err', '.jar'}
 for value in sorted(files):
     source = module.file_path(value)
     if source.suffix not in allowed or any(word in source.name.lower() for word in ['credential', 'auth.json', '.env']):

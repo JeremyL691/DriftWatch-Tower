@@ -8,6 +8,12 @@ def _resolved(root, value):
     return (path if path.is_absolute() else Path(root) / path).resolve()
 
 
+def _private_evidence_path(value):
+    name = Path(value).name.lower()
+    return (name == '.env' or name.endswith('.env') or name in {'auth.json', 'credentials.json'}
+            or 'credential' in name)
+
+
 def collect_evidence_files(context, gate_summaries, context_path, repository_root):
     """Return explicitly bound evidence paths, never the private release context."""
     files = {context['freeze_manifest']}
@@ -32,7 +38,7 @@ def collect_evidence_files(context, gate_summaries, context_path, repository_roo
     context_identity = _resolved(repository_root, context_path)
     return sorted(
         value for value in files
-        if _resolved(repository_root, value) != context_identity
+        if _resolved(repository_root, value) != context_identity and not _private_evidence_path(value)
     )
 
 
