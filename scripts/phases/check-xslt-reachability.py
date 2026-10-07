@@ -14,7 +14,7 @@ import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CVE = 'CVE-2026-47884'
-CONTENT = 'b965e56bfe088505bcf29ec8d8d5a10bac7fdd748c0567bdf81c2ffe21f18650'
+CONTENT = 'f06767a9fc46fc1a0b9d8a00c9c1fb9a5071e6a2e33173692a70096cee28ffe0'
 PURL = 'pkg:maven/org.springframework/spring-webmvc@6.2.19'
 
 def sha(path):
