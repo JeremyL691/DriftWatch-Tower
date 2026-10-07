@@ -137,6 +137,13 @@ class ReleaseSafety(unittest.TestCase):
         self.assertEqual(summary['G16']['status'],'WAIVED_BY_USER')
         self.assertNotEqual(summary['G16']['status'],'PASSED')
 
+    def test_reportable_gate_summary_contains_only_completed_acceptance(self):
+        summary={'G15':{'status':'PASSED'}, 'G16':{'status':ctx.WAIVER_STATUS},
+                 'G14':{'status':'FAILED'}}
+        report=ctx.reportable_gate_summary(summary)
+        self.assertEqual(list(report),['G15','G14'])
+        self.assertEqual(report['G14']['status'],'FAILED')
+
     def test_user_authorized_g16_waiver_cannot_be_reused_or_mixed_with_a_soak(self):
         self.context['version']='v1.0.2'
         self.context['user_authorized_gate_waivers']={'G16':{
