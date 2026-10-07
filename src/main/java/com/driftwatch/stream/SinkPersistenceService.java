@@ -196,7 +196,14 @@ public class SinkPersistenceService {
                                         ProcessedEvent p, Instant now) {
         QualityAlertEntity e = new QualityAlertEntity();
         e.setIngestionId(ingestionId);
-        e.setDetectorKey(a.type().name() + ":" + (a.fieldPath() == null ? "-" : a.fieldPath()));
+        String detectorKey = a.type().name() + ":" + (a.fieldPath() == null ? "-" : a.fieldPath());
+        if (a.type() == AlertType.DUPLICATE_EVENT && a.evidence() != null) {
+            String duplicateKind = a.evidence().path("duplicate_kind").asText();
+            if (!duplicateKind.isBlank()) {
+                detectorKey += ":" + duplicateKind;
+            }
+        }
+        e.setDetectorKey(detectorKey);
         e.setWindowKey(p.windowEvaluation() == null || p.windowEvaluation().windowStart() == null
                 ? null : p.windowEvaluation().windowStart().toString());
         e.setAlertType(a.type());
