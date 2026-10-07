@@ -97,6 +97,8 @@ for name in names:
                 if member.isfile():
                     normalized=member.name.lower().replace('\\','/')
                     basename=normalized.rsplit('/',1)[-1]
+                    if basename.startswith('._'):
+                        raise ValueError(f'AppleDouble metadata is not release evidence: {member.name}')
                     if normalized.endswith('.env') or basename in ['auth.json','credentials.json']:
                         raise ValueError(f'private deployment file in archive: {member.name}')
                     data=archive.extractfile(member).read()
