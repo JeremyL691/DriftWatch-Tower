@@ -95,9 +95,15 @@ for name in names:
         with tarfile.open(path) as archive:
             for member in archive.getmembers():
                 if member.isfile():
-                    if pathlib.Path(member.name).name.endswith('.env') or pathlib.Path(member.name).name in ['auth.json','credentials.json']:
+                    normalized=member.name.lower().replace('\\','/')
+                    basename=normalized.rsplit('/',1)[-1]
+                    if normalized.endswith('.env') or basename in ['auth.json','credentials.json']:
                         raise ValueError(f'private deployment file in archive: {member.name}')
-                    scan_bytes(archive.extractfile(member).read(),member.name)
+                    data=archive.extractfile(member).read()
+                    if pathlib.Path(basename).suffix=='.jar':
+                        safety.scan_jar(data,pathlib.Path(member.name),secrets)
+                    else:scan_bytes(data,member.name)
+    elif path.suffix=='.jar':safety.scan_jar(path.read_bytes(),path,secrets)
     else:scan_bytes(path.read_bytes(),name)
 (root/'checksums.txt').write_text(''.join(f'{sha(root/name)}  {name}\n' for name in names))
 names.append('checksums.txt')
