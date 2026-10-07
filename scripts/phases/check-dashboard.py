@@ -61,7 +61,10 @@ def main() -> int:
         if state != "connected":
             problems.append(f"{label}: live socket not connected (state={state}, label={label!r})")
 
-    if report.get("actions", {}).get("resolved"):
+    actions = report.get("actions") or {}
+    if not actions.get("resolved"):
+        problems.append("actual protected dashboard actions were not completed")
+    else:
         unhealthy = [page for page in pages if page.get("state") == "UNHEALTHY_SOURCE"]
         unhealthy_seen = {(page.get("viewport"), page.get("theme")) for page in unhealthy}
         for viewport in VIEWPORTS:
