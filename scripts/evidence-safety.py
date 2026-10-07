@@ -16,7 +16,7 @@ MAX_ARCHIVE_DEPTH = 4
 
 def allowed_evidence(path):
     path = Path(path)
-    if path.suffix not in {'.json', '.jsonl', '.txt', '.md', '.log', '.png', '.svg', '.xml', '.yml', '.yaml', '.err', '.jar'} or any(word in path.name.lower() for word in ['credential', 'auth.json', '.env']):
+    if path.name.startswith('._') or path.suffix not in {'.json', '.jsonl', '.txt', '.md', '.log', '.png', '.svg', '.xml', '.yml', '.yaml', '.err', '.jar'} or any(word in path.name.lower() for word in ['credential', 'auth.json', '.env']):
         raise ValueError(f'unsafe evidence file: {path.name}')
 
 def scan_jar(data, path, secrets, budget=None, depth=0):

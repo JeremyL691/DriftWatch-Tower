@@ -137,7 +137,7 @@ PY
 # from an earlier attempt produced two entries for it - a stale one from the find and the fresh
 # one appended below - and verification failed on the stale line even though the new tarball was
 # correct. Checksums cover every shipped artifact, generated last so nothing is added afterwards.
-tar -czf "$OUT_DIR/driftwatch-tower-${VERSION}-bundle.tar.gz" -C "$OUT_DIR/bundle" .
+COPYFILE_DISABLE=1 tar -czf "$OUT_DIR/driftwatch-tower-${VERSION}-bundle.tar.gz" -C "$OUT_DIR/bundle" .
 ( cd "$OUT_DIR" && find . -type f ! -name checksums.txt ! -name '*.log' -print0 \
     | sort -z | xargs -0 shasum -a 256 > checksums.txt )
 log "artifacts in $OUT_DIR"
