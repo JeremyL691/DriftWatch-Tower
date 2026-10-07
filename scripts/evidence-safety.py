@@ -1,16 +1,56 @@
 #!/usr/bin/env python3
 """Credential redaction and fail-closed scan of a release evidence staging directory."""
 import argparse
+import io
 import json
 from pathlib import Path
 import re
+import zipfile
 
 PATTERN = re.compile(r'(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)')
+PATTERN_BYTES = re.compile(rb'(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----\s+[A-Za-z0-9+/=\r\n]{64,}-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)')
+MAX_ARCHIVE_ENTRIES = 100_000
+MAX_ARCHIVE_MEMBER_BYTES = 64 * 1024 * 1024
+MAX_ARCHIVE_EXPANDED_BYTES = 1_000_000_000
+MAX_ARCHIVE_DEPTH = 4
 
 def allowed_evidence(path):
     path = Path(path)
-    if path.suffix not in {'.json', '.jsonl', '.txt', '.md', '.log', '.png', '.svg', '.xml', '.err'} or any(word in path.name.lower() for word in ['credential', 'auth.json', '.env']):
+    if path.suffix not in {'.json', '.jsonl', '.txt', '.md', '.log', '.png', '.svg', '.xml', '.err', '.jar'} or any(word in path.name.lower() for word in ['credential', 'auth.json', '.env']):
         raise ValueError(f'unsafe evidence file: {path.name}')
+
+def scan_jar(data, path, secrets, budget=None, depth=0):
+    """Scan an application JAR and nested ZIP/JAR dependencies without extracting them."""
+    if depth > MAX_ARCHIVE_DEPTH:
+        raise ValueError(f'evidence archive nesting limit exceeded: {path.name}')
+    if budget is None:
+        budget = {'entries': 0, 'expanded_bytes': 0}
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as error:
+        raise ValueError(f'invalid JAR evidence: {path.name}') from error
+    with archive:
+        members = archive.infolist()
+        budget['entries'] += len(members)
+        if budget['entries'] > MAX_ARCHIVE_ENTRIES:
+            raise ValueError(f'evidence archive entry limit exceeded: {path.name}')
+        for member in members:
+            if member.is_dir():
+                continue
+            lowered = member.filename.lower().replace('\\', '/')
+            basename = lowered.rsplit('/', 1)[-1]
+            if lowered.endswith('.env') or basename in {'auth.json', 'credentials.json'}:
+                raise ValueError(f'private deployment file in JAR evidence: {member.filename}')
+            if member.file_size > MAX_ARCHIVE_MEMBER_BYTES:
+                raise ValueError(f'evidence archive member is too large: {member.filename}')
+            budget['expanded_bytes'] += member.file_size
+            if budget['expanded_bytes'] > MAX_ARCHIVE_EXPANDED_BYTES:
+                raise ValueError(f'evidence archive expansion limit exceeded: {path.name}')
+            content = archive.read(member)
+            if PATTERN_BYTES.search(content) or any(value.encode() in content for value in secrets):
+                raise ValueError(f'credential-like data in JAR evidence: {member.filename}')
+            if member.filename.lower().endswith(('.jar', '.zip')):
+                scan_jar(content, path, secrets, budget, depth + 1)
 
 def redact_and_scan(stage, secrets):
     stage = Path(stage)
@@ -22,6 +62,9 @@ def redact_and_scan(stage, secrets):
         if path.suffix == '.png':
             if any(value.encode() in original for value in secrets):
                 raise ValueError(f'credential in binary evidence: {path.name}')
+            continue
+        if path.suffix == '.jar':
+            scan_jar(original, path, secrets)
             continue
         text = original.decode('utf-8')
         for value in sorted(secrets, key=len, reverse=True):
