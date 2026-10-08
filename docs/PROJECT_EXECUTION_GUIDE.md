@@ -1,48 +1,14 @@
-# DriftWatch Tower 最终项目执行指南
+# DriftWatch Tower 产品与技术规范
 
-文档版本：1.0。批准日期：2026-09-30。状态：执行规范已确定，代码重构尚未开始。
+本文描述当前产品范围、系统职责、数据与 API 契约、检测规则、来源采集以及运维边界。它是实现和兼容性参考，不记录会话进度或发布状态。
 
-本文件是唯一权威执行规范。[执行状态](EXECUTION_STATE.md)记录实际进度，[Agent 提示词](AGENT_REFACTOR_PROMPT.md)负责启动执行；它们不得另行定义产品范围或降低本文件门槛。README 只描述已经实现的能力。
+安装、升级、备份与故障处理请看 [运行手册](RUNBOOK.md)；当前版本的制品和验收结果请看 [发布说明](RELEASE_NOTES.md)。
 
-## 1. 从这里开始
+## 1. 规范范围与入口
 
-1. 阅读本文件全部内容和执行状态，检查当前 Git 分支、未提交变更、远端版本。
-2. 先保护本次文档交接及用户变更，按 P0.1 对齐远端最新代码。
-3. 从执行状态指定的第一个未完成任务开始；首次为 P0.1。
-4. 按 P0 至 P7 完成实施、测试、修复、长时间验证和公开发布。阶段通过后直接进入下一阶段，不逐阶段询问是否继续。
-5. 只有第 12 节的全部完成条件通过，才能将项目目标标记为完成。
-
-这轮交接仅改变文档及文档图示。后续 Agent 获得代码重构与发布授权。本文件中的新增脚本、API、数据结构和配置均为待实现契约，不得因为它们已经写在文档中而标记完成。
-
-### 1.1 已确定且不再询问的决定
-
-| 项目 | 固定决定 |
-|---|---|
-| 产品 | 开源、单机、可自托管的数据质量工具 |
-| 技术栈 | Java 21、Spring Boot、Kafka Streams、PostgreSQL、Flyway |
-| 重构方法 | 从最新远端实现逐步重构，保留已验证行为，不同时运行两套主处理管道 |
-| 真实来源 | GitHub 公共仓库事件，默认 apache/kafka |
-| 前端 | 现有静态 HTML/JavaScript/原生 CSS，保留黑金品牌 |
-| 设计参数 | DESIGN_VARIANCE=3、MOTION_INTENSITY=2、VISUAL_DENSITY=8 |
-| 持续验收 | 连续 24 小时真实 GitHub 数据运行 |
-| 发布 | Agent 可提交、推送、合并自己的 PR，发布 GitHub Release 与 GHCR 公共镜像 |
-| 首版版本 | v1.0.0；若远端已有同名正式版本，取现有最高稳定版本的下一个 minor，不覆盖旧 tag |
-| 不纳入首版 | 计费、多租户、商业账号系统、Kubernetes、ML 检测器、私有 GitHub 仓库 |
-| 历史保护 | 不强推、不丢弃用户变更、不改旧迁移、不删除已有数据卷 |
-| 完成证据 | 绑定确切 Git SHA 和镜像 digest，包含公开制品再次安装的结果 |
-
-### 1.2 当前基线与已确认问题
-
-2026-09-30 审核的本地提交是 `84400133d9aab140e6e7d8bd34550c178c89a69a`；当时远端 main 是 `082fd84d7fabee7d94e05b4dba842f0995a3775e`，多 3 个提交。执行时必须重新查询远端，不把这个快照当成永远最新。
-
-- 本地既有 53 项测试、远端既有 57 项测试均曾在真实 Kafka/PostgreSQL 容器下通过且没有跳过。
-- [远端 CI 原始运行](https://github.com/JeremyL691/DriftWatch-Tower/actions/runs/33464634754)记录了远端 57 项通过；基线数字不是最终必须达到的测试数量。
-- 本机审核环境为 Java 25。Docker API 临时指定为 1.44，远端 Mockito 测试额外启用了 Byte Buddy experimental 开关。发布验证必须使用项目支持的 Java 21 和兼容依赖，不能把这些临时参数变成发布依赖。
-- 两版本都有 NULL_SPIKE 和 ANOMALY_SPIKE 漏报。具体输入见第 5.4 节。
-- Compose 的 `bitnami/kafka:3.7` 曾在 manifest 检查和直接拉取中返回不存在；Testcontainers 使用另一个镜像，因此全绿测试没有覆盖 Compose 启动。
-- incident 关联服务没有接到 sink，全部停流时也没有独立的定时健康检查。
-- 本地健康变 STALE 时的漏报已在上述远端提交修复；先吸收修复，再验证，不能重新实现已经正确的补丁。
-- 历史吞吐数字、示意 incident 和虚构界面图不能作为发布证据。
+- 本文第 2 至 7 节定义产品行为、数据契约和系统边界。
+- [运行手册](RUNBOOK.md)说明部署、升级、备份、恢复和运维操作。
+- [发布说明](RELEASE_NOTES.md)及对应 GitHub Release manifest 记录已发布制品和版本验收。
 
 ## 2. 最终产品、用户及边界
 
@@ -97,7 +63,7 @@ flowchart LR
     HEALTH["Scheduled health + retention"] --> DB
 ```
 
-本图是目标，不是当前已实现架构。README 的 SVG 在 P7 前按实际实现更新。
+当前架构图也显示在 README 的 SVG 中；下图说明本规范中的数据路径与职责边界。
 
 | 模块 | 主要职责 | 不允许做的事 |
 |---|---|---|
@@ -112,8 +78,8 @@ flowchart LR
 
 ### 3.1 默认技术配置
 
-- JDK 21。Spring Boot 与依赖选择支持 Java 21 的稳定受支持版本，在 P1 锁定具体版本及依赖树；升级只为兼容性和漏洞修复，不为换框架。
-- PostgreSQL 16 的受支持 patch，Kafka 选择官方 Apache 镜像并与客户端兼容；以原测试使用的 3.8.0 作为兼容起点，P1 核验受支持性后锁定通过门槛的具体 patch/tag 和 digest。
+- JDK 21。Spring Boot 与应用依赖版本见 [运行时与依赖版本](versions.md)；更新时重新运行相关 CI 与安全检查。
+- 自托管镜像使用 PostgreSQL 16.15 与 Apache Kafka 3.9.2；更新镜像或客户端时检查兼容性、容器测试和迁移，再更新版本清单。
 - 构建和运行镜像固定版本/digest，不用 latest。CI actions 固定完整 SHA；自动更新需重新验收。
 - raw/quality 默认各 3 分区，单 broker replication=1；单 broker 事务相关 topic 的 replication/min ISR 同为 1，不能使用需要三 broker 的默认值。
 - Streams 使用 exactly_once_v2 保证 Kafka 内部输出与 state/offset 一致；数据库仍按第 4 节的幂等事务完成，不宣称跨 Kafka/PostgreSQL 原子提交。
@@ -260,7 +226,7 @@ schema 活动版本变化后使用新 baseline version构建窗口 key，旧窗�
 6. 同 scope输入落在不同原始分区时，规范key路由后检测一致；不同 scope相同event_id/payload互不误报。
 7. 乱序 [T正常、T缺失、T-1分钟正常、T缺失] 不丢掉 T 窗口计数；窗口结束、grace边界、未来时间分别验证。
 
-先在 P0 记录旧行为；将预期新行为写成有意义的失败测试，P2修复后转绿。不得通过改阈值让用例恰巧通过。
+先用有意义的回归测试描述行为，再修改实现；测试应针对故障本身，不能通过放宽阈值让用例恰巧通过。
 
 ## 6. 真实 GitHub 数据接入
 
@@ -272,9 +238,9 @@ GitHub 官方说明事件 API 为轮询设计，历史最多300条/30天，上�
 
 未认证请求的基本额度为每IP每小时60次，并存在额外限流。默认仅轮询一个仓库，每5分钟一次，每轮最多3页；按响应额度预算和退避控制，不以理论额度保证任意共享IP可用。[限流事实来源](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
 
-请求头：Accept: application/vnd.github+json，X-GitHub-Api-Version: 2026-03-10，User-Agent: DriftWatch-Tower/<version>。P4执行时核验这个 API version仍受支持并固定到测试；不能每次请求自动切版本。可选 token从 GITHUB_TOKEN读取，不是启动前提。
+请求头：Accept: application/vnd.github+json，X-GitHub-Api-Version: 2026-03-10，User-Agent: DriftWatch-Tower/<version>。版本头保持固定；升级前确认新版本仍受官方支持，并同步更新协议测试。可选 token从 GITHUB_TOKEN读取，不是启动前提。
 
-审核中无token读取此仓库曾得到HTTP200、实际PullRequestEvent、ETag和60秒poll header。执行前重新用以下只读命令验证，不把旧返回值写成当前结果：
+实时上游响应、限流和可用性只能由本次验收日志证明；历史响应不作为当前运行状态。
 
 ```bash
 curl --fail-with-body --max-time 20 -D - \
@@ -384,341 +350,3 @@ retention每日执行，以最多1000行一批提交；删除raw不级联删除�
 动效只用于hover、状态变化提示和必要fade，尊重prefers-reduced-motion。操作具备loading、禁用重复提交、成功/失败反馈及retry；401有可理解认证状态；WebSocket断线后退避重连并重新查询，不能只在屏幕上保留旧LIVE标记。
 
 四种viewport 320、768、1024、1440各测亮/暗与关键操作。窄屏表格放在有标签的横向滚动容器，不能整个页面横向溢出。键盘操作、focus可见、accessibility自动扫描、console无未处理错误。before/after必须来自同一实际场景，不使用示意SVG冒充截图。
-
-## 8. 自主执行、状态与证据协议
-
-### 8.1 目标模式
-
-目标objective：按本指南交付并公开发布DriftWatch Tower可自托管v1，完成真实GitHub源、全部必需门槛及公开制品安装。
-
-有目标工具时建立一个目标，不反复重建，不自行编造token budget。目标完成条件为第12节；用户说暂停才暂停。工具本身对blocked状态、预算和权限的规则仍必须遵守，文档不能绕过平台限制。
-
-普通测试失败、编译错误、依赖冲突、自己造成的合并冲突和合理实现细节均自行修复。无需每阶段或每次发布动作重新询问，因为用户已授权此执行链。不能以“已完成文档”“测试大部分通过”或“24小时任务已启动”结束产品目标。
-
-### 8.2 执行状态格式
-
-[执行状态](EXECUTION_STATE.md)保持当前事实，至少有：branch、base_sha、candidate_sha、当前phase/task、各任务状态、各gate状态、证据路径、长任务与下一动作。
-
-任务状态为NOT_STARTED、RUNNING、PASSED、FAILED、BLOCKED；gate另外允许EXPECTED_FAILURE，仅用于P0已知红色回归。NOT_RUN不是PASSED。状态文件可以精简日志，但不能删除未解决问题或把失败改成历史完成。
-
-任务开始和结束、阶段转移、候选版本变更、阻塞或恢复都更新状态。指导文件本身不维护第二份完成勾选列表。新需求只有用户明确改变范围才追加版本修订，不私自把困难功能移出范围。
-
-### 8.3 证据保存
-
-未来P1建立并忽略.execution/与含secret的本地env文件；真实可分享报告放docs/evidence/<run-id>/summary.md，完整证据打包成Release附件。禁止将token、密码、私有数据或未经脱敏的日志上传。
-
-每个run写manifest.json，至少包含run_id、UTC时间、Git SHA/dirty状态、相关源树hash、镜像ID/digest、OS/arch/CPU/RAM/disk、工具版本、配置hash、test suite counts和退出码。
-
-每个gate写gate.json：id、status、command、started_at、ended_at、exit_code、evidence_paths、measurement和failure_reason。用原始结果生成摘要，不手填一个pass字符串替代执行。
-
-P6开始冻结应用、依赖、配置、迁移、规则、镜像内容；任何这些内容变化后重跑受影响门槛和24小时run。纯文档修正记录diff与source tree hash一致性，不需要假装应用换了版本。
-
-### 8.4 24小时任务恢复
-
-执行器启动持久后台runner，启动命令10秒内返回；每30秒采样写文件，每5分钟原子写checkpoint。run目录有锁、PID/进程创建时间、compose project、镜像身份、开始时间、last_heartbeat、预计结束时间和日程。PID相同不足以证明原任务还活着，须验证命令/创建时间和锁。
-
-恢复会话时先查询原run。runner仍活着就继续观察，不再启动第二个；runner失联且监测空洞超过120秒，原连续性验收无效，保留原失败记录并以新run重新开始24小时，不拼接两个短run。受控应用重启不会中断独立monitor；重启造成的预定恢复时间单独统计。
-
-若运行环境支持同一chat heartbeat，可建立每小时一次静默检查，只有完成、失败或需要外部输入时通知；已有monitor则复用，不重复建立。未支持后台或唤醒的环境保存run和恢复命令，准确报告能力不足，不宣称靠一段提示词就能突破平台。
-
-等待工具每次最多60秒并维持必要进度沟通；不能在一个工具调用里阻塞24小时。等待期间可做同一冻结版本的文档和证据整理。
-
-### 8.5 外部阻塞与权限
-
-可自动：本仓库分支/提交/PR、自己的PR合并、Actions、公共Release/GHCR发布、隔离测试资源、验证脚本和文档。不可自动：买域名/云资源、访问私有来源、删除用户数据、改无关仓库、强推、规避审批或限流。
-
-缺凭证/权限先只读核验、尝试已授权的可用CLI/API或UI并完成其他任务；持久网络故障执行带上限的退避。确需外部输入时记录哪个动作失败、原始错误、已经完成什么及确切恢复命令。不要为同一原因重复询问或空转。
-
-额度/上下文耗尽前写状态，保留正在运行的验收；恢复从下一动作开始，不重做已通过且绑定版本未变的阶段。阻塞不等于完成。不得通过改文档降低门槛让目标“结束”。
-
-## 9. 自动验证命令接口
-
-下列脚本现在不存在，P1.3负责创建。后续文档命令必须与实现同名同参数；不允许留下“手工检查一下”作为必需发布门槛。
-
-标准脚本采用shell调用Maven/Docker与Python标准库runner；浏览器使用固定版本Playwright作为开发测试依赖。只有脚本有实际需要时引入库。
-
-### 9.1 独立资源与返回值
-
-- scripts/verify.sh：统一门禁入口。0通过、1验证失败、2外部前提缺失；解析错误同样非0。
-- scripts/selfhost.sh：init/up/status/down/backup/restore，支持--project和--env-file，不隐式删除volume。
-- scripts/acceptance.py：后台run、状态、恢复和结果，持久runner不依赖当前Agent终端。
-- release镜像只包含运行所需内容，不包含测试工具、凭证和开发环境。
-
-所有verify子命令支持--out，必要时支持--project、--env-file和--image；输出机器可读gate.json及可读summary。资源名称必须带明确的dwt验收前缀。默认验收端口18080，不能抢占用户8080/5432/9092。
-
-建议每个run使用独立标识，路径位于.execution，环境变量使用DWT_前缀，不覆盖HOME或CODEX_HOME：
-
-```bash
-DWT_RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
-DWT_RUN_DIR=".execution/runs/$DWT_RUN_ID"
-DWT_PROJECT="dwt-acceptance-$DWT_RUN_ID"
-DWT_ENV_FILE=".execution/selfhost.env"
-
-./scripts/verify.sh preflight --out "$DWT_RUN_DIR/preflight"
-./scripts/selfhost.sh init --env-file "$DWT_ENV_FILE"
-./scripts/verify.sh compose --project "$DWT_PROJECT" --env-file "$DWT_ENV_FILE" --out "$DWT_RUN_DIR/compose"
-./scripts/verify.sh phase P2 --project "$DWT_PROJECT" --env-file "$DWT_ENV_FILE" --out "$DWT_RUN_DIR/p2"
-./scripts/verify.sh phase P3 --project "$DWT_PROJECT" --env-file "$DWT_ENV_FILE" --out "$DWT_RUN_DIR/p3"
-./scripts/verify.sh phase P4 --project "$DWT_PROJECT" --env-file "$DWT_ENV_FILE" --out "$DWT_RUN_DIR/p4"
-./scripts/verify.sh phase P5 --project "$DWT_PROJECT" --env-file "$DWT_ENV_FILE" --out "$DWT_RUN_DIR/p5"
-./scripts/verify.sh load --rate 100 --duration 1800 --project "$DWT_PROJECT" --env-file "$DWT_ENV_FILE" --out "$DWT_RUN_DIR/load"
-./scripts/verify.sh soak-start --duration 86400 --run-id "$DWT_RUN_ID" --project "$DWT_PROJECT" --env-file "$DWT_ENV_FILE" --out "$DWT_RUN_DIR/soak"
-./scripts/verify.sh soak-status --run-id "$DWT_RUN_ID"
-./scripts/verify.sh soak-resume --run-id "$DWT_RUN_ID"
-./scripts/verify.sh release --project "$DWT_PROJECT" --env-file "$DWT_ENV_FILE" --out "$DWT_RUN_DIR/release"
-```
-
-soak-start必须异步；重复same run调用返回现有状态。soak-resume按第8.4节检验连续性，失效时非0并给出新run启动信息，不能把新计时偷偷写回旧run。
-
-### 9.2 发布前置检查
-
-preflight检查JDK21、Docker/Compose、Python、磁盘空间、Git状态、端口、gh可用性、repo权限；不打印token。建议参考验收资源4个CPU、8GiB RAM、至少20GiB空闲磁盘；实际机器规格必须写manifest，不把它当虚构性能保证。
-
-P0现有可运行命令：
-
-```bash
-git status --short
-git log -1 --format='%H %s'
-git remote -v
-java -version
-docker version
-docker compose config --quiet
-gh repo view --json nameWithOwner,defaultBranchRef,viewerPermission
-./mvnw clean test --batch-mode
-```
-
-对JUnit XML累计tests/failures/errors/skipped，并检查ContainerIntegrationTest派生的每个具体类是否实际运行。发布环境Docker不可用必须在运行前失败；不能让disabledWithoutDocker=true隐藏集成门禁。单元开发可以显式选择unit profile，发布不能使用它替代完整套件。
-
-## 10. 分阶段任务与完成条件
-
-所有任务的状态只更新执行状态；下列是静态规范。P0到P7顺序不可跳过，各阶段内按任务编号执行。P2.3与P3.1的schema outbox共享第4节契约，先建事务边界和接口，再在P3补齐投递容错，不保留JPA topology备用路径。
-
-### P0：保护、对齐及建立基线
-
-**P0.1 保护交接并对齐远端。**
-
-- 检查dirty diff，区分本次批准的文档变更与用户其他变更；只将本次文档显式stage到独立提交，不git add整个仓库。
-- 未提交的无关工作用独立checkout保护并记路径，不擅自丢弃或一起提交。优先复用合适worktree。
-- git fetch origin后从最新origin/main创建或复用codex/release-v1；将文档交接提交应用到该分支。README/已删除旧文档的冲突按本指南处理，不能复活旧计划。
-- 获取真实远端HEAD、记录base_sha。审核中已修复问题先验证，不盲目再写一遍。
-- 完成：交接文件存在、已删除文档保持删除、用户变更仍可恢复、分支有明确base。
-
-**P0.2 复跑与红色回归。**
-
-- 用Java21干净构建，验证Docker、现有JUnit XML和真实容器启动记录，记录与历史53/57的差异原因。
-- 添加第5.4节的两类漏报及核心幂等/窗口测试。单独运行红色新增用例，记录EXPECTED_FAILURE；旧套件不应无解释退化。
-- 核验真实GitHub只读请求和Compose拉取现状，留命令/错误，禁止把“网络失败”写成“镜像一定不存在”。
-- 完成：G00基线通过，G01已知失败成功复现；错误环境先修复再判断应用。
-
-### P1：可重复启动与验证工具
-
-**P1.1 修复部署与依赖。**
-
-替换不可获取Kafka镜像并修正listener/advertised listener和健康检查；镜像若缺curl，安装必要工具或选择确实存在的检查方式。production保留volume、不暴露DB/Kafka端口、挂载Streams状态。锁定依赖和构建、增加版本manifest及SCA。
-
-完成：G02全新专用环境可启动；不能通过旧缓存镜像掩盖失败。
-
-**P1.2 配置与认证基础。**
-
-集中@ConfigurationProperties并验证正数、阈值、窗口/grace/retention关系；错配置启动非0且错误指出key、不暴露secret。实现第2.3节凭证/访问保护，默认无固定密码，配置样例不得是真secret。补充生产与测试profile。
-
-完成：未授权操作401/403、合法入口可用、弱/缺生产凭证fail-fast、真实源在测试默认关闭。
-
-**P1.3 构建自动执行入口。**
-
-创建第9节脚本，加入.execution/.env忽略规则、机器可读结果、健康等待、资源所有权、失败清理和后台runner；为每个必需gate实现入口，不先把空脚本标pass。API探针通过env/config读取凭证，不打印命令中的秘密。
-
-完成：所有文档命令help与参数一致，错误返回非0，不抢占/清理无关容器。
-
-### P2：检测正确性和边界
-
-**P2.1 scope与窗口。**
-
-先定义第4.1节内部类型和processor输入，G03用TopologyTestDriver验证，不提前切换生产topic；P3.1再完成公开摄取、持久身份和新topic切换。统一规范scope key和去重存储；实现独立窗口、scope watermark、grace/future exclusion、baseline版本和fired状态。将raw重投身份去重置于业务检测之前；seen state保存原始envelope摘要，不同内容使用同一身份时失败，不能先污染检测计数；其state恢复在P3验证。
-
-完成：G03核心两类漏报、旧用例、所有边界通过，精确告警数量与证据得到断言。
-
-**P2.2 规则与配置。**
-
-验证hash规范、数字边界、regex、null/missing、嵌套/数组、质量状态coverage。规则版本随ProcessedEvent保存，配置错误不在运行中随机抛异常。
-
-完成：detector参数矩阵与OpenAPI输入校验一致，测试不是仅照抄实现。
-
-**P2.3 schema事务迁移。**
-
-将SchemaRegistry调用移到sink，ACTIVE锁及唯一性、基线激活API、baseline outbox/global store实现；拓扑不能再query/save repository。比较原证据结构，记录新字段，不丢历史版本。
-
-完成：G04多线程first observation只有一个ACTIVE；崩溃后outbox能补发；缓存缺基线明确显示coverage。
-
-### P3：投递、幂等与恢复
-
-**P3.1 envelope、receipt及事务sink。**
-
-实现第4节摄取确认、Idempotency-Key/batch契约、ingestion_id、原子receipt/raw/alert/metric更新、after-commit输出；追加迁移和过渡测试。Streams相同ingestion_id不会再修改检测计数，状态保留覆盖Kafka重放窗口。
-
-完成：G05至少验证确认前失败、确认后响应丢失、发布后重启、DB commit后offset未commit、并发重复、两个业务重复。各ID对账正确。
-
-**P3.2 retry/DLT/replay。**
-
-按第7.1节实现bytes验证、有限sink重试、持久Kafka DLT、DB投影、管理列表/重放；重放保留原始ProcessedEvent或raw阶段，不混淆两种。
-
-完成：G06DB停机后后续消息有恢复路径，DLT失败不提交原offset；恢复重放无重复指标/告警。
-
-**P3.3 历史升级。**
-
-建立旧版本真实数据夹具并执行第4.6节升级/drain/bridge，校验V1-V7 checksum、旧主键和数量。只操作test volumes。
-
-完成：G07历史仍可查询，pending数量可解释，回滚演练能恢复，未偷偷purge旧数据。
-
-### P4：真实来源闭环
-
-**P4.1 poller与持久状态。**
-
-实现第6节请求/转换、inbox/outbox、lease、candidate/applied checkpoint、ETag、预算、退避和缺口记录。支持默认无token，拒绝任意base URL作为生产配置；本地stub只在测试profile。
-
-完成：G08所有HTTP异常/恢复/分页用例通过，合法持续quiet不误报collector lost。
-
-**P4.2 真链路冒烟。**
-
-在selfhost环境轮询官方apache/kafka，保存HTTP采集证据及源ID，沿outbox、Kafka、receipt、raw/API逐一核对；重启后至少再完成一次poll。获取启动后新增事件，不只bootstrap。
-
-完成：G09真实事件可追溯，source status、迟到与处理时长分离；若上游无新增则门槛未通过，不造数据。
-
-### P5：运维与界面
-
-**P5.1 生命周期与scheduled health。**
-
-连接incident；完成无副作用GET、告警/incident转换、来源scheduler和采集器状态。timer用可注入Clock，集成测试验证真实调度触发。
-
-完成：G10无人读Dashboard也会出现失联转换告警；重复查询不额外写行。
-
-**P5.2 观测、保留和恢复。**
-
-实现第7.3/7.4节指标、日志、retention、备份与新volume恢复；指标和数据库账本一致。模拟故障与真实源run分开。
-
-完成：G11恢复后事件/告警/schema/receipt/inbox一致，未解决证据保留，secret扫描通过。
-
-**P5.3 静态Dashboard。**
-
-先记录before，然后实现第7.5节完整操作状态和必要页面，保持3/2/8，不再询问风格或回滚成高动效旧计划。
-
-完成：G12浏览器功能、四断点、暗/亮、键盘及真实before/after通过。
-
-### P6：冻结候选及完整验收
-
-**P6.1 全套/安全/负载/制品。**
-
-冻结应用候选commit、配置hash和构建镜像内容；完整integration、browser、migration、fault、SCA/secret、OCI镜像与发布包验证全部运行。记录镜像ID、导出制品SHA256和候选源码身份，发布时只提升同一制品。
-
-运行100events/s持续1800秒，统计实际offer/accepted/failed/processed/DLT，对账所有ingestion_id，分别测确认和commit p95。测试机规格、冷热条件、资源曲线必须记录。
-
-完成：G13安全，G14性能及资源结果，G15候选包安装通过。达不到门槛修复，不通过缩短时间或更改百分位计算。
-
-**P6.2 24小时真实验收。**
-
-启动独立runner并写状态，按第11节G16进行连续采样和受控故障。在等待中整理同一版本runbook/release说明，不改变冻结的应用或运行配置。
-
-完成：G16报告通过、原始采集新增IDs/监测序列/恢复日志齐全；没有到24小时只能RUNNING。
-
-### P7：公开发布和最终安装
-
-**P7.1 合并自己的重构PR。**
-
-使用gh创建自己的PR，正文写最终问题/行为/实证。按工具能力将PR附到当前chat；检查exact head SHA、必要CI及无未解决审查问题。只合并自己的PR，不绕过仓库required checks/保护。合并后核对main包含已验收源树和候选commit，代码改变则回到对应gate。
-
-**P7.2 发布既有候选制品。**
-
-通过Actions的GITHUB_TOKEN，默认permissions contents:read；仅发布job授予contents:write与packages:write。fork PR不获取发布凭证。registry为ghcr.io/jeremyl691/driftwatch-tower，tag为v1.0.0（或1.1节确定版本）和sha-<candidate-sha>，同时记录不可变digest。
-
-镜像不能在发布时偷偷用变化的基础镜像重建；上传已测试的候选或用相同锁定输入验证内容身份。Release tag指向已验证且在main可达的候选commit。导出archive/image ID到公开digest的映射写release-manifest.json。latest只在正式gate通过后指向该digest。
-
-GHCR新package可能默认private，必须将目标package设置为public并实际匿名验证。使用当前已授权官方CLI/API或GitHub UI；不猜测不存在的visibility API，不为扩大token权限自动获取别人的凭证。缺权限记录发布阻塞，镜像push成功不等于上架成功。[官方GHCR说明](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
-
-发布附件：仅引用发布image/digest的Compose、配置样例、初始化/备份/恢复工具、checksums、SBOM、release manifest、脱敏验收证据包及指南。公开包不得含真实.env。
-
-**P7.3 匿名下载后的独立安装。**
-
-在独立无认证Docker config/新runner上按公开digest拉取，在新project、新volume和新.env启动Release附件；不用本地源代码构建。验证health、认证、REST摄取/落库、真实GitHubpoll、Dashboard、告警操作及重启。
-
-完成：G17通过，提供Release URL、匿名可拉取image@digest、tag/commit、安装结果和限制；只有这时更新状态为完成。之后提交最终状态/证据文档可以是单独维护提交，不能改写已发布tag。
-
-## 11. 门禁矩阵、测量与失败处理
-
-| Gate | 范围 | 通过标准 | 失败后动作 |
-|---|---|---|---|
-| G00 | 现有基线 | 正确环境、所有原测试执行，失败原因可解释 | 修环境/回归，不进入P1 |
-| G01 | 已知红色用例 | 在旧实现复现两类漏报；仅此gate允许EXPECTED_FAILURE | 查输入和版本，不能删用例 |
-| G02 | 无缓存Compose | 新runner拉取/构建并启动所有服务，readiness≤120秒 | 修镜像/检查/配置 |
-| G03 | 检测正确性 | 第5节输入矩阵、告警数、证据、恢复通过 | 修规则，不改门槛 |
-| G04 | schema反馈 | 并发、事务rollback、baseline activation与同步通过 | 修锁/outbox/coverage |
-| G05 | 发布/幂等 | 重投不重复副作用，业务重复保留，所有确认可对账 | 修receipt/事务/状态 |
-| G06 | 故障恢复 | 受控Kafka/DB故障恢复，DLT可靠，重放可对账 | 保留失败记录再修复 |
-| G07 | 升级兼容 | V1-V7不变、旧数据/offset保护、回滚实测 | 修迁移/bridge |
-| G08 | 来源协议 | ETag、限流、坏输入、分页和检查点异常全通过 | 修poller，不规避限制 |
-| G09 | 官方真实源 | source ID贯穿全链路，bootstrap后新增、重启poll成功 | 等待/修接入，不换mock |
-| G10 | 操作闭环 | incident与告警状态一致、静默scheduler、GET无副作用 | 修事务/timer |
-| G11 | 保留/恢复 | 新volume恢复可用、证据保留、指标可解释 | 修runbook/retention |
-| G12 | 浏览器 | 320/768/1024/1440、亮暗、操作、重连、键盘通过 | 修UI后再截图 |
-| G13 | 发布安全 | 无secret、未授权拒绝、runtime无未修复High/Critical已知漏洞 | 升级/修补并重测 |
-| G14 | 负载 | 100/s共1800秒；offer达到目标，确认p95≤1s、落库p95≤5s、无解释不清的丢失 | 找瓶颈/修可靠性 |
-| G15 | 候选包 | 仅制品新环境可安装，镜像身份匹配，SBOM/checksum齐全 | 修打包 |
-| G16 | 24小时真实运行 | 以下连续性、真实输入、故障及资源条件全部满足 | 修复后新run重测 |
-| G17 | 公开发布 | 自己PR已合并，public Release/image，匿名安装全部通过 | 修发布权限/制品，目标未完成 |
-
-G13 SCA必须记录工具版本、数据库更新时间及runtime/dev范围；可先选Trivy固定版本，扫描应用依赖与发布镜像。误报只能凭上游公告/可验证reachability记录，不删除发现；真实未修复High/Critical不得豁免发正式版。scan数据库不可用是NOT_RUN，不是0漏洞。
-
-G14性能测量以独立harness的HTTP请求开始->broker ack response，以及原received_at->transaction commit为两个时长；故障注入不放入正常负载p95，但单独记录。180000次目标offer不能以少发/拒绝大量请求取得漂亮p95。等待积压清空后，以ingestion_id账本核对accepted、processed和明确失败；普通负载不应残留DLT。
-
-### 11.1 G16的具体条件
-
-- 在相同冻结应用镜像/配置下持续至少86400秒；UTC时间和单调时钟耗时都记录。monitor每30秒采样，无无法解释的>120秒空洞。
-- 官方GitHub source无token默认工作；至少20个不同真实事件被持久化，并至少1个为bootstrap完成后首次发现的新ID。数量不是上游吞吐承诺。
-- 正常轮询符合header和rate budget，有HTTP/poll状态证据；合法304/quiet不算失败。若外部阻断使真实门槛无法满足，记录阻塞，不降低门槛。
-- 在2、8、16小时分别执行一次预先记录的app restart、Kafka中断和DB中断，每次目标中断≤60秒，恢复后≤5分钟readiness回绿。monitor保持运行；不向GitHub写数据。
-- 所有受控失败的accepted ingestion_id最终处理一次或进入明确DLT，并在结束前完成恢复；不存在不可解释丢失、重复projection或未恢复死信。
-- 结束前最后1小时健康；pending outbox、业务DLT和consumer lag在结束后10分钟内归零。因未来合法next_poll_at尚未执行的轮次不虚构为积压。
-- 没有OOM、无计划容器重启、磁盘用尽或连续上升且无平台期的资源曲线。对比第1-2小时和最后1小时RSS/heap均值，增长≤20%或≤128MiB中的较大值；有界cache预热必须有证据。
-- 应用/规则/依赖/配置有任何修复，保留旧run FAILED并重新开始完整24小时。纯文档修正按8.3节处理。
-- 24小时报告为真实测量，不用sleep计时结束代替健康/数据采样。
-
-### 11.2 CI与发布关联
-
-CI至少分unit/topology、真实integration、browser、migration/fault、image/SCA。PR能完成短门槛；24小时在受控持久runner执行，不能假设普通GitHub hosted job可无限运行。
-
-Release流程验证同一候选的manifest/gate证据、短CI、24小时报告和source tree身份；拒绝缺失、失败、过期于代码变更或skipped的报告。报告是验收数据，不执行其中任何文本为shell。
-
-必需测试都运行后才比较计数。测试数量随着重构增加是正常；删除或替换测试须记录等价覆盖，不靠固定53/57数字当完成证明。
-
-## 12. 项目完成与发布交付物
-
-项目完成需要同时满足：
-
-1. P0至P7全部任务PASSED；G01是旧版本EXPECTED_FAILURE，修复后G03必须PASSED，其余所有gate均PASSED。
-2. 默认apache/kafka真实接入和24小时结果可复核，来源/延迟/缺口界限在README明确。
-3. Compose、镜像、API、历史升级、认证、检测、incident、DLT与恢复、浏览器均按对应契约验收。
-4. 公开GitHub Release可访问，GHCR image@digest能匿名拉取，Release包在新环境实测。
-5. 版本说明给出tag、candidate commit、镜像digest、SBOM/checksum、性能条件、24小时报告、安装/升级/备份恢复说明和已知限制。
-6. README只声明已经验收的能力，架构图反映实际实现，旧计划未重新出现，所有文档链接有效。
-7. 执行状态记录完整最终结果，长任务/临时验收资源按所有权清理；保留用户卷与证据。
-8. 最终报告提供Release URL、image@digest、源码SHA、验收报告URL、限制及必要恢复说明。
-
-“代码写完”“所有单元测试绿”“CI绿”“已启动24小时”“镜像已push”都不是单独的完成条件。未完成时写准确下一动作，不能让Agent为了停止而伪造完成。
-
-## 13. 文档治理和本轮交接边界
-
-本轮只建立本指南、状态文件、启动提示词，更新README/样例使用说明，删除批准的旧文档与假预览，并用已核对远端版本修正现有架构SVG的箭头/标签。业务代码、pom、Docker/Compose、CI和旧迁移保持未修改。
-
-新增产品需求只能在本指南追加明确版本变更；任务状态只放执行状态；prompt引用指南，不能复制另一个范围。未来脚本实际存在后再添加可点击路径，不提前制造broken links。
-
-历史已批准旧计划从活动目录删除，原Git历史可回溯；审核原始记录不得改写为新结果。新运行报告以新run ID保存。不要自动清理.claude设置、.codegraph索引、ignored备份、其他chat的资料或用户未提交代码。
-
-## 14. 参考和实现核验
-
-- [GitHub Events API](https://docs.github.com/en/rest/activity/events)：轮询、分页可见窗口与延迟事实；实现执行时重新核验。
-- [GitHub REST rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)：额度/异常响应和退避处理。
-- [GitHub Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)：Actions凭证、公开镜像与匿名拉取。
-- [项目仓库](https://github.com/JeremyL691/DriftWatch-Tower)：以执行时最新远端作为基线。
-- [根README](../README.md)：当前实际能力及交接入口。
-- [事件样例说明](../samples/events/README.md)：synthetic历史请求，不代表真实源接入。
-
-本指南中的实现设计是项目决定，官方链接仅支持相邻的外部接口事实，不能把整个设计说成GitHub官方要求。

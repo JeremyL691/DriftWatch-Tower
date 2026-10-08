@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Builds the release artifacts for one frozen candidate (used by G15 and, unchanged, by P7.2).
+# Builds the release artifacts for one explicitly versioned frozen candidate.
 #
 # Everything here is derived from the frozen image and the frozen commit; nothing is rebuilt from
-# a different input. The bundle carries the deployment surface only (compose file, config sample,
-# self-host tooling, guide, checksums, SBOM, manifest) — never a real .env.
+# a different input. The bundle carries the deployment surface and current operator docs, but
+# never a real .env or internal execution history.
 
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,7 +12,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 OUT_DIR=""
 IMAGE=""
-VERSION="v1.0.0"
+VERSION=""
 MANIFEST=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -24,6 +24,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$OUT_DIR" ] || die "package-release.sh requires --out DIR"
+[ -n "$VERSION" ] || die "package-release.sh requires --version TAG"
 mkdir -p "$OUT_DIR"
 require_docker
 require_python
@@ -89,12 +90,10 @@ cp "$DWT_REPO_ROOT/.env.example" "$OUT_DIR/bundle/"
 cp "$DWT_REPO_ROOT/scripts/selfhost.sh" "$OUT_DIR/bundle/scripts/"
 cp "$DWT_REPO_ROOT/scripts/lib/common.sh" "$OUT_DIR/bundle/scripts/lib/"
 cp "$DWT_REPO_ROOT/docs/PROJECT_EXECUTION_GUIDE.md" "$OUT_DIR/bundle/docs/"
-# The runbook and the version notes carry the install, upgrade, backup/restore and limit
-# statements the guide requires a release to publish; an installer who downloads only the
-# bundle must get them. Everything the bundled README links locally ships with it, so no
-# link resolves only inside the repository, and the licence travels with the artifacts.
-for extra in docs/RUNBOOK.md docs/RELEASE_NOTES.md docs/EXECUTION_STATE.md docs/versions.md \
-             docs/assets/driftwatch-architecture.svg LICENSE; do
+# Internal execution plans and session state stay in repository history, not in the
+# installer-facing release bundle. README-local links are copied with their targets below.
+for extra in docs/RUNBOOK.md docs/RELEASE_NOTES.md docs/versions.md \
+             docs/assets/driftwatch-architecture.svg docs/assets/dashboard-preview-dark.jpg LICENSE; do
   [ -f "$DWT_REPO_ROOT/$extra" ] || continue
   mkdir -p "$OUT_DIR/bundle/$(dirname "$extra")"
   cp "$DWT_REPO_ROOT/$extra" "$OUT_DIR/bundle/$extra"

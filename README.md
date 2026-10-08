@@ -1,61 +1,50 @@
 # DriftWatch Tower
 
-A self-hosted event-quality observability service built with Java 21, Spring Boot, Kafka Streams, and PostgreSQL.
+Self-hosted event-quality monitoring for HTTP event streams and the official GitHub public-events API.
 
 [![CI](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml/badge.svg)](https://github.com/JeremyL691/DriftWatch-Tower/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/JeremyL691/DriftWatch-Tower?label=latest%20release)](https://github.com/JeremyL691/DriftWatch-Tower/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-DriftWatch turns incoming events into traceable quality findings. It accepts events over HTTP and
-polls the official GitHub public-events API, evaluates quality rules in Kafka Streams, and stores
-events, alerts, incidents, and metric projections in PostgreSQL. The dashboard brings source
-health, incidents, dead letters, and live metrics into one view.
-
-## Dashboard preview
+**[Download the latest release](https://github.com/JeremyL691/DriftWatch-Tower/releases/latest)** for the immutable image, deployment bundle, checksums, and manifest. Or follow the quick start below to build and run from source.
 
 ![DriftWatch Tower dashboard in dark mode](docs/assets/dashboard-preview-dark.jpg)
 
-The preview uses generated demo events in an isolated acceptance stack; it is not a live feed.
+The preview uses generated demo events in an isolated acceptance stack; it is not a live service.
 
-## At a glance
+## What it does
 
-- **Ingest and deduplicate:** broker-acknowledged HTTP ingestion with stable idempotency receipts.
-- **Detect data-quality issues:** duplicates, missing fields, null spikes, anomalies, late arrivals,
-  range and format violations, and schema drift.
-- **Keep duplicate findings distinct:** repeated event IDs and repeated payloads remain separate
-  findings, even when both apply to the same ingestion.
-- **Keep failures inspectable:** bounded retries, durable dead-letter records, replay, and explicit
-  source-gap tracking.
-- **Operate from one dashboard:** source health, alerts, incidents, metric windows, and collector
-  status with authenticated, auditable actions.
+DriftWatch evaluates event quality in Kafka Streams and stores source events, findings, incidents, and operational state in PostgreSQL. The dashboard shows collector health, alerts, incidents, dead letters, and live metrics.
 
-## Data path
+- **Ingest safely:** broker-acknowledged HTTP ingestion with stable idempotency receipts.
+- **Detect quality issues:** duplicate IDs and payloads, missing fields, null spikes, anomalies, late arrivals, range and format violations, and schema drift.
+- **Recover visibly:** bounded retries, durable dead-letter records, replay, and explicit source-gap records.
+- **Track the source:** a persistent GitHub collector with ETags, inbox identities, outbox state, and checkpoints.
+- **Operate securely:** authenticated management and dashboard actions; ingestion uses a bearer token.
 
 ![DriftWatch Tower data path](docs/assets/driftwatch-architecture.svg)
 
 ## Quick start
 
-Requirements: Docker with Compose (4 CPU / 8 GiB RAM recommended) and a free port for the app.
+Requirements: Docker with Compose, 4 CPU cores and 8 GiB RAM recommended, and a free application port.
 
 ```bash
 git clone https://github.com/JeremyL691/DriftWatch-Tower.git
 cd DriftWatch-Tower
-scripts/selfhost.sh init --env-file .execution/selfhost.env   # random credentials, mode 0600
-scripts/selfhost.sh up   --env-file .execution/selfhost.env
+scripts/selfhost.sh init --env-file .execution/selfhost.env
+scripts/selfhost.sh up --env-file .execution/selfhost.env
 ```
 
-For an immutable prebuilt install, set `DWT_APP_IMAGE` in the generated env file to the published
-image digest recorded in a GitHub release manifest. Otherwise Compose uses the local
-`driftwatch-tower:local` image and its build definition.
+The source setup builds the local image. For a prebuilt install, download the deployment bundle from the [latest release](https://github.com/JeremyL691/DriftWatch-Tower/releases/latest) and set `DWT_APP_IMAGE` to the published image digest from its manifest.
 
-The stack is ready when `curl -fsS http://127.0.0.1:18080/actuator/health/readiness` answers
-`{"status":"UP"}` (about 10–20 seconds on a warm image cache). Then open
-[http://127.0.0.1:18080/dashboard](http://127.0.0.1:18080/dashboard) and sign in with the admin
-username and password from the env file.
+When `curl -fsS http://127.0.0.1:18080/actuator/health/readiness` returns `{"status":"UP"}`, open [the dashboard](http://127.0.0.1:18080/dashboard) and sign in with the administrator credentials in `.execution/selfhost.env`.
 
-Send a first event with the ingest token from the same file:
+Send a sample event with the ingest token from that file:
 
 ```bash
+set -a
 source .execution/selfhost.env
+set +a
 EVENT_ID="demo-$(uuidgen)"
 EVENT_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 curl --fail-with-body -X POST http://127.0.0.1:18080/api/v1/events \
@@ -65,133 +54,48 @@ curl --fail-with-body -X POST http://127.0.0.1:18080/api/v1/events \
        \"event_timestamp\":\"$EVENT_TIME\",\"payload\":{\"amount\":42.5,\"currency\":\"USD\"}}"
 ```
 
-The same request replayed with the same `Idempotency-Key` returns the original identity and
-creates no second row.
+Retry with the same `Idempotency-Key` to receive the original ingestion identity without creating a second record.
 
-## Source behavior and freshness
+## Source behavior
 
-The default source is the official GitHub public-events API for `apache/kafka`, unauthenticated:
+The default collector polls the official GitHub public-events API for `apache/kafka` every five minutes, respects the upstream poll interval and rate limits, and stores its checkpoint. The unauthenticated API budget is limited to 60 requests per hour.
 
-| Property | Default | Meaning |
-|---|---|---|
-| `driftwatch.source.github.poll-interval` | 5 minutes | Delay between poll rounds; the API's `X-Poll-Interval` header is honoured when it asks for more |
-| `driftwatch.source.github.max-pages` / `page-size` | 3 × 100 | At most 300 events examined per round |
-| `driftwatch.source.github.token` | empty | Optional. Without it the unauthenticated budget is 60 requests/hour, which is why the default interval is five minutes |
-| `driftwatch.detector.late.github-threshold` | 8 hours | An event older than this when it arrives is reported as late rather than as a fresh observation |
+This source is not realtime. The upstream API can delay or limit events, and its history is finite. DriftWatch records an explicit gap when history is unavailable instead of inventing a missing-event count. Events first seen at startup are marked `BOOTSTRAP`; later arrivals are evaluated as `LIVE`.
 
-Boundaries you should expect:
+## Security and operations
 
-- **This is not realtime.** GitHub's events API itself lags by seconds to hours, and the poller
-  only looks every five minutes. The dashboard shows collector state (`last_poll_at`,
-  `last_success_at`, `next_poll_at`, upstream lag) so the delay is visible rather than implied.
-- **`304 Not Modified` and quiet rounds are normal.** They update poll health and do not move the
-  checkpoint.
-- **Gaps are recorded, never guessed.** If a poll round is truncated, loses page overlap, or the
-  collector is down longer than the API's visible window, a row is written to `source_gaps` with
-  the reason; the number of missed events is recorded as unknown rather than invented.
-- **Rate limits are respected, not worked around.** `403`/`429` responses back off using
-  `Retry-After` or the rate-limit reset, and a budget-exhausted round is recorded as a gap.
-- **Bootstrap and live are distinguished.** Events first seen when the collector starts are
-  marked `mode=BOOTSTRAP` and do not participate in realtime window evaluation; only later
-  arrivals are `mode=LIVE`.
-- **Restarts resume.** ETag, inbox identities, outbox state and checkpoints are persisted, so a
-  restart continues from the last applied round instead of re-ingesting or skipping.
-
-Retention defaults: raw events and metric windows 30 days, resolved alerts/incidents and
-recovered dead letters 90 days, source inbox identities 35 days. Unresolved alerts and
-incidents, unrecovered dead letters and pending outbox rows are never pruned.
-
-## Reliability behaviour
-
-- Ingestion is accepted only after the broker acknowledged the record (HTTP `202`). A retry with
-  the same `Idempotency-Key` returns the same `ingestion_id`.
-- The database sink retries immediately, then at 2 s, 10 s and 30 s. A record that still fails is
-  published to `dead-letter-events-v1` with its original topic/partition/offset and a stable
-  diagnostic id, and is visible and replayable through the API. Nothing is dropped silently.
-- Schema observation and drift alerting run inside the sink transaction under a PostgreSQL
-  advisory lock, so a topology thread never touches the database.
-- Alert-to-incident correlation, acknowledgement, resolution and source-health staleness are
-  idempotent and are covered by tests that assert repeated `GET`s have no side effects.
-
-## Operating
+- Only the diagnostic health endpoint is anonymous. Dashboard and management APIs require the administrator account; ingestion requires the bearer token.
+- Kafka and PostgreSQL are not published on host ports. The app binds to `127.0.0.1` by default; put a TLS reverse proxy in front for remote access.
+- Compose projects are namespaced. `scripts/selfhost.sh down` keeps data volumes; add `--volumes` only when you intend to remove that install's data.
 
 ```bash
 scripts/selfhost.sh status  --env-file .execution/selfhost.env
 scripts/selfhost.sh backup  --env-file .execution/selfhost.env --out backup/dwt.dump
 scripts/selfhost.sh restore --env-file .execution/selfhost.env --dump backup/dwt.dump --target-db driftwatch_restore
-scripts/selfhost.sh down    --env-file .execution/selfhost.env            # volumes kept
-scripts/selfhost.sh down    --env-file .execution/selfhost.env --volumes  # volumes removed
 ```
-
-Compose projects are namespaced (`<project>_pgdata`, …), so an acceptance run can never read or
-delete the volumes of a running install. PostgreSQL and Kafka are never published to the host;
-the app binds `127.0.0.1` only. Put your own TLS reverse proxy in front for remote access.
-
-`/actuator/health` is the only anonymous endpoint and returns status only. Metrics, the API
-documentation and the dashboard require the admin account; ingestion requires the bearer token.
 
 ## Verification
 
 ```bash
 scripts/verify.sh preflight --out .execution/verify/preflight
-scripts/verify.sh unit      --out .execution/verify/unit    # full suite incl. real Kafka/PostgreSQL containers
-scripts/verify.sh sca       --out .execution/verify/sca     # Trivy, HIGH/CRITICAL
-scripts/verify.sh compose   --project dwt-check --env-file .execution/selfhost.env --out .execution/verify/compose
+scripts/verify.sh unit      --out .execution/verify/unit
+scripts/verify.sh sca       --out .execution/verify/sca
 ```
 
-Every command writes a machine-readable `gate.json` plus its raw evidence into `--out`, and exits
-`0` (pass), `1` (verification failure) or `2` (external prerequisite missing). Missing Docker or
-skipped container tests fail the gate instead of quietly reducing coverage.
-
-The acceptance harness in `scripts/` includes responsive browser capture, a reconciliation-based
-load generator, and recovery drills for persistence, replay, and restore behavior.
+The unit gate includes real Kafka and PostgreSQL container tests. Missing Docker or skipped container tests fail the gate instead of silently reducing coverage. GitHub Actions runs the complete project CI on pushes and pull requests.
 
 ## Project documents
 
-- [Architecture](docs/assets/driftwatch-architecture.svg): the deployed topology — the GitHub
-  poller with its checkpoints and outbox, the Kafka topics, the Kafka Streams quality topology
-  with its detectors and dead-letter branch, PostgreSQL, and the dashboard.
-- [Project execution guide](docs/PROJECT_EXECUTION_GUIDE.md): the authoritative product,
-  implementation, acceptance and release specification.
-- [Execution state](docs/EXECUTION_STATE.md): current task, gate results, evidence paths and
-  recovery information.
-- [Runbook](docs/RUNBOOK.md): install, upgrade, backup/restore, dead letters, retention and
-  troubleshooting.
-- [Release notes](docs/RELEASE_NOTES.md): artifacts, acceptance results, performance conditions
-  and known limits for the current version.
-- [Versions](docs/versions.md): pinned images and dependency versions.
+- [Product and technical specification](docs/PROJECT_EXECUTION_GUIDE.md): product boundaries,
+  data and API contracts, processing rules, and source behavior.
+- [Runbook](docs/RUNBOOK.md): installation, upgrades, backup and restore, dead letters, retention, and troubleshooting.
+- [Latest release notes](docs/RELEASE_NOTES.md): v1.0.2 artifacts, acceptance, and known limits.
+- [Pinned runtime and dependency versions](docs/versions.md).
+- [Architecture diagram](docs/assets/driftwatch-architecture.svg).
 
-## Known limits
+## Scope
 
-- Single node, single Kafka broker, single PostgreSQL instance: this is a self-hosted inspection
-  tool, not a horizontally scaled platform.
-- The GitHub source depends on a public API that can be delayed, rate-limited or unavailable;
-  when that happens the collector records a gap and the dashboard shows the collector as lost
-  rather than reporting success.
-- **Gap recording can over-report.** The collector flags a `NO_OVERLAP` gap whenever a live
-  poll finds an event newer than the start of its initial backfill, which for a busy repository
-  happens on every poll that finds new events. Those rows stay open and mean "the API can no
-  longer serve that range for re-reading", not "events were lost" — ingestion, deduplication and
-  replay are unaffected. This release leaves that conservative classifier unchanged. The count
-  appears as `open_gaps` on `GET /api/v1/sources/collectors`.
-- Without a GitHub token the collector is limited to 60 requests/hour, which is why the default
-  poll interval is five minutes.
-- **Source health can be conservative.** Its null-rate input is the highest
-  `NULL_RATE` window of the last hour, and event types legitimately omit fields — `action` does not
-  exist on a `PushEvent` — so a field that is absent by design costs the source 25 of 100 points
-  even though no `NULL_SPIKE` alert is raised. The GitHub source can score low while nothing is
-  wrong; raw values are on `GET /api/v1/sources/health`. A future scoring change should aggregate
-  null rates only over fields the schema baseline confirms for each event type.
-- **`STALE_SOURCE` can reflect upstream quiet periods.** GitHub's public API can publish in bursts
-  that lag by minutes to hours, while the freshness threshold is five minutes. A quiet window can
-  move the source from healthy to `STALE` and raise one `WARN` per transition; polling may still be
-  succeeding throughout, and this release leaves the threshold unchanged.
-- Retention deletes raw payloads after 30 days; the deduplication identity is kept longer than
-  the payload so replays remain correct, but old payload contents are not recoverable.
-- Browser support is verified on Chromium at 320/768/1024/1440 px in dark and light themes, on
-  macOS, and the same overflow check runs in CI on Linux. Long unbreakable tokens in the timeline
-  and tables wrap (`overflow-wrap: anywhere`), so the 320 px layout fits with real event text; the
-  capture gate asserts `scrollWidth == clientWidth` on every capture.
+DriftWatch is a single-node self-hosted inspection service with one Kafka broker and one PostgreSQL instance. The GitHub collector can be delayed, rate-limited, or unavailable; its status and recorded gaps are surfaced rather than presented as complete realtime delivery.
 
 ## License
 

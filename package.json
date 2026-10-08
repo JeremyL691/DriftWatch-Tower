@@ -1,21 +1,16 @@
 {
   "name": "driftwatch-tower",
-  "version": "1.0.0",
-  "description": "A single-node data-quality inspection service built with Java 21, Spring Boot, Kafka Streams, and PostgreSQL.",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
+  "version": "1.0.2",
+  "private": true,
+  "description": "Browser acceptance tooling for DriftWatch Tower.",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test scripts/tests/browser-health.test.mjs"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/JeremyL691/DriftWatch-Tower.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/JeremyL691/DriftWatch-Tower/issues"
   },
