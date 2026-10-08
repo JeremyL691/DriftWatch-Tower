@@ -52,6 +52,54 @@ async function scanAccessibility(page) {
   }).catch((error) => ({ ran: false, error: String(error) }));
 }
 
+async function withTimeout(promise, timeoutMs, description) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${description} exceeded ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function waitForIncidentResolved(incidentId, base, headers, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    const remainingMs = Math.max(1, deadline - Date.now());
+    try {
+      const response = await fetch(new URL('/api/v1/incidents', base), {
+        headers,
+        signal: AbortSignal.timeout(Math.min(5000, remainingMs)),
+      });
+      if (!response.ok) throw new Error(`incidents API returned HTTP ${response.status}`);
+      const incidents = await response.json();
+      if (!Array.isArray(incidents)) throw new Error('incidents API returned an invalid list');
+      if (incidents.some(incident => String(incident.id) === String(incidentId)
+        && incident.status === 'RESOLVED')) return;
+      lastError = null;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    const pauseMs = Math.min(250, Math.max(0, deadline - Date.now()));
+    if (pauseMs > 0) await new Promise(resolve => setTimeout(resolve, pauseMs));
+  }
+  throw new Error(`incident ${incidentId} did not resolve before the deadline${lastError ? `: ${lastError}` : ''}`);
+}
+
+function redactCredentials(value, user, password) {
+  let text = String(value);
+  for (const secret of [user, password]) {
+    if (secret) text = text.split(secret).join('[REDACTED]');
+  }
+  return text;
+}
+
 // Resolve the browser portably: an explicit override, then the Playwright cache on macOS or
 // Linux, then whatever Playwright itself would find. Nothing is downloaded at capture time.
 function resolveChromium() {
@@ -102,15 +150,46 @@ for (const theme of themes) {
       colorScheme: theme === 'light' ? 'light' : 'dark',
     });
     const page = await context.newPage();
+    page.setDefaultTimeout(15000);
     page.setDefaultNavigationTimeout(30000);
     const mutationTrace = [];
+    const mutationRequests = new WeakMap();
+    const writeMutationTrace = () => writeFileSync(
+      join(outDir, `${label}-mutation-trace.json`), JSON.stringify(mutationTrace, null, 2),
+    );
+    page.on('request', request => {
+      if (request.method() !== 'POST' || !request.url().includes('/api/v1/')) return;
+      const trace = {
+        url: request.url(), method: request.method(), requestedAt: new Date().toISOString(), status: null,
+      };
+      mutationRequests.set(request, trace);
+      mutationTrace.push(trace);
+      writeMutationTrace();
+    });
+    page.on('requestfailed', request => {
+      const trace = mutationRequests.get(request);
+      if (!trace) return;
+      trace.failure = redactCredentials(request.failure()?.errorText || 'request failed', user, password);
+      writeMutationTrace();
+    });
     page.on('response', async response => {
       const request = response.request();
       if (request.method() !== 'POST' || !response.url().includes('/api/v1/')) return;
       const headers = await request.allHeaders();
       const cookie = (headers.cookie || '').match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
-      mutationTrace.push({url:response.url(), status:response.status(), csrfHeaderPresent:!!headers['x-xsrf-token'], csrfCookiePresent:!!cookie, csrfMatchesCookie:!!cookie && headers['x-xsrf-token'] === decodeURIComponent(cookie[1]), body:response.status() >= 400 ? await response.text() : undefined});
-      writeFileSync(join(outDir, `${label}-mutation-trace.json`), JSON.stringify(mutationTrace, null, 2));
+      const trace = mutationRequests.get(request) || {
+        url: response.url(), method: request.method(), requestedAt: null,
+      };
+      Object.assign(trace, {
+        status: response.status(),
+        csrfHeaderPresent: !!headers['x-xsrf-token'],
+        csrfCookiePresent: !!cookie,
+        csrfMatchesCookie: !!cookie && headers['x-xsrf-token'] === decodeURIComponent(cookie[1]),
+        body: response.status() >= 400
+          ? redactCredentials(await response.text(), user, password) : undefined,
+      });
+      if (!mutationTrace.includes(trace)) mutationTrace.push(trace);
+      writeMutationTrace();
     });
     const consoleErrors = [];
     page.on('console', message => {
@@ -241,22 +320,57 @@ for (const theme of themes) {
       await resolve.waitFor({state:'visible',timeout:20000});
       const incidentId = await resolve.getAttribute('data-resolve-incident');
       console.log('action: resolving incident', incidentId);
-      const resolveResponse = page.waitForResponse(r => r.url().includes(`/incidents/${incidentId}/resolve`) && r.request().method() === 'POST');
-      await resolve.click();
-      const resolvedResponse = await resolveResponse;
-      const resolveBody = await resolvedResponse.text();
-      writeFileSync(join(outDir, `${label}-action-result.json`), JSON.stringify({action, incidentId, resolveStatus: resolvedResponse.status(), resolveBody}, null, 2));
-      await page.waitForTimeout(200);
-      if (resolvedResponse.status() !== 200) throw new Error(`dashboard resolve failed: ${resolvedResponse.status()} ${resolveBody}`);
-      const resolveDeadline = Date.now() + 20000;
-      while (true) {
-        const resolved = await page.evaluate(async id => {
-          const rows = await fetch('/api/v1/incidents').then(r => r.json());
-          return rows.some(row => String(row.id) === id && row.status === 'RESOLVED');
-        }, incidentId);
-        if (resolved) break;
-        if (Date.now() >= resolveDeadline) throw new Error('incident resolution did not persist');
-        await page.waitForTimeout(250);
+      let resolvedResponse;
+      let resolveBody;
+      try {
+        const responseOutcome = page.waitForResponse(
+          response => response.url().includes(`/incidents/${incidentId}/resolve`)
+            && response.request().method() === 'POST',
+          { timeout: 20000 },
+        ).then(response => ({ response }), error => ({ error }));
+        console.log('action: resolve click started');
+        await resolve.click({ timeout: 15000 });
+        console.log('action: resolve click submitted');
+        const outcome = await responseOutcome;
+        if (outcome.error) throw outcome.error;
+        resolvedResponse = outcome.response;
+        resolveBody = await withTimeout(resolvedResponse.text(), 5000, 'incident resolve response body');
+        if (resolvedResponse.status() !== 200) {
+          throw new Error(`dashboard resolve failed: ${resolvedResponse.status()} ${resolveBody}`);
+        }
+        await waitForIncidentResolved(incidentId, base, user
+          ? { Authorization: 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64') }
+          : {});
+        writeFileSync(join(outDir, `${label}-action-result.json`), JSON.stringify({
+          action, incidentId, resolveStatus: resolvedResponse.status(), resolveBody,
+        }, null, 2));
+      } catch (error) {
+        const buttonState = await withTimeout(page.evaluate(id => {
+          const button = [...document.querySelectorAll('[data-resolve-incident]')]
+            .find(candidate => candidate.getAttribute('data-resolve-incident') === id);
+          return button ? {
+            attached: button.isConnected,
+            disabled: button.disabled,
+            text: button.textContent.trim(),
+            visible: !!(button.offsetWidth || button.offsetHeight || button.getClientRects().length),
+            rowText: button.closest('tr')?.innerText || null,
+          } : null;
+        }, String(incidentId)), 2000, 'incident button state capture').catch(() => null);
+        const failure = {
+          incidentId,
+          error: redactCredentials(error, user, password),
+          resolveStatus: resolvedResponse?.status() ?? null,
+          resolveBody: resolveBody ? redactCredentials(resolveBody, user, password) : null,
+          buttonState,
+          resolveRequests: mutationTrace.filter(entry => entry.url.includes(`/incidents/${incidentId}/resolve`)),
+          consoleErrors: consoleErrors.map(text => redactCredentials(text, user, password)),
+          failedResponses: failedResponses.map(text => redactCredentials(text, user, password)),
+        };
+        writeFileSync(join(outDir, `${label}-resolve-failure.json`), JSON.stringify(failure, null, 2));
+        await page.screenshot({
+          path: join(outDir, `${label}-resolve-failure.png`), fullPage: true, timeout: 5000,
+        }).catch(() => {});
+        throw new Error(`dashboard incident resolution did not complete: ${failure.error}`);
       }
       report.actions = {scenario, ...action, incidentId, resolved:true};
     }
@@ -291,6 +405,7 @@ if (get('exercise-actions') === 'true' && report.actions?.resolved) {
 
     for (const viewport of viewports) {
       const page = await context.newPage();
+      page.setDefaultTimeout(15000);
       page.setDefaultNavigationTimeout(30000);
       const consoleErrors = [];
       const failedResponses = [];
