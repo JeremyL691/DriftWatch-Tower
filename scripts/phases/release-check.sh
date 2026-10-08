@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 
 OUT_DIR=""
-VERSION="v1.0.0"
+VERSION=""
 REGISTRY_IMAGE="ghcr.io/jeremyl691/driftwatch-tower"
 PR_NUMBER=""
 CONTEXT=""
@@ -36,6 +36,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$OUT_DIR" ] || die "release-check.sh requires --out DIR"
+[ -n "$VERSION" ] || die "release-check.sh requires --version TAG"
 mkdir -p "$OUT_DIR"
 # Absolute, because checksum verification runs inside a subshell that changes directory.
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"

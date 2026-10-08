@@ -13,7 +13,7 @@ source "$SCRIPT_DIR/../lib/common.sh"
 
 OUT_DIR=""
 ARTIFACTS=""
-VERSION="v1.0.0"
+VERSION=""
 PORT=18082
 PROJECT="dwt-package-check-$(date -u +%Y%m%dt%H%M%Sz)-$$"
 while [ $# -gt 0 ]; do
@@ -28,6 +28,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$OUT_DIR" ] || die "package-check.sh requires --out DIR"
 [ -n "$ARTIFACTS" ] || die "package-check.sh requires --artifacts DIR (output of package-release.sh)"
+[ -n "$VERSION" ] || die "package-check.sh requires --version TAG"
 mkdir -p "$OUT_DIR"
 # Absolute, because checksum verification runs inside a subshell that changes directory.
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
