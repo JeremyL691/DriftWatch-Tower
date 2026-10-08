@@ -9,12 +9,22 @@ import com.driftwatch.stream.ProcessedEvent;
 import com.driftwatch.stream.WindowEvaluation;
 import com.driftwatch.support.ContainerIntegrationTest;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.RepeatedTest;
+import org.junit.jupiter.api.RepetitionInfo;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.core.KafkaTemplate;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -39,6 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>a STREAM replay re-enters at the raw topic with the original envelope</li>
  * </ul>
  */
+@TestMethodOrder(MethodOrderer.Random.class)
 class DeadLetterIntegrationTest extends ContainerIntegrationTest {
 
     @Autowired
@@ -51,8 +62,27 @@ class DeadLetterIntegrationTest extends ContainerIntegrationTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
+    private void recordRepetitionSeed(int repetition, long seed) {
+        String line = "repetition=" + repetition + " seed=" + seed + System.lineSeparator();
+        System.out.print("G06 interleaving " + line);
+        String path = System.getProperty("dwt.test.seed-log");
+        if (path == null || path.isBlank()) return;
+        Path seedLog = Path.of(path).toAbsolutePath();
+        try {
+            Files.createDirectories(seedLog.getParent());
+            Files.writeString(seedLog, line, StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException error) {
+            throw new UncheckedIOException("unable to persist G06 repetition seed", error);
+        }
+    }
+
     /** Publishes true bytes with no type headers, like a foreign producer would. */
-    private void sendRawBytes(String key, byte[] payload) throws Exception {
+    private RecordMetadata sendRawBytes(String key, byte[] payload) throws Exception {
+        return sendRawBytes(key, payload, null);
+    }
+
+    private RecordMetadata sendRawBytes(String key, byte[] payload, Integer partition) throws Exception {
         java.util.Properties properties = new java.util.Properties();
         properties.put(org.apache.kafka.clients.producer.ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         properties.put(org.apache.kafka.clients.producer.ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
@@ -61,8 +91,8 @@ class DeadLetterIntegrationTest extends ContainerIntegrationTest {
                 org.apache.kafka.common.serialization.ByteArraySerializer.class);
         try (org.apache.kafka.clients.producer.KafkaProducer<String, byte[]> producer =
                      new org.apache.kafka.clients.producer.KafkaProducer<>(properties)) {
-            producer.send(new org.apache.kafka.clients.producer.ProducerRecord<>(
-                    KafkaTopics.RAW_EVENTS_V1, key, payload)).get(10, java.util.concurrent.TimeUnit.SECONDS);
+            return producer.send(new org.apache.kafka.clients.producer.ProducerRecord<>(
+                    KafkaTopics.RAW_EVENTS_V1, partition, key, payload)).get(10, java.util.concurrent.TimeUnit.SECONDS);
         }
     }
 
@@ -78,9 +108,28 @@ class DeadLetterIntegrationTest extends ContainerIntegrationTest {
         return recordRepository.findByDiagnosticId(diagnosticId).orElseThrow();
     }
 
-    @Test
-    void malformedRecordIsDeadLetteredAndDoesNotBlockLaterRecords() throws Exception {
-        sendRawBytes("g06-bad", "{not-json".getBytes(StandardCharsets.UTF_8));
+    @RepeatedTest(value = 20, name = "malformed record remains isolated ({currentRepetition}/{totalRepetitions})")
+    void malformedRecordIsDeadLetteredAndDoesNotBlockLaterRecords(RepetitionInfo repetitionInfo) throws Exception {
+        long seed = java.util.concurrent.ThreadLocalRandom.current().nextLong();
+        recordRepetitionSeed(repetitionInfo.getCurrentRepetition(), seed);
+        RecordMetadata badRecord = sendRawBytes("g06-bad-" + Long.toUnsignedString(seed),
+                "{not-json".getBytes(StandardCharsets.UTF_8));
+
+        String diagnosticId = DltMessage.diagnosticIdFor(null, KafkaTopics.RAW_EVENTS_V1,
+                badRecord.partition(), badRecord.offset());
+        await().atMost(Duration.ofSeconds(60)).untilAsserted(() ->
+                assertThat(recordRepository.findByDiagnosticId(diagnosticId)).isPresent());
+
+        // Project a newer row with the same reason. A global "latest MALFORMED_RECORD" query
+        // would now select this interference row instead of the record sent by this repetition.
+        String unrelatedDiagnosticId = "ingestion:" + UUID.randomUUID();
+        DltMessage unrelatedMalformedRecord = new DltMessage(unrelatedDiagnosticId, DltStage.STREAM,
+                unrelatedDiagnosticId.substring("ingestion:".length()), "g06-source-" + Long.toUnsignedString(seed), "g06_event",
+                "MALFORMED_RECORD: unrelated later record", 1, KafkaTopics.RAW_EVENTS_V1,
+                0, Math.floorMod(seed, 100_000L), "{not-json", Instant.now());
+        dltTemplate.send(KafkaTopics.DEAD_LETTER_EVENTS, unrelatedDiagnosticId, unrelatedMalformedRecord)
+                .get(10, java.util.concurrent.TimeUnit.SECONDS);
+        awaitRecord(unrelatedDiagnosticId);
 
         // A valid record right after the bad one must still be processed.
         String ingestionId = UUID.randomUUID().toString();
@@ -88,27 +137,25 @@ class DeadLetterIntegrationTest extends ContainerIntegrationTest {
                 new DataEvent("g06-good-" + ingestionId, "g06-source", "g06_event",
                         Instant.now().minusSeconds(5), Map.of("bid", 1.0)),
                 Instant.now(), RawEnvelope.Origin.REST, RawEnvelope.Mode.LIVE, null, null);
-        sendRawBytes("g06-good", objectMapper.writeValueAsBytes(envelope));
+        RecordMetadata laterRecord = sendRawBytes("g06-good-" + ingestionId,
+                objectMapper.writeValueAsBytes(envelope), badRecord.partition());
 
-        // The key hashes to one of the three partitions, so locate the record by its reason
-        // instead of assuming a partition number.
         await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
-            Integer count = jdbcTemplate.queryForObject(
-                    "SELECT count(*) FROM dead_letter_records WHERE reason LIKE 'MALFORMED_RECORD%'",
-                    Integer.class);
-            assertThat(count).isNotNull().isGreaterThanOrEqualTo(1);
+            assertThat(recordRepository.findByDiagnosticId(diagnosticId)).isPresent();
         });
         Map<String, Object> row = jdbcTemplate.queryForMap(
                 "SELECT diagnostic_id, stage, kafka_topic, kafka_partition, kafka_offset"
-                        + " FROM dead_letter_records WHERE reason LIKE 'MALFORMED_RECORD%'"
-                        + " ORDER BY id DESC LIMIT 1");
-        assertThat(row.get("stage")).isEqualTo(DltStage.STREAM.name());
-        assertThat(row.get("kafka_topic")).isEqualTo(KafkaTopics.RAW_EVENTS_V1);
-        assertThat((String) row.get("diagnostic_id")).startsWith("kafka:" + KafkaTopics.RAW_EVENTS_V1 + ":");
-        assertThat(row.get("kafka_offset")).isNotNull();
+                        + " FROM dead_letter_records WHERE diagnostic_id = ?", diagnosticId);
+        assertThat(row.get("diagnostic_id")).as("seed=%d", seed).isEqualTo(diagnosticId);
+        assertThat(row.get("stage")).as("seed=%d", seed).isEqualTo(DltStage.STREAM.name());
+        assertThat(row.get("kafka_topic")).as("seed=%d", seed).isEqualTo(KafkaTopics.RAW_EVENTS_V1);
+        assertThat(((Number) row.get("kafka_partition")).intValue()).as("seed=%d", seed).isEqualTo(badRecord.partition());
+        assertThat(((Number) row.get("kafka_offset")).longValue()).as("seed=%d", seed).isEqualTo(badRecord.offset());
+        assertThat(laterRecord.partition()).as("seed=%d", seed).isEqualTo(badRecord.partition());
+        assertThat(laterRecord.offset()).as("seed=%d", seed).isGreaterThan(badRecord.offset());
 
         await().atMost(Duration.ofSeconds(60)).until(() -> rawRows(ingestionId) == 1);
-        assertThat(rawRows(ingestionId)).as("the bad record must not block the next one").isEqualTo(1);
+        assertThat(rawRows(ingestionId)).as("the bad record must not block the next one; seed=%d", seed).isEqualTo(1);
     }
 
     @Test

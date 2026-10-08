@@ -11,6 +11,7 @@ import { chromium } from 'playwright-core';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { waitForUnhealthySource } from './lib/browser-health.mjs';
 
 const args = process.argv.slice(2);
 const get = (name, fallback = null) => {
@@ -87,7 +88,7 @@ if (!outDir) {
 }
 mkdirSync(outDir, { recursive: true });
 
-const browser = await chromium.launch({ executablePath });
+let browser = await chromium.launch({ executablePath });
 const report = { label, base, capturedAt: new Date().toISOString(), pages: [] };
 
 for (const theme of themes) {
@@ -274,6 +275,10 @@ for (const theme of themes) {
 // required viewport and theme after the actual demo incident has been produced.
 if (get('exercise-actions') === 'true' && report.actions?.resolved) {
   const unhealthyPages = [];
+  // Release the initial page contexts and their polling sockets before the status-variant pass.
+  // A fresh browser process keeps long full-page captures from starving the live health table.
+  await browser.close();
+  browser = await chromium.launch({ executablePath });
   for (const theme of themes) {
     const context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
@@ -301,33 +306,71 @@ if (get('exercise-actions') === 'true' && report.actions?.resolved) {
       const response = await page.goto(`${base}/dashboard`, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForSelector('#wsStatus', { timeout: 20000 });
       await page.waitForFunction(expected => document.documentElement.dataset.theme === expected, theme, { timeout: 10000 });
-      let unhealthySources;
+      let unhealthyObservation;
       try {
-        // Keep the exact API response that satisfied the wait. Fetching a second time here can
-        // race a scheduled health refresh and turn a real unhealthy observation into an empty
-        // list before the badge assertion runs.
-        const unhealthyState = await page.waitForFunction(async () => {
-          const response = await fetch('/api/v1/sources/health', { cache: 'no-store' });
-          if (!response.ok) return false;
-          const sources = await response.json();
-          const unhealthy = sources
-            .filter(source => source.source.startsWith('demo-') && source.status === 'UNHEALTHY')
-            .map(source => ({ source: source.source, status: source.status }));
-          return unhealthy.length > 0 ? unhealthy : false;
-        }, null, { timeout: 120000 });
-        unhealthySources = await unhealthyState.jsonValue();
-        await unhealthyState.dispose();
+        await page.waitForFunction(
+          () => document.getElementById('wsStatus')?.classList.contains('connected'),
+          null,
+          { timeout: 20000 },
+        );
+        await page.locator('[data-target="health"]').click({ timeout: 10000 });
+        unhealthyObservation = await waitForUnhealthySource(page, {
+          healthUrl: new URL('/api/v1/sources/health', base).href,
+          headers: user
+            ? { Authorization: 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64') }
+            : {},
+          refreshPage: async remainingMs => {
+            const refreshDeadline = Date.now() + remainingMs;
+            const remainingTimeout = () => Math.max(1, refreshDeadline - Date.now());
+            await page.reload({ waitUntil: 'domcontentloaded', timeout: remainingTimeout() });
+            await page.waitForSelector('#wsStatus', { timeout: remainingTimeout() });
+            await page.waitForFunction(
+              () => document.getElementById('wsStatus')?.classList.contains('connected'),
+              null,
+              { timeout: remainingTimeout() },
+            );
+            await page.locator('[data-target="health"]').click({ timeout: remainingTimeout() });
+          },
+          timeoutMs: 120000,
+          pollIntervalMs: 250,
+        });
       } catch (error) {
-        const healthSnapshot = await page.evaluate(async () => {
-          const response = await fetch('/api/v1/sources/health', { cache: 'no-store' });
-          return { httpStatus: response.status, sources: response.ok ? await response.json() : [] };
-        }).catch(snapshotError => ({ error: String(snapshotError) }));
+        const redact = value => {
+          let text = String(value);
+          for (const secret of [user, password]) {
+            if (secret) text = text.split(secret).join('[REDACTED]');
+          }
+          return text;
+        };
+        const healthSnapshot = error.healthSnapshot
+          ? {
+              ...error.healthSnapshot,
+              error: error.healthSnapshot.error ? redact(error.healthSnapshot.error) : null,
+              lastUiError: error.healthSnapshot.lastUiError ? redact(error.healthSnapshot.lastUiError) : null,
+              unhealthySources: (error.healthSnapshot.unhealthySources || []).map(source => ({
+                source: redact(source.source),
+                status: redact(source.status),
+              })),
+          }
+          : null;
+        const sourceTable = await page.locator('#sourceHealthTable').innerText({ timeout: 1000 })
+          .then(text => redact(text.slice(0, 2000)))
+          .catch(() => null);
         writeFileSync(join(outDir, `${label}-unhealthy-state-failure-${viewport.name}-${theme}.json`),
-          JSON.stringify({ error: String(error), healthSnapshot }, null, 2));
+          JSON.stringify({
+            error: redact(error),
+            healthSnapshot,
+            sourceTable,
+            consoleErrors: consoleErrors.map(redact),
+            failedResponses: failedResponses.map(redact),
+          }, null, 2));
+        await page.screenshot({
+          path: join(outDir, `${label}-unhealthy-state-failure-${viewport.name}-${theme}.png`), fullPage: true,
+        }).catch(() => {});
         throw new Error(`real unhealthy source state was not observed at ${viewport.name}-${theme}: ${error}`);
       }
-      if (unhealthySources.length === 0) throw new Error(`no real unhealthy demo source at ${viewport.name}-${theme}`);
-      const sourceRow = page.locator('#sourceHealthTable tbody tr').filter({ hasText: unhealthySources[0].source });
+      const { sources: unhealthySources, selected: unhealthySource } = unhealthyObservation;
+      const sourceRow = page.locator('#sourceHealthTable tbody tr').filter({ hasText: unhealthySource.source });
       const unhealthyBadge = sourceRow.locator('.pill.unhealthy');
       await unhealthyBadge.waitFor({ state: 'visible', timeout: 20000 });
       const badges = await unhealthyBadge.allTextContents();
@@ -368,7 +411,7 @@ if (get('exercise-actions') === 'true' && report.actions?.resolved) {
         overflow,
         keyboard,
         unhealthySources,
-        unhealthyBadge: { present: badges.length > 0, source: unhealthySources[0].source, labels: badges.map(value => value.trim()) },
+        unhealthyBadge: { present: badges.length > 0, source: unhealthySource.source, labels: badges.map(value => value.trim()) },
         accessibility,
         file,
       };
