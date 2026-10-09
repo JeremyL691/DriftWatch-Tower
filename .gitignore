@@ -13,6 +13,7 @@ target/
 .settings/
 
 .DS_Store
+._*
 Thumbs.db
 
 HELP.md
@@ -41,3 +42,21 @@ __pycache__/
 # Node dev-test dependencies (Playwright for browser acceptance). The lockfile is committed:
 # the browser gate must run on a pinned Playwright version, not on whatever resolves today.
 node_modules/
+
+# Deployment credentials
+.env
+.env.*
+*.env
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Private execution and handoff records
+docs/EXECUTION_STATE.md
+docs/AGENT_REFACTOR_PROMPT.md
+docs/HISTORICAL_EXECUTION_TABLES.md
+docs/HISTORICAL_RELEASE_HANDOFF.md
+docs/RELEASE_FINISH_PLAN.md
+docs/RELEASE_V1_0_1_PLAN.md

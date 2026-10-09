@@ -1,5 +1,15 @@
 # DriftWatch Tower 产品与技术规范
 
+本文描述当前产品范围、系统职责、数据与 API 契约、检测规则、来源采集以及运维边界。它是实现和兼容性参考，不记录会话进度或发布状态。
+
+安装、升级、备份与故障处理请看 [运行手册](RUNBOOK.md)；当前版本的制品和验收结果请看 [发布说明](RELEASE_NOTES.md)。
+
+## 1. 规范范围与入口
+
+- 本文第 2 至 7 节定义产品行为、数据契约和系统边界。
+- [运行手册](RUNBOOK.md)说明部署、升级、备份、恢复和运维操作。
+- [发布说明](RELEASE_NOTES.md)及对应 GitHub Release manifest 记录已发布制品和版本验收。
+
 ## 2. 最终产品、用户及边界
 
 ### 2.1 最终使用过程
@@ -53,7 +63,7 @@ flowchart LR
     HEALTH["Scheduled health + retention"] --> DB
 ```
 
-本图是目标，不是当前已实现架构。README 的 SVG 在 P7 前按实际实现更新。
+当前架构图也显示在 README 的 SVG 中；下图说明本规范中的数据路径与职责边界。
 
 | 模块 | 主要职责 | 不允许做的事 |
 |---|---|---|
@@ -68,8 +78,8 @@ flowchart LR
 
 ### 3.1 默认技术配置
 
-- JDK 21。Spring Boot 与依赖选择支持 Java 21 的稳定受支持版本，在 P1 锁定具体版本及依赖树；升级只为兼容性和漏洞修复，不为换框架。
-- PostgreSQL 16 的受支持 patch，Kafka 选择官方 Apache 镜像并与客户端兼容；以原测试使用的 3.8.0 作为兼容起点，P1 核验受支持性后锁定通过门槛的具体 patch/tag 和 digest。
+- JDK 21。Spring Boot 与应用依赖版本见 [运行时与依赖版本](versions.md)；更新时重新运行相关 CI 与安全检查。
+- 自托管镜像使用 PostgreSQL 16.15 与 Apache Kafka 3.9.2；更新镜像或客户端时检查兼容性、容器测试和迁移，再更新版本清单。
 - 构建和运行镜像固定版本/digest，不用 latest。CI actions 固定完整 SHA；自动更新需重新验收。
 - raw/quality 默认各 3 分区，单 broker replication=1；单 broker 事务相关 topic 的 replication/min ISR 同为 1，不能使用需要三 broker 的默认值。
 - Streams 使用 exactly_once_v2 保证 Kafka 内部输出与 state/offset 一致；数据库仍按第 4 节的幂等事务完成，不宣称跨 Kafka/PostgreSQL 原子提交。
@@ -216,7 +226,7 @@ schema 活动版本变化后使用新 baseline version构建窗口 key，旧窗�
 6. 同 scope输入落在不同原始分区时，规范key路由后检测一致；不同 scope相同event_id/payload互不误报。
 7. 乱序 [T正常、T缺失、T-1分钟正常、T缺失] 不丢掉 T 窗口计数；窗口结束、grace边界、未来时间分别验证。
 
-先在 P0 记录旧行为；将预期新行为写成有意义的失败测试，P2修复后转绿。不得通过改阈值让用例恰巧通过。
+先用有意义的回归测试描述行为，再修改实现；测试应针对故障本身，不能通过放宽阈值让用例恰巧通过。
 
 ## 6. 真实 GitHub 数据接入
 
@@ -228,9 +238,9 @@ GitHub 官方说明事件 API 为轮询设计，历史最多300条/30天，上�
 
 未认证请求的基本额度为每IP每小时60次，并存在额外限流。默认仅轮询一个仓库，每5分钟一次，每轮最多3页；按响应额度预算和退避控制，不以理论额度保证任意共享IP可用。[限流事实来源](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
 
-请求头：Accept: application/vnd.github+json，X-GitHub-Api-Version: 2026-03-10，User-Agent: DriftWatch-Tower/<version>。P4执行时核验这个 API version仍受支持并固定到测试；不能每次请求自动切版本。可选 token从 GITHUB_TOKEN读取，不是启动前提。
+请求头：Accept: application/vnd.github+json，X-GitHub-Api-Version: 2026-03-10，User-Agent: DriftWatch-Tower/<version>。版本头保持固定；升级前确认新版本仍受官方支持，并同步更新协议测试。可选 token从 GITHUB_TOKEN读取，不是启动前提。
 
-审核中无token读取此仓库曾得到HTTP200、实际PullRequestEvent、ETag和60秒poll header。执行前重新用以下只读命令验证，不把旧返回值写成当前结果：
+实时上游响应、限流和可用性只能由本次验收日志证明；历史响应不作为当前运行状态。
 
 ```bash
 curl --fail-with-body --max-time 20 -D - \

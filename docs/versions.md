@@ -1,8 +1,8 @@
-# Pinned versions and images
+# Runtime and dependency versions
 
-This file is the version manifest for a release candidate. It is updated deliberately:
-any change to a runtime, image, or build tool invalidates the gates bound to the
-previous candidate and must be re-verified (see the execution guide, section 8.3).
+This table records the versions pinned by the current source tree. The exact image digest and
+artifact checksums for a published build are recorded in that release's manifest. These pins are
+maintained for reproducible builds; they are not a feed of the newest upstream versions.
 
 ## Build and runtime
 
@@ -53,6 +53,6 @@ rather than silently ignored. The project's own release image scans clean.
 
 ## Update policy
 
-- Upgrades are accepted only for compatibility or vulnerability fixes.
-- After changing any row above, re-run the affected gates and the 24-hour acceptance
-  run; a report bound to an older candidate does not cover the new one.
+- Review compatibility and vulnerability impact before changing a pin.
+- Re-run the affected build, security, and integration checks after changing a pin. Release
+  evidence applies only to the exact candidate recorded in its manifest.

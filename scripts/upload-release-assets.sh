@@ -3,7 +3,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
-CONTEXT=""; ARTIFACTS=""; EVIDENCE=""; VERSION="v1.0.0"; DIGEST=""; UPDATE_METADATA=0
+CONTEXT=""; ARTIFACTS=""; EVIDENCE=""; VERSION=""; DIGEST=""; UPDATE_METADATA=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --context) CONTEXT="$2"; shift 2 ;;
@@ -16,6 +16,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$CONTEXT" ] && [ -d "$ARTIFACTS" ] && [ -f "$EVIDENCE" ] || die "requires --context FILE --artifacts DIR --evidence explicit-tar-file"
+[ -n "$VERSION" ] || die "requires --version TAG"
 require_cmd gh
 python3 "$SCRIPT_DIR/release-context.py" --context "$CONTEXT" >/dev/null
 python3 - "$SCRIPT_DIR" "$CONTEXT" "$ARTIFACTS" "$EVIDENCE" "$VERSION" "$DIGEST" "$UPDATE_METADATA" <<'PY'
@@ -87,7 +88,7 @@ for env_file in (module.ROOT/'.execution').rglob('*.env'):
         if re.search('PASSWORD|TOKEN|SECRET|API_KEY',key) and len(value)>=8:secrets.add(value.strip('"\''))
 def scan_bytes(data,name):
     text=data.decode('utf-8',errors='ignore')
-    if safety.PATTERN.search(text) or any(secret in text for secret in secrets):
+    if safety.PATTERN.search(text) or safety.PERSONAL_HOME.search(text) or any(secret in text for secret in secrets):
         raise ValueError(f'credential material in upload bytes: {name}')
 for name in names:
     path=root/name

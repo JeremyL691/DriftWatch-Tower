@@ -298,6 +298,26 @@ class ReleaseSafety(unittest.TestCase):
                 Path(directory,name).write_text('ghp_'+'abcdefghijklmnopqrstuvwxyz012345')
                 with self.assertRaises(ValueError): safety.redact_and_scan(directory,set())
 
+    def test_public_evidence_redacts_workspace_and_home_paths(self):
+        stage = self.root / 'public-stage'
+        stage.mkdir()
+        workspace = Path('/Users/example/Desktop/Projects/service')
+        original = {
+            'report': str(workspace / '.execution/report.json'),
+            'cache': '/Users/example/.m2/repository/dependency.jar',
+            'runner': '/home/runner/work/project',
+            'hash': 'a' * 64,
+        }
+        (stage / 'report.json').write_text(json.dumps(original))
+        result = safety.redact_and_scan(stage, set(), workspace)
+        public = json.loads((stage / 'report.json').read_text())
+        self.assertEqual(public['report'], '[workspace]/.execution/report.json')
+        self.assertEqual(public['cache'], '[home]/.m2/repository/dependency.jar')
+        self.assertEqual(public['runner'], '[home]/work/project')
+        self.assertEqual(public['hash'], original['hash'])
+        self.assertEqual(result['redacted_files'], ['report.json'])
+        self.assertIsNone(safety.PERSONAL_HOME.search(json.dumps(public)))
+
     def test_application_jar_evidence_is_scanned_recursively(self):
         import io, zipfile
         nested=io.BytesIO()

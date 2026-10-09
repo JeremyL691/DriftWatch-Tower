@@ -9,6 +9,15 @@ import zipfile
 
 PATTERN = re.compile(r'(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)')
 PATTERN_BYTES = re.compile(rb'(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----\s+[A-Za-z0-9+/=\r\n]{64,}-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)')
+PERSONAL_HOME = re.compile(r"(?:/Users/|/home/)[^/\s\"'<>\\]+")
+
+
+def redact_local_paths(text, repository_root=None):
+    if repository_root is not None:
+        text = text.replace(str(Path(repository_root).resolve()), '[workspace]')
+    return PERSONAL_HOME.sub('[home]', text)
+
+
 MAX_ARCHIVE_ENTRIES = 100_000
 MAX_ARCHIVE_MEMBER_BYTES = 64 * 1024 * 1024
 MAX_ARCHIVE_EXPANDED_BYTES = 1_000_000_000
@@ -52,7 +61,7 @@ def scan_jar(data, path, secrets, budget=None, depth=0):
             if member.filename.lower().endswith(('.jar', '.zip')):
                 scan_jar(content, path, secrets, budget, depth + 1)
 
-def redact_and_scan(stage, secrets):
+def redact_and_scan(stage, secrets, repository_root=None):
     stage = Path(stage)
     changed = []
     for path in stage.rglob('*'):
@@ -66,11 +75,11 @@ def redact_and_scan(stage, secrets):
         if path.suffix == '.jar':
             scan_jar(original, path, secrets)
             continue
-        text = original.decode('utf-8')
+        text = redact_local_paths(original.decode('utf-8'), repository_root)
         for value in sorted(secrets, key=len, reverse=True):
             text = text.replace(value, '[redacted]')
         text = re.sub(r"(DWT_(?:POSTGRES_PASSWORD|ADMIN_PASSWORD|INGEST_TOKEN)=)[^\s\"']+", r'\1[redacted]', text)
-        if PATTERN.search(text) or any(value in text for value in secrets):
+        if PATTERN.search(text) or PERSONAL_HOME.search(text) or any(value in text for value in secrets):
             raise ValueError(f'credential-like data remains in evidence: {path.name}')
         if text != original.decode('utf-8'):
             path.write_text(text); changed.append(str(path.relative_to(stage)))
@@ -83,7 +92,7 @@ def main():
         for line in path.read_text().splitlines():
             key,_,value=line.strip().partition('=')
             if re.search(r'PASSWORD|TOKEN|SECRET|API_KEY',key) and len(value)>=8:secrets.add(value.strip('"\''))
-    result=redact_and_scan(args.stage,secrets)
+    result=redact_and_scan(args.stage,secrets,args.repo)
     Path(args.stage,'sanitization.json').write_text(json.dumps(result,indent=2))
     print(json.dumps(result))
 

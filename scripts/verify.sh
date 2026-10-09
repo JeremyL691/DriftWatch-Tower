@@ -8,12 +8,12 @@
 #   scripts/verify.sh phase P2|P3|P4|P5|P5b|P5c|P6 --project NAME --env-file FILE --out DIR [--base URL]
 #   scripts/verify.sh freeze    --out DIR [--image IMAGE]
 #   scripts/verify.sh load      --rate N --duration SECONDS --project NAME --env-file FILE --out DIR
-#   scripts/verify.sh package   --out DIR [--image IMAGE] [--version TAG] [--manifest FILE]
+#   scripts/verify.sh package   --out DIR --version TAG [--image IMAGE] [--manifest FILE]
 #   scripts/verify.sh soak-start --duration SECONDS --run-id ID --project NAME --env-file FILE --out DIR [--fault-plan FILE]
 #   scripts/verify.sh soak-status --run-id ID
 #   scripts/verify.sh soak-resume --run-id ID
 #   scripts/verify.sh soak-report --run-id ID [--out DIR]
-#   scripts/verify.sh release --project NAME --env-file FILE --out DIR [--version TAG] [--pr N]
+#   scripts/verify.sh release --project NAME --env-file FILE --out DIR --version TAG [--pr N]
 #
 # Exit codes: 0 pass, 1 verification failure, 2 external prerequisite missing or not implemented.
 # Every command writes a machine-readable gate.json plus human-readable summary into --out.
@@ -73,6 +73,10 @@ while [ $# -gt 0 ]; do
     *) die "unknown argument: $1" ;;
   esac
 done
+case "$COMMAND" in
+  package|release) [ -n "$VERSION" ] || die "$COMMAND requires --version TAG" ;;
+esac
+
 
 mkdir -p "$OUT_DIR"
 COMMAND_LINE="verify.sh ${COMMAND} ${ORIGINAL_ARGS[*]:-}"
@@ -423,10 +427,10 @@ cmd_package() {
     finish_gate PACKAGE NOT_IMPLEMENTED "$started" 2 >/dev/null
     die "packaging lands with P6.1 ($build_script, $check_script)"
   fi
-  "$build_script" --out "$artifacts" --image "${IMAGE:-$APP_IMAGE_DEFAULT}" --version "${VERSION:-v1.0.0}" \
+  "$build_script" --out "$artifacts" --image "${IMAGE:-$APP_IMAGE_DEFAULT}" --version "$VERSION" \
     ${MANIFEST:+--manifest "$MANIFEST"} > "$OUT_DIR/package-release.log" 2>&1 \
     || { finish_gate PACKAGE FAILED "$started" 1 >/dev/null; fail "release packaging failed; see $OUT_DIR/package-release.log"; }
-  "$check_script" --out "$OUT_DIR" --artifacts "$artifacts" --version "${VERSION:-v1.0.0}" \
+  "$check_script" --out "$OUT_DIR" --artifacts "$artifacts" --version "$VERSION" \
     > "$OUT_DIR/package-check.log" 2>&1
   local exit_code=$?
   if [ "$exit_code" -ne 0 ]; then
@@ -461,7 +465,7 @@ cmd_release() {
   # forwarding an empty value would override it with nothing.
   "$check_script" --env-file "$ENV_FILE" --out "$OUT_DIR" \
     ${PROJECT:+--project "$PROJECT"} \
-    --context "$CONTEXT" --version "${VERSION:-v1.0.0}" ${PR_NUMBER:+--pr "$PR_NUMBER"}
+    --context "$CONTEXT" --version "$VERSION" ${PR_NUMBER:+--pr "$PR_NUMBER"}
   local exit_code=$?
   [ "$exit_code" -eq 0 ] && finish_gate RELEASE PASSED "$started" 0 >/dev/null \
                           || finish_gate RELEASE FAILED "$started" "$exit_code" >/dev/null
