@@ -20,7 +20,12 @@ WORKDIR /app
 # curl is required by the container healthcheck. openssl/libssl3t64 are upgraded
 # because the pinned base image ships 3.5.5-1ubuntu3.5, which Trivy flags for
 # CVE-2026-84782; Ubuntu already publishes the fixed 3.5.5-1ubuntu3.6.
-RUN apt-get update \
+# Ubuntu 26.04 ships Canonical Pebble as an untracked binary. This image launches
+# Java directly and has no Pebble service plan; remove the unused Go daemon so
+# its vulnerable stdlib cannot ship in our runtime (CVE-2026-78667/78669/97031).
+RUN rm -f /usr/bin/pebble \
+    && rm -rf /var/lib/pebble \
+    && apt-get update \
     && apt-get install -y --no-install-recommends curl openssl libssl3t64 openssl-provider-legacy \
     && rm -rf /var/lib/apt/lists/*
 
