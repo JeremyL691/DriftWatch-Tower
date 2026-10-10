@@ -112,7 +112,7 @@ def verify_runtime_image(proof):
             digest = hashlib.sha256()
             with zipfile.ZipFile(jar) as archive:
                 for entry in sorted(archive.infolist(), key=lambda x: x.filename):
-                    digest.update(f'{entry.filename}\\0{entry.file_size}\\0{entry.CRC}\\n'.encode())
+                    digest.update(f'{entry.filename}\0{entry.file_size}\0{entry.CRC}\n'.encode())
             if digest.hexdigest() != proof['jar_content_hash']:
                 raise ValueError('application content changed since runtime proof')
     finally:
