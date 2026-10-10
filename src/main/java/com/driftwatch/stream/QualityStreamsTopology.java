@@ -475,7 +475,11 @@ public class QualityStreamsTopology {
                         ScopeKey.of(p.event().source(), p.event().eventType()),
                         WindowEvaluation.Outcome.INCLUDED, null);
             }
-            context.forward(record.withValue(p.toProcessed()));
+            // Preserve the input record metadata while setting the finalized value.
+            // Explicit key/value types avoid compiler-dependent generic inference here.
+            Record<String, ProcessedEvent> finalized = new Record<>(
+                    record.key(), p.toProcessed(), record.timestamp(), record.headers());
+            context.forward(finalized);
         }
 
         @Override
