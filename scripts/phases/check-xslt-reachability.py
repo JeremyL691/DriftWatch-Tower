@@ -6,6 +6,8 @@ import datetime
 import hashlib
 import json
 import pathlib
+import re
+import tempfile
 import subprocess
 import time
 import urllib.request
@@ -14,43 +16,107 @@ import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CVE = 'CVE-2026-47884'
-CONTENT = 'f06767a9fc46fc1a0b9d8a00c9c1fb9a5071e6a2e33173692a70096cee28ffe0'
+SSE_CVE = 'CVE-2026-47890'
+# Only compiled application code is tested; framework library classes are not the application's handlers.
+SSE_MARKERS = (b'sseemitter', b'fragmentsrendering', b'modelandview',
+               b'text/event-stream', b'serversentevent')
+
+CONTENT = 'f06767a9fc46fc1a0b9d8a00c9c1fb9a5071e6a2e33173692a70096cee28ffe0'  # historical test fixture, not an allowlist
 PURL = 'pkg:maven/org.springframework/spring-webmvc@6.2.19'
 
 def sha(path):
     return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
 
+def sse_mapping_findings(mappings):
+    """Reject actual DriftWatch handlers returning SSE or rendering view fragments."""
+    findings = []
+    for context in mappings.get('contexts', {}).values():
+        dispatchers = context.get('mappings', {}).get('dispatcherServlets', {})
+        for entries in dispatchers.values():
+            for entry in entries:
+                method = entry.get('details', {}).get('handlerMethod', {})
+                owner = method.get('className', '')
+                if not owner.startswith('com.driftwatch.'):
+                    continue
+                descriptor = method.get('descriptor', '').lower()
+                route = json.dumps(entry.get('details', {}).get('requestMappingConditions', {})).lower()
+                if (any(marker in descriptor for marker in
+                        ('sseemitter', 'modelandview', 'fragmentsrendering', 'serversentevent'))
+                        or 'text/event-stream' in route):
+                    findings.append(entry.get('handler', owner))
+    return findings
+
 def eligible(vulnerability, proof):
-    return (vulnerability.get('VulnerabilityID') == CVE
-            and vulnerability.get('PkgName') == 'org.springframework:spring-webmvc'
-            and vulnerability.get('InstalledVersion') == '6.2.19'
-            and proof.get('status') == 'PASSED'
-            and proof.get('jar_content_hash') == CONTENT
-            and proof.get('xslt_application_references') == []
-            and proof.get('xslt_runtime_beans') == []
-            and proof.get('xslt_runtime_handlers') == []
-            and proof.get('http_probes') == [403, 403, 403])
+    if (vulnerability.get('PkgName') != 'org.springframework:spring-webmvc'
+            or vulnerability.get('InstalledVersion') != '6.2.19'
+            or proof.get('status') != 'PASSED'
+            or not re.fullmatch(r'[0-9a-f]{64}', proof.get('jar_content_hash', ''))
+            or proof.get('xslt_application_references') != []
+            or proof.get('xslt_runtime_beans') != []
+            or proof.get('xslt_runtime_handlers') != []
+            or proof.get('http_probes') != [403, 403, 403]):
+        return False
+    if vulnerability.get('VulnerabilityID') == CVE:
+        return True
+    if vulnerability.get('VulnerabilityID') == SSE_CVE:
+        return (proof.get('sse_application_references') == []
+                and proof.get('sse_runtime_handlers') == []
+                and proof.get('spring_webflux_present') is False)
+    return False
 
 def validate_proof(path):
     path = pathlib.Path(path)
     proof = json.loads(path.read_text())
-    if not eligible({'VulnerabilityID': CVE, 'PkgName':'org.springframework:spring-webmvc',
-                     'InstalledVersion':'6.2.19'}, proof):
-        raise ValueError('missing or invalid candidate-bound XSLT reachability proof')
-    for name in ['beans.json','mappings.json','application-reference-check.json','http-probes.json']:
-        if proof.get('artifact_sha256',{}).get(name) != sha(path.parent/name):
-            raise ValueError('changed reachability artifact: '+name)
-    beans = json.loads((path.parent/'beans.json').read_text())
-    mappings = json.loads((path.parent/'mappings.json').read_text())
+    for cve in (CVE, SSE_CVE):
+        if not eligible({'VulnerabilityID': cve, 'PkgName': 'org.springframework:spring-webmvc',
+                         'InstalledVersion': '6.2.19'}, proof):
+            raise ValueError('missing or invalid candidate-bound reachability proof: ' + cve)
+    for name in ['beans.json', 'mappings.json', 'application-reference-check.json', 'http-probes.json']:
+        if proof.get('artifact_sha256', {}).get(name) != sha(path.parent / name):
+            raise ValueError('changed reachability artifact: ' + name)
+    beans = json.loads((path.parent / 'beans.json').read_text())
+    mappings = json.loads((path.parent / 'mappings.json').read_text())
     if 'Xslt' in json.dumps(beans) or 'Xslt' in json.dumps(mappings):
         raise ValueError('XSLT reachable in runtime artifacts')
-    ref = json.loads((path.parent/'application-reference-check.json').read_text())
-    if ref.get('jar_content_hash') != CONTENT or ref.get('references') != []:
+    if sse_mapping_findings(mappings):
+        raise ValueError('SSE view-fragment handler reachable in runtime artifacts')
+    ref = json.loads((path.parent / 'application-reference-check.json').read_text())
+    if (ref.get('jar_content_hash') != proof['jar_content_hash']
+            or ref.get('references') != []
+            or ref.get('sse_references') != []
+            or ref.get('spring_webflux_present') is not False):
         raise ValueError('changed application/config reference proof')
-    probes=json.loads((path.parent/'http-probes.json').read_text())
-    if len(probes)!=3 or any(r.get('status')!=403 or json.loads(r.get('body','{}')).get('error')!='access denied' for r in probes):
+    probes = json.loads((path.parent / 'http-probes.json').read_text())
+    if (len(probes) != 3
+            or any(r.get('status') != 403
+                   or json.loads(r.get('body', '{}')).get('error') != 'access denied'
+                   for r in probes)):
         raise ValueError('arbitrary view probe was not explicitly denied')
     return proof
+
+def verify_runtime_image(proof):
+    """Rebind dynamic jar identity to the actual scanned image, not to an arbitrary JSON claim."""
+    image = proof.get('image_reference', '')
+    if not image or not re.fullmatch(r'sha256:[a-f0-9]{64}', proof.get('image_id', '')):
+        raise ValueError('missing proven image identity')
+    image_id = subprocess.check_output(
+        ['docker', 'image', 'inspect', '--format', '{{.Id}}', image], text=True).strip()
+    if image_id != proof['image_id']:
+        raise ValueError('image tag changed since runtime proof')
+    container = subprocess.check_output(['docker', 'create', image], text=True).strip()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            jar = pathlib.Path(tmp) / 'app.jar'
+            subprocess.run(['docker', 'cp', container + ':/app/app.jar', str(jar)],
+                           check=True, stdout=subprocess.DEVNULL)
+            digest = hashlib.sha256()
+            with zipfile.ZipFile(jar) as archive:
+                for entry in sorted(archive.infolist(), key=lambda x: x.filename):
+                    digest.update(f'{entry.filename}\0{entry.file_size}\0{entry.CRC}\n'.encode())
+            if digest.hexdigest() != proof['jar_content_hash']:
+                raise ValueError('application content changed since runtime proof')
+    finally:
+        subprocess.run(['docker', 'rm', container], check=True, stdout=subprocess.DEVNULL)
 
 def scan_findings(path, proof):
     raw=json.loads(pathlib.Path(path).read_text())
@@ -74,7 +140,7 @@ def prove(image, out, port):
     container=subprocess.check_output(['docker','create',image],text=True).strip()
     try: subprocess.run(['docker','cp',container+':/app/app.jar',str(out/'app.jar')],check=True,stdout=subprocess.DEVNULL)
     finally: subprocess.run(['docker','rm',container],check=True,stdout=subprocess.DEVNULL)
-    digest=hashlib.sha256();references=[]
+    digest=hashlib.sha256();references=[];sse_references=[]
     with zipfile.ZipFile(out/'app.jar') as jar:
         for entry in sorted(jar.infolist(),key=lambda e:e.filename):
             digest.update(f'{entry.filename}\0{entry.file_size}\0{entry.CRC}\n'.encode())
@@ -82,11 +148,17 @@ def prove(image, out, port):
                 data=jar.read(entry).lower()
                 if any(word in data for word in [b'xslt',b'xsl:stylesheet',b'javax.xml.transform',b'view-class',b'view.class']):
                     references.append(entry.filename)
+                if entry.filename.endswith('.class') and any(word in data for word in SSE_MARKERS):
+                    sse_references.append(entry.filename)
         if 'BOOT-INF/lib/spring-webmvc-6.2.19.jar' not in jar.namelist():
             raise ValueError('proof is scoped only to spring-webmvc 6.2.19')
+        webflux_present = any(name.startswith('BOOT-INF/lib/spring-webflux-') for name in jar.namelist())
     content=digest.hexdigest()
-    if content!=CONTENT or references: raise ValueError('changed candidate or XSLT application/config reference')
-    (out/'application-reference-check.json').write_text(json.dumps({'jar_content_hash':content,'references':references},indent=2))
+    if references or sse_references or webflux_present:
+        raise ValueError('application uses XSLT or SSE view fragments, or bundles WebFlux')
+    (out/'application-reference-check.json').write_text(json.dumps({
+        'jar_content_hash':content,'references':references,
+        'sse_references':sse_references,'spring_webflux_present':webflux_present},indent=2))
     project='dwt-xslt-proof-'+datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dt%H%M%Sz')
     if subprocess.check_output(['docker','ps','-aq','--filter','label=com.docker.compose.project='+project],text=True).strip(): raise ValueError('project exists')
     if subprocess.check_output(['docker','volume','ls','-q','--filter','label=com.docker.compose.project='+project],text=True).strip(): raise ValueError('volumes exist')
@@ -116,15 +188,19 @@ def prove(image, out, port):
         if not any('com.driftwatch' in v.get('type','') for v in allbeans):raise ValueError('application beans absent')
         if 'DispatcherServlet' not in json.dumps(artifacts['mappings']):raise ValueError('servlet mappings absent')
         xsltbeans=[v for v in allbeans if 'Xslt' in json.dumps(v)];xslthandlers=['Xslt'] if 'Xslt' in json.dumps(artifacts['mappings']) else []
+        sse_handlers=sse_mapping_findings(artifacts['mappings'])
         probe_responses=[]
         for path in ['/reachability-probe-no-view.xsl','/reachability-probe-no-view','/xslt/there-is-no-stylesheet.xsl']:
             status,data=get(path);probe_responses.append({'path':path,'status':status,'body':data.decode('utf-8')})
         (out/'http-probes.json').write_text(json.dumps(probe_responses,indent=2))
         probes=[r['status'] for r in probe_responses]
-        if xsltbeans or xslthandlers or probes!=[403,403,403]:raise ValueError('runtime XSLT condition or implicit view probe failed')
-        report={'status':'PASSED','cve':CVE,'image_id':image_id,'image_reference':image,'jar_content_hash':content,'project':project,'observed_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'advisory':'https://spring.io/security/cve-2026-47884/','scope':'Unmodified accepted selfhost application; only diagnostic actuator endpoint exposure was added on the isolated proof stack','xslt_application_references':references,'xslt_runtime_beans':xsltbeans,'xslt_runtime_handlers':xslthandlers,'http_probes':probes,'artifact_sha256':{n:sha(out/n) for n in ['beans.json','mappings.json','application-reference-check.json','http-probes.json']}}
+        if xsltbeans or xslthandlers or sse_handlers or probes!=[403,403,403]:raise ValueError('runtime XSLT/SSE condition or implicit view probe failed')
+        report={'status':'PASSED','cve':CVE,'image_id':image_id,'image_reference':image,'jar_content_hash':content,'project':project,'observed_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'advisory':'https://spring.io/security/cve-2026-47884/','scope':'Unmodified accepted selfhost application; only diagnostic actuator endpoint exposure was added on the isolated proof stack','xslt_application_references':references,'xslt_runtime_beans':xsltbeans,'xslt_runtime_handlers':xslthandlers,'http_probes':probes,'sse_application_references':sse_references,'sse_runtime_handlers':sse_handlers,'spring_webflux_present':webflux_present,'artifact_sha256':{n:sha(out/n) for n in ['beans.json','mappings.json','application-reference-check.json','http-probes.json']}}
         (out/'report.json').write_text(json.dumps(report,indent=2));validate_proof(out/'report.json')
         vex={'@context':'https://openvex.dev/ns/v0.2.0','@id':'https://github.com/JeremyL691/DriftWatch-Tower/security/vex/'+content,'author':'DriftWatch Tower acceptance tooling','timestamp':report['observed_utc'],'version':1,'statements':[{'vulnerability':{'name':CVE},'products':[{'@id':PURL}],'status':'not_affected','justification':'vulnerable_code_not_in_execute_path','impact_statement':'The exact accepted application content '+content+' has no XSLT references/configuration; actual selfhost beans and handlers contain no XsltView or XsltViewResolver, and authenticated arbitrary view probes return403 JSON access-denied responses. Applies only to this candidate and default selfhost configuration; original CRITICAL finding is retained.'}]}
+        vex['statements'].append({'vulnerability':{'name':SSE_CVE},'products':[{'@id':PURL}],
+            'status':'not_affected','justification':'vulnerable_code_not_in_execute_path',
+            'impact_statement':'This image-bound application has no compiled SSE/view-fragment use, no Spring WebFlux, and no application SSE view-fragment handler in the actual selfhost mappings. This assessment applies only to the proven image and configuration; the raw scanner finding is retained.'})
         (out/'openvex.json').write_text(json.dumps(vex,indent=2));print(json.dumps(report))
     finally:
         with (out/'runtime-cleanup.log').open('w') as log:subprocess.run(command+['down','-v'],stdout=log,stderr=subprocess.STDOUT,check=True)
@@ -133,6 +209,6 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--image');p.add_argument('--out',required=True);p.add_argument('--port',type=int,default=18118);p.add_argument('--proof');p.add_argument('--scan',action='append',default=[]);a=p.parse_args()
     if a.image:prove(a.image,a.out,a.port)
     if a.scan:
-        proof=validate_proof(a.proof or pathlib.Path(a.out)/'report.json');results={s:scan_findings(s,proof) for s in a.scan};pathlib.Path(a.out,'scan-assessment.json').write_text(json.dumps(results,indent=2))
+        proof=validate_proof(a.proof or pathlib.Path(a.out)/'report.json');verify_runtime_image(proof);results={s:scan_findings(s,proof) for s in a.scan};pathlib.Path(a.out,'scan-assessment.json').write_text(json.dumps(results,indent=2))
         if any(x['blocking'] for x in results.values()):raise ValueError('unfixed HIGH/CRITICAL runtime finding')
 if __name__=='__main__':main()
