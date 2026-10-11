@@ -155,7 +155,10 @@ public class SecurityConfig {
 
     private AuthenticationEntryPoint apiEntryPoint(ObjectMapper objectMapper) {
         return (request, response, authException) -> {
-            response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Basic realm=\"driftwatch\", Bearer");
+            // One challenge per header: Chromium rejects the combined form
+            // 'Basic realm="driftwatch", Bearer' and then never shows the sign-in prompt.
+            response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Basic realm=\"driftwatch\"");
+            response.addHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
             writeJson(response, objectMapper, HttpStatus.UNAUTHORIZED,
                     "authentication required", request.getRequestURI());
         };

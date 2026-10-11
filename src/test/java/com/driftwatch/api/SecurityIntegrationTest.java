@@ -32,6 +32,16 @@ class SecurityIntegrationTest extends ContainerIntegrationTest {
     }
 
     @Test
+    void browserChallengeIsOneSchemePerHeader() throws Exception {
+        // Chromium ignores a combined 'Basic realm=..., Bearer' challenge and then never shows
+        // the sign-in prompt, so the dashboard was unreachable from Chrome and Edge.
+        var response = mockMvc.perform(get("/dashboard")).andExpect(status().isUnauthorized())
+                .andReturn().getResponse();
+        org.assertj.core.api.Assertions.assertThat(response.getHeaders("WWW-Authenticate"))
+                .containsExactly("Basic realm=\"driftwatch\"", "Bearer");
+    }
+
+    @Test
     void publicHealthReturnsStatusOnly() throws Exception {
         // Wait until the application is genuinely ready; readiness includes Kafka and Streams.
         await().atMost(Duration.ofSeconds(60)).untilAsserted(() ->
