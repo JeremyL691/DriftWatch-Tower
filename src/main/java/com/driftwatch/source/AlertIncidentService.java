@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
@@ -71,7 +72,7 @@ public class AlertIncidentService {
     public AlertIncidentEntity resolveIncident(long incidentId, String rootCause) {
         AlertIncidentEntity incident = incidentRepository.findById(incidentId)
                 .orElseThrow(() -> new IllegalArgumentException("incident " + incidentId + " does not exist"));
-        Instant now = clock.instant();
+        Instant now = lifecycleNow();
         List<QualityAlertEntity> unresolved = alertRepository.findByIncidentIdAndStatusNot(
                 incidentId, QualityAlertEntity.STATUS_RESOLVED);
         for (QualityAlertEntity alert : unresolved) {
@@ -101,7 +102,7 @@ public class AlertIncidentService {
     public QualityAlertEntity resolveAlert(long alertId, String rootCause) {
         QualityAlertEntity alert = alertRepository.findById(alertId)
                 .orElseThrow(() -> new IllegalArgumentException("alert " + alertId + " does not exist"));
-        Instant now = clock.instant();
+        Instant now = lifecycleNow();
         if (!QualityAlertEntity.STATUS_RESOLVED.equals(alert.getStatus())) {
             alert.setStatus(QualityAlertEntity.STATUS_RESOLVED);
             alert.setResolvedAt(now);
@@ -128,10 +129,19 @@ public class AlertIncidentService {
             alert.setStatus(QualityAlertEntity.STATUS_ACKNOWLEDGED);
             alert.setAcknowledgedBy(acknowledgedBy == null || acknowledgedBy.isBlank()
                     ? "anonymous" : acknowledgedBy);
-            alert.setAcknowledgedAt(clock.instant());
+            alert.setAcknowledgedAt(lifecycleNow());
             alert = alertRepository.save(alert);
         }
         return alert;
+    }
+
+    /**
+     * Lifecycle timestamps are stored at microsecond precision (the database column's precision).
+     * Truncating here makes the response returned on the first call byte-identical to the one a
+     * repeated call reads back from the database.
+     */
+    private Instant lifecycleNow() {
+        return clock.instant().truncatedTo(ChronoUnit.MICROS);
     }
 
     private void autoResolveIfComplete(Long incidentId, Instant now) {

@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -87,6 +88,15 @@ public class EventController {
     public ResponseEntity<Map<String, Object>> ingestBatch(
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody List<@Valid DataEvent> events) {
+        // Bean validation skips null elements, so a null item is rejected here, before any publish.
+        for (int index = 0; index < events.size(); index++) {
+            if (events.get(index) == null) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "validation_failed",
+                        "message", "events[" + index + "]: must not be null",
+                        "timestamp", Instant.now().toString()));
+            }
+        }
         IngestionService.BatchOutcome outcome = ingestionService.ingestBatch(events, idempotencyKey);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("batch_id", outcome.batchId());
