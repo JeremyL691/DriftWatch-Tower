@@ -287,4 +287,20 @@ class ManagementConfigurationIntegrationTest extends ContainerIntegrationTest {
         assertThat(state().get("saved_revision")).isEqualTo(before.get("saved_revision"));
         assertThat(jdbcTemplate.queryForObject("select count(*) from management_configuration_history", Long.class)).isEqualTo(history);
     }
+
+    @Test void putOmittingRequiredFieldsIsBadRequestAndLeavesRevisionUntouched() throws Exception {
+        ObjectNode before = state();
+        long history = jdbcTemplate.queryForObject("select count(*) from management_configuration_history", Long.class);
+        for (String field : java.util.List.of("github_enabled", "null_threshold")) {
+            ObjectNode request = request(before);
+            ((ObjectNode) request.get("config")).remove(field);
+            mockMvc.perform(put("/api/v1/configuration").with(asAdmin()).with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON).content(request.toString()))
+                    .andExpect(status().isBadRequest());
+        }
+        ObjectNode after = state();
+        assertThat(after.get("saved_revision")).isEqualTo(before.get("saved_revision"));
+        assertThat(after.get("saved")).isEqualTo(before.get("saved"));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from management_configuration_history", Long.class)).isEqualTo(history);
+    }
 }

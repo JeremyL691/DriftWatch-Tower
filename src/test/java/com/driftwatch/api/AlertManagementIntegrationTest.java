@@ -26,6 +26,18 @@ class AlertManagementIntegrationTest extends ContainerIntegrationTest {
         mockMvc.perform(get("/api/v1/alerts?status=MADE_UP").with(asAdmin())).andExpect(status().isBadRequest());
     }
 
+    @Test void unfilteredAndTypeOnlyListsSucceedAndUnknownTypeIsBadRequest() throws Exception {
+        seed("wanted", AlertType.LATE_EVENT, "OPEN");
+        mockMvc.perform(get("/api/v1/alerts").with(asAdmin()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$").isArray());
+        mockMvc.perform(get("/api/v1/alerts?type=LATE_EVENT").with(asAdmin()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$").isArray());
+        mockMvc.perform(get("/api/v1/alerts?type=BOGUS").with(asAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("bad_request"))
+                .andExpect(jsonPath("$.message").value("invalid value for parameter 'type'"));
+    }
+
     private void seed(String source, AlertType type, String status) {
         QualityAlertEntity alert = new QualityAlertEntity();
         alert.setSource(source); alert.setAlertType(type); alert.setStatus(status);

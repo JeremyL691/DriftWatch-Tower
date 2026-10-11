@@ -175,7 +175,7 @@
         errors[`ranges.${index}.field`] = "Field names use letters, digits, _ . - only.";
         return;
       }
-      if (config.ranges[name]) {
+      if (Object.prototype.hasOwnProperty.call(config.ranges, name)) {
         errors[`ranges.${index}.field`] = "Duplicate field name.";
         return;
       }
@@ -197,7 +197,8 @@
         errors[`ranges.${index}.max`] = "Maximum must be at least the minimum.";
         return;
       }
-      config.ranges[name] = { min, max };
+      // defineProperty keeps names such as __proto__ as ordinary own keys.
+      Object.defineProperty(config.ranges, name, { value: { min, max }, enumerable: true, writable: true, configurable: true });
     });
     if (Object.keys(config.ranges).length > 50) {
       errors.ranges = "At most 50 range fields are allowed.";
@@ -208,30 +209,30 @@
     if (patterns.length > 8192) {
       errors.format_patterns = "At most 8192 characters.";
     } else if (patterns.trim()) {
-      const entries = patterns.split(",");
+      // Mirrors FieldFormatPatterns.parse: entries are trimmed and blank ones skipped. Regex syntax is
+      // Java's, so it is left to the server (the authority) rather than checked with JavaScript RegExp.
+      const entries = patterns.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
       if (entries.length > 50) {
         errors.format_patterns = "At most 50 format fields.";
       }
       for (const entry of entries) {
         const separator = entry.indexOf("=");
         if (separator <= 0) {
-          errors.format_patterns = `"${entry.trim()}" is not a field=regex pair.`;
+          errors.format_patterns = `"${entry}" is not a field=regex pair.`;
           break;
         }
         const field = entry.slice(0, separator).trim();
-        const regex = entry.slice(separator + 1);
+        const regex = entry.slice(separator + 1).trim();
         if (!FIELD_NAME.test(field)) {
           errors.format_patterns = `"${field}" is not a valid field name.`;
           break;
         }
-        if (regex.length > 512) {
-          errors.format_patterns = `The pattern for ${field} is longer than 512 characters.`;
+        if (!regex) {
+          errors.format_patterns = `The pattern for ${field} is empty.`;
           break;
         }
-        try {
-          new RegExp(regex);
-        } catch (error) {
-          errors.format_patterns = `The pattern for ${field} is not a valid regex.`;
+        if (regex.length > 512) {
+          errors.format_patterns = `The pattern for ${field} is longer than 512 characters.`;
           break;
         }
       }

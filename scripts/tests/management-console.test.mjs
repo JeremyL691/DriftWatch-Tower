@@ -99,9 +99,10 @@ test('parseConfigForm validates ranges, regex grammar and repository', () => {
   emptyRange.ranges = [{ field: 'price', min: '', max: '' }];
   assert.match(lib.parseConfigForm(emptyRange).errors['ranges.0.min'], /at least one bound/);
 
-  const badRegex = structuredClone(VALID_FORM);
-  badRegex.values.format_patterns = 'sku=([';
-  assert.match(lib.parseConfigForm(badRegex).errors.format_patterns, /valid regex/);
+  // Regex syntax is Java's and is judged by the server (400), so the client does not compile it.
+  const javaRegexLeftToServer = structuredClone(VALID_FORM);
+  javaRegexLeftToServer.values.format_patterns = 'sku=([';
+  assert.equal(lib.parseConfigForm(javaRegexLeftToServer).ok, true);
 
   const badPair = structuredClone(VALID_FORM);
   badPair.values.format_patterns = 'sku';
@@ -110,6 +111,46 @@ test('parseConfigForm validates ranges, regex grammar and repository', () => {
   const badRepo = structuredClone(VALID_FORM);
   badRepo.values.github_repository = 'https://github.com/apache/kafka';
   assert.match(lib.parseConfigForm(badRepo).errors.github_repository, /owner\/name/);
+});
+
+test('parseConfigForm mirrors the server format grammar for Java regex and blank entries', () => {
+  const inlineFlag = structuredClone(VALID_FORM);
+  inlineFlag.values.format_patterns = 'sku=(?i)^abc';
+  assert.equal(lib.parseConfigForm(inlineFlag).ok, true, JSON.stringify(lib.parseConfigForm(inlineFlag).errors));
+
+  const trailingComma = structuredClone(VALID_FORM);
+  trailingComma.values.format_patterns = 'a=x,';
+  assert.equal(lib.parseConfigForm(trailingComma).ok, true);
+
+  const emptyRegex = structuredClone(VALID_FORM);
+  emptyRegex.values.format_patterns = 'sku=';
+  assert.match(lib.parseConfigForm(emptyRegex).errors.format_patterns, /empty/);
+
+  const fiftyWithBlanks = structuredClone(VALID_FORM);
+  fiftyWithBlanks.values.format_patterns = `${Array.from({ length: 50 }, (_, i) => `f${i}=x`).join(',')},,`;
+  assert.equal(lib.parseConfigForm(fiftyWithBlanks).ok, true);
+
+  const fiftyOne = structuredClone(VALID_FORM);
+  fiftyOne.values.format_patterns = Array.from({ length: 51 }, (_, i) => `f${i}=x`).join(',');
+  assert.match(lib.parseConfigForm(fiftyOne).errors.format_patterns, /At most 50/);
+});
+
+test('parseConfigForm treats prototype-like range names as ordinary fields', () => {
+  const constructorRange = structuredClone(VALID_FORM);
+  constructorRange.ranges = [{ field: 'constructor', min: '1', max: '' }];
+  const result = lib.parseConfigForm(constructorRange);
+  assert.equal(result.ok, true, JSON.stringify(result.errors));
+  assert.deepEqual(result.config.ranges.constructor, { min: 1, max: null });
+
+  const protoRange = structuredClone(VALID_FORM);
+  protoRange.ranges = [{ field: '__proto__', min: '1', max: '' }];
+  const protoResult = lib.parseConfigForm(protoRange);
+  assert.equal(protoResult.ok, true, JSON.stringify(protoResult.errors));
+  assert.deepEqual(JSON.parse(JSON.stringify(protoResult.config.ranges)), JSON.parse('{"__proto__":{"min":1,"max":null}}'));
+
+  const duplicate = structuredClone(VALID_FORM);
+  duplicate.ranges = [{ field: 'price', min: '1', max: '' }, { field: 'price', min: '2', max: '' }];
+  assert.match(lib.parseConfigForm(duplicate).errors['ranges.1.field'], /Duplicate/);
 });
 
 test('saveErrorMessage classifies conflict, validation, auth and unknown failures', () => {

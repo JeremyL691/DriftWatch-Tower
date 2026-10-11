@@ -87,6 +87,8 @@ Page 0..1000000, size 1..100. Fetch another page when the page is full; an empty
 
 `GET /api/v1/alerts?type=LATE_EVENT&source=github%3Aapache%2Fkafka&status=OPEN&page=0&size=50` composes all supplied filters (AND), still returning the existing bare response array. Status is OPEN/ACKNOWLEDGED/RESOLVED; page 0..1000000 and size 1..100. Ordering is created_at desc, id desc. Existing acknowledge/resolve contracts are unchanged.
 
+Behavior change from earlier releases: `status` no longer overrides `type`/`source`, and an invalid `status` or `type` returns 400 `bad_request` instead of an empty array or 500. A `size` above 100 or a negative `page` also returns 400.
+
 ## First-batch supporting reads and actions
 
 - Alerts: GET `/alerts/{id}`; POST `/alerts/{id}/acknowledge` optional `{ "acknowledgedBy": "operator label" }`; POST `/alerts/{id}/resolve` optional `{ "rootCause": "explanation" }`.200 returns existing AlertResponse; missing404; illegal acknowledge409. Response uses existing `acknowledged_by`, `acknowledged_at`, `root_cause`, `resolved_at` spellings; optional mutation **bodies** retain camelCase keys as above. Repeating actions is idempotent. Re-query alert/incident summaries after success.

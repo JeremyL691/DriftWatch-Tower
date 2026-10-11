@@ -216,14 +216,14 @@ async function loadIncidents() {
   }
   body.innerHTML = rows
     .map((incident) => `<tr>
-        <td>${incident.id}</td>
+        <td>${escapeHtml(incident.id)}</td>
         <td>${escapeHtml(incident.title || "")}</td>
         <td>${escapeHtml(incident.source || "")}</td>
         <td><span class="status-chip">${escapeHtml(incident.status || "")}</span></td>
         <td>${formatDate(incident.created_at)}</td>
         <td>${incident.status === "RESOLVED"
           ? '<span class="muted">resolved</span>'
-          : `<button class="ghost-button" data-resolve-incident="${incident.id}">Resolve</button>`}</td>
+          : `<button class="ghost-button" data-resolve-incident="${escapeHtml(incident.id)}">Resolve</button>`}</td>
       </tr>`)
     .join("");
   body.querySelectorAll("[data-resolve-incident]").forEach((button) => {
@@ -261,7 +261,7 @@ async function loadMetricWindows() {
         <td>${escapeHtml(row.event_type)}</td>
         <td>${escapeHtml(row.metric_name)}</td>
         <td>${formatDate(row.window_start)}</td>
-        <td>${row.metric_value}</td>
+        <td>${escapeHtml(row.metric_value)}</td>
       </tr>`)
     .join("");
 }
@@ -332,9 +332,9 @@ async function loadDeadLetters() {
         <td class="code-chip">${escapeHtml(row.diagnostic_id || "")}</td>
         <td>${escapeHtml(row.stage || "")}</td>
         <td>${escapeHtml(row.source || "")}</td>
-        <td>${row.attempts}</td>
+        <td>${escapeHtml(row.attempts)}</td>
         <td><span class="status-chip">${escapeHtml(row.status || "")}</span></td>
-        <td><button class="ghost-button" data-dead-letter="${row.id}">Detail</button></td>
+        <td><button class="ghost-button" data-dead-letter="${escapeHtml(row.id)}">Detail</button></td>
       </tr>`)
     .join("");
   body.querySelectorAll("[data-dead-letter]").forEach((button) => {
@@ -950,7 +950,7 @@ function renderSchemaPanel(eventType, versions, baseline, notice) {
   const sync = baseline && baseline.baseline_sync
     ? window.DwtConsole.schemaSyncLabel(baseline.baseline_sync) : null;
   const options = versions.map((version) =>
-    `<option value="${version.id}">#${version.id} ${escapeHtml(shortHash(version.schema_hash))} ${escapeHtml(version.status)}</option>`).join("");
+    `<option value="${escapeHtml(version.id)}">#${escapeHtml(version.id)} ${escapeHtml(shortHash(version.schema_hash))} ${escapeHtml(version.status)}</option>`).join("");
   panel.innerHTML = `
     <div class="subpanel-head">
       <h3>Schema: ${escapeHtml(eventType)}</h3>
@@ -1026,11 +1026,11 @@ function renderSchemaDiff(baseVersion, candidateVersion) {
   const container = document.getElementById("schemaDiff");
   const base = baseVersion.schema || {};
   const candidate = candidateVersion.schema || {};
-  const added = Object.keys(candidate).filter((key) => !(key in base));
-  const missing = Object.keys(base).filter((key) => !(key in candidate));
-  const changed = Object.keys(base).filter((key) => key in candidate && String(base[key]) !== String(candidate[key]));
+  const added = Object.keys(candidate).filter((key) => !Object.hasOwn(base, key));
+  const missing = Object.keys(base).filter((key) => !Object.hasOwn(candidate, key));
+  const changed = Object.keys(base).filter((key) => Object.hasOwn(candidate, key) && String(base[key]) !== String(candidate[key]));
   const block = (title, keys, describe) => `
-    <div class="diff-block"><h4>${title} (${keys.length})</h4>
+    <div class="diff-block"><h4>${escapeHtml(title)} (${keys.length})</h4>
       ${keys.length
         ? `<ul>${keys.map((key) => `<li><span class="code-chip">${escapeHtml(key)}</span> ${escapeHtml(describe(key))}</li>`).join("")}</ul>`
         : `<p class="muted">None.</p>`}

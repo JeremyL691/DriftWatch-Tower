@@ -21,8 +21,11 @@
     historyPage: 0,
     historySize: 20,
     historyDone: false,
+    historySeq: 0,
     busy: false,
     lastKnownSaved: null,
+    baseRevision: null,
+    loadSeq: 0,
   };
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -207,12 +210,22 @@
     document.getElementById("configRevert").addEventListener("click", () => {
       if (!state.server) return;
       applyServerValues(state.server.saved);
+      state.baseRevision = state.server.saved_revision;
       state.dirty.clear();
       state.errors = {};
       renderDirtyAndErrors();
       setBanner("info", "Form reset to the saved revision.");
     });
-    document.getElementById("configHistoryMore").addEventListener("click", () => loadHistory(false));
+    document.getElementById("configHistoryMore").addEventListener("click", async (event) => {
+      // One page request at a time; a double click would otherwise append the same page twice.
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        await loadHistory(false);
+      } finally {
+        button.disabled = false;
+      }
+    });
   }
 
   // The minimum is documented as coupled/redundant: the field always mirrors the baseline span.
@@ -251,7 +264,7 @@
     }));
   }
 
-  function renderValues() {
+  function renderValues(options = {}) {
     lib.CONFIG_FIELDS.forEach((field) => {
       if (field.type === "ranges") return;
       const input = document.getElementById(`cfg-${field.key}`);
@@ -264,7 +277,9 @@
       }
     });
     syncCoupledHistory();
-    renderRangeRows();
+    if (!options.keepRangeRows) {
+      renderRangeRows();
+    }
     renderDirtyAndErrors();
   }
 
@@ -273,10 +288,12 @@
     const serverValues = valuesToForm(server.saved);
     const merged = lib.mergeLoadedState(serverValues, state.dirty, currentFormValues());
     state.values = merged;
-    if (!state.dirty.has("ranges")) {
+    // Dirty range rows are the form's own state; rebuilding them would drop focus mid-edit.
+    const rangesDirty = state.dirty.has("ranges");
+    if (!rangesDirty) {
       state.ranges = rangesToRows(server.saved.ranges);
     }
-    renderValues();
+    renderValues({ keepRangeRows: rangesDirty });
   }
 
   function currentFormValues() {
@@ -409,31 +426,42 @@
 
   async function refresh(options = {}) {
     if (state.busy) return;
+    const seq = ++state.loadSeq;
     try {
       const response = await requestJson("GET", `${API}/configuration`);
+      // A save started, or a newer load began, while this GET was in flight: its answer is stale.
+      if (seq !== state.loadSeq || state.busy) return;
       if (!response.ok) {
         setBanner("error", `Configuration load failed with ${response.status}. The form keeps its current values.`);
         return;
       }
+      const hadEdits = state.dirty.size > 0;
+      // Only a clean form or an explicit "Load latest" moves the base revision; dirty edits otherwise stay
+      // based on the older revision so a save is rejected as a conflict instead of overwriting.
+      const rebase = Boolean(options.manual) || !hadEdits;
       state.server = response.body;
       state.loaded = true;
       renderState(state.server);
       const previousSaved = state.lastKnownSaved;
-      if (previousSaved && options.keepEdits && state.dirty.size) {
+      if (previousSaved && options.keepEdits && hadEdits) {
         const changed = diffFields(previousSaved, state.server.saved);
         if (changed.length) {
-          setBanner("warn", `Server revision ${state.server.saved_revision} changed (${changed.join(", ")}). `
-            + "Your unsaved edits were kept; review the changed fields before saving.");
+          const next = rebase
+            ? "Your unsaved edits were kept; review the changed fields before saving."
+            : "Your unsaved edits were kept, but saving will be rejected as a conflict until you use \"Load latest\".";
+          setBanner("warn", `Server revision ${state.server.saved_revision} changed (${changed.join(", ")}). ${next}`);
         }
       } else if (options.manual) {
         setBanner("info", "Loaded the latest saved revision.");
+      }
+      if (rebase) {
+        state.baseRevision = state.server.saved_revision;
       }
       if (state.dirty.size) {
         mergeServerState(state.server);
       } else {
         applyServerValues(state.server.saved);
       }
-      // A reload always re-bases the form on the fetched revision; dirty fields keep their edit.
       state.lastKnownSaved = state.server.saved;
       await loadHistory(true);
       renderDirtyAndErrors();
@@ -452,8 +480,19 @@
     return changed;
   }
 
+  // Edits typed during a save would be replaced by the saved values, so the fields are locked meanwhile.
+  function setFormBusy(busy) {
+    document.querySelectorAll("#configForm fieldset").forEach((fieldset) => {
+      fieldset.disabled = busy;
+    });
+  }
+
   async function save() {
     if (state.busy || !state.server) return;
+    if (state.baseRevision === null) {
+      setBanner("error", "Load the latest revision before saving. The server was not called.");
+      return;
+    }
     readForm();
     const parsed = lib.parseConfigForm({ values: state.values, ranges: state.ranges });
     state.errors = parsed.errors;
@@ -466,15 +505,18 @@
       return;
     }
 
+    state.loadSeq += 1;
     state.busy = true;
+    setFormBusy(true);
     renderDirtyAndErrors();
     const button = document.getElementById("configSave");
     button.textContent = "Saving...";
     try {
       const response = await requestJson("PUT", `${API}/configuration`,
-        lib.buildSaveRequest(state.server.saved_revision, parsed.config));
+        lib.buildSaveRequest(state.baseRevision, parsed.config));
       if (response.ok) {
         state.server = response.body;
+        state.baseRevision = state.server.saved_revision;
         state.dirty.clear();
         state.errors = {};
         state.lastKnownSaved = state.server.saved;
@@ -497,6 +539,7 @@
       setBanner("error", `Save failed before the server answered: ${error.message}. Nothing was reported as saved.`);
     } finally {
       state.busy = false;
+      setFormBusy(false);
       button.textContent = "Save configuration";
       renderDirtyAndErrors();
     }
@@ -505,6 +548,7 @@
   /* ------------------------------------------------------------------ history */
 
   async function loadHistory(reset) {
+    const seq = reset ? ++state.historySeq : state.historySeq;
     if (reset) {
       state.historyPage = 0;
       state.historyDone = false;
@@ -514,6 +558,7 @@
     try {
       const response = await requestJson("GET",
         `${API}/configuration/history?page=${state.historyPage}&size=${state.historySize}`);
+      if (seq !== state.historySeq) return;
       if (!response.ok || !Array.isArray(response.body)) {
         document.getElementById("configHistoryList").innerHTML = `<li class="muted">History unavailable (${response.status}).</li>`;
         state.historyDone = true;
@@ -526,7 +571,7 @@
         const fields = Array.isArray(entry.changed_fields) && entry.changed_fields.length
           ? entry.changed_fields.join(", ")
           : "no field changes (no-op save)";
-        item.innerHTML = `<strong>r${entry.revision}</strong> `
+        item.innerHTML = `<strong>r${escapeHtml(entry.revision)}</strong> `
           + `<span class="muted">${escapeHtml(entry.actor || "admin")}</span> `
           + `<span class="muted">${formatDate(entry.created_at)}</span> `
           + `<span class="muted">${escapeHtml(entry.result || "SAVED")}</span>`
@@ -540,6 +585,7 @@
         list.innerHTML = `<li class="muted">No saved revisions yet.</li>`;
       }
     } catch (error) {
+      if (seq !== state.historySeq) return;
       document.getElementById("configHistoryList").innerHTML = `<li class="muted">History failed: ${escapeHtml(error.message)}</li>`;
       state.historyDone = true;
     }
