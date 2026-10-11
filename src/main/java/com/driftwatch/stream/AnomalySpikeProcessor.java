@@ -47,11 +47,14 @@ final class AnomalySpikeProcessor implements Processor<String, PendingEvent, Str
         this.windowStore = context.getStateStore(QualityStreamsTopology.ANOMALY_WINDOW_STORE);
         this.observationStore = context.getStateStore(QualityStreamsTopology.ANOMALY_SCOPE_STORE);
         this.watermarkStore = context.getStateStore(QualityStreamsTopology.SCOPE_WATERMARK_STORE);
-        context.schedule(settings.metricsWindowSize(), PunctuationType.STREAM_TIME, this::evictExpired);
+        evictExpired(context.currentSystemTimeMs());
+        context.schedule(settings.metricsWindowSize(), PunctuationType.STREAM_TIME, ignored -> evictExpired(context.currentSystemTimeMs()));
+        context.schedule(java.time.Duration.ofMinutes(1), PunctuationType.WALL_CLOCK_TIME, this::evictExpired);
     }
 
     @Override
     public void process(Record<String, PendingEvent> record) {
+        TopologySettings settings = this.settings.forEvent();
         PendingEvent pending = record.value();
         if (pending.skipDetection) {
             context.forward(record);
@@ -61,6 +64,7 @@ final class AnomalySpikeProcessor implements Processor<String, PendingEvent, Str
         String source = envelope.event().source();
         String eventType = envelope.event().eventType();
         String scope = ScopeKey.of(source, eventType);
+        String stateScope = WindowStateNamespace.key(settings, source, eventType);
         long windowSizeMs = settings.metricsWindowSize().toMillis();
         long eventMs = envelope.event().eventTimestamp().toEpochMilli();
         long windowStartMs = WindowPolicy.floorWindow(eventMs, windowSizeMs);
@@ -74,7 +78,11 @@ final class AnomalySpikeProcessor implements Processor<String, PendingEvent, Str
             return;
         }
 
-        Long watermarkBefore = watermarkStore.get(scope);
+        if (WindowStateNamespace.inactive(watermarkStore, stateScope, context.currentSystemTimeMs())) {
+            WindowStateNamespace.clearScope(windowStore, stateScope);
+            observationStore.delete(stateScope);
+        }
+        Long watermarkBefore = watermarkStore.get(stateScope);
         long watermark = watermarkBefore == null ? eventMs : watermarkBefore;
         WindowEvaluation.Outcome outcome = WindowPolicy.classify(
                 eventMs, windowSizeMs, settings.metricsGrace().toMillis(),
@@ -93,11 +101,12 @@ final class AnomalySpikeProcessor implements Processor<String, PendingEvent, Str
                     WindowEvaluation.Outcome.INCLUDED, watermark, null);
         }
 
-        // Observation start per scope: zero windows inside the range still count as baseline samples.
-        observationStore.putIfAbsent(scope, windowStartMs);
-        long observationStartMs = observationStore.get(scope);
+        WindowStateNamespace.touch(watermarkStore, stateScope, context.currentSystemTimeMs(), settings.metricsStateRetention().toMillis());
+        // Observation start per policy/scope: zero windows inside the range still count as baseline samples.
+        observationStore.putIfAbsent(stateScope, windowStartMs);
+        long observationStartMs = observationStore.get(stateScope);
 
-        String windowKey = ScopeKey.of(source, eventType, Long.toString(windowStartMs));
+        String windowKey = WindowStateNamespace.key(settings, source, eventType, Long.toString(windowStartMs));
         AnomalyWindowState state = windowStore.get(windowKey);
         if (state == null) {
             state = new AnomalyWindowState(windowStartMs, 0, false);
@@ -124,7 +133,7 @@ final class AnomalySpikeProcessor implements Processor<String, PendingEvent, Str
         for (int i = 1; i <= settings.anomalyBaselineWindows(); i++) {
             long sampleStartMs = windowStartMs - (long) i * windowSizeMs;
             AnomalyWindowState sample = windowStore.get(
-                    ScopeKey.of(source, eventType, Long.toString(sampleStartMs)));
+                    WindowStateNamespace.key(settings, source, eventType, Long.toString(sampleStartMs)));
             baselineSum += sample == null ? 0 : sample.count();
             samples++;
         }
@@ -166,19 +175,20 @@ final class AnomalySpikeProcessor implements Processor<String, PendingEvent, Str
         }
     }
 
-    /**
-     * Drops window state older than the retention relative to the scope watermark, so a
-     * far-future record cannot evict a window that is still inside its grace period.
-     */
-    private void evictExpired(long ignoredStreamTimeMs) {
+    /** Inactive old policies cannot freeze forever behind an abandoned event-time watermark. */
+    private void evictExpired(long wallClockMs) {
         try (KeyValueIterator<String, AnomalyWindowState> iterator = windowStore.all()) {
             while (iterator.hasNext()) {
                 var entry = iterator.next();
-                Long watermark = watermarkStore.get(ScopeKey.scopeOf(entry.key));
-                if (watermark != null
-                        && entry.value.windowStart() < watermark - settings.metricsStateRetention().toMillis()) {
+                if (WindowStateNamespace.expired(watermarkStore, entry.key, entry.value.windowStart(), wallClockMs)) {
                     windowStore.delete(entry.key);
                 }
+            }
+        }
+        try (KeyValueIterator<String, Long> iterator = observationStore.all()) {
+            while (iterator.hasNext()) {
+                var entry = iterator.next();
+                if (WindowStateNamespace.inactive(watermarkStore, entry.key, wallClockMs)) observationStore.delete(entry.key);
             }
         }
     }

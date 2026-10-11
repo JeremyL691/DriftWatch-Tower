@@ -32,7 +32,14 @@ public class FieldRangeDetector implements QualityDetector {
     private final ObjectMapper objectMapper;
     private final Map<String, Bounds> bounds;
 
+    private com.driftwatch.config.RuntimeConfiguration runtime;
+
     @Autowired
+    public FieldRangeDetector(ObjectMapper objectMapper, com.driftwatch.config.RuntimeConfiguration runtime) {
+        this(objectMapper, runtime.startupProperties());
+        this.runtime = runtime;
+    }
+
     public FieldRangeDetector(ObjectMapper objectMapper, DriftwatchProperties properties) {
         this(objectMapper, properties.detector().fieldRange().fields());
     }
@@ -44,6 +51,7 @@ public class FieldRangeDetector implements QualityDetector {
 
     @Override
     public List<DraftAlert> detect(DetectionContext ctx) {
+        Map<String, Bounds> bounds = runtime == null ? this.bounds : runtime.snapshot().ranges();
         if (bounds.isEmpty()) {
             return List.of();
         }

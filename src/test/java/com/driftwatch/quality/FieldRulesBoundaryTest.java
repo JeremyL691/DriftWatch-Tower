@@ -94,6 +94,19 @@ class FieldRulesBoundaryTest {
     }
 
     @Test
+    void dottedRuleNamesMatchOnlyLiteralTopLevelKeysNotNestedObjects() {
+        var bounds = new FieldRangeDetector.Bounds(); bounds.setMin(0.0); bounds.setMax(10.0);
+        var range = new FieldRangeDetector(objectMapper, Map.of("price.amount", bounds));
+        var format = new FieldFormatDetector(objectMapper, "code.value=^OK$");
+        var nested = ctx(Map.of("price", Map.of("amount", 11), "code", Map.of("value", "BAD")));
+        assertThat(range.detect(nested)).isEmpty();
+        assertThat(format.detect(nested)).isEmpty();
+        var literal = ctx(Map.of("price.amount", 11, "code.value", "BAD"));
+        assertThat(range.detect(literal)).singleElement().satisfies(alert -> assertThat(alert.fieldPath()).isEqualTo("price.amount"));
+        assertThat(format.detect(literal)).singleElement().satisfies(alert -> assertThat(alert.fieldPath()).isEqualTo("code.value"));
+    }
+
+    @Test
     void nestedFieldPathsAreNotSilentlyTreatedAsFlatFields() {
         // The rule contract addresses top-level fields; a nested object must produce type
         // evidence rather than being reported as a plain mismatch.

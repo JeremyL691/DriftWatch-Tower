@@ -34,9 +34,12 @@ class CollectorStatusServiceTest {
         CollectorStateRepository states = proxy(CollectorStateRepository.class, (method, args) ->
                 method.getName().equals("findAll") ? List.of(state) : throwUnsupported(method.getName()));
         SourceOutboxRepository outbox = proxy(SourceOutboxRepository.class, (method, args) ->
-                method.getName().equals("countByStatus") ? pendingOutbox : throwUnsupported(method.getName()));
-        SourceGapRepository gaps = proxy(SourceGapRepository.class, (method, args) ->
-                method.getName().equals("countByRecoveryState") ? openGaps : throwUnsupported(method.getName()));
+                method.getName().equals("countBySourceAndStatus") ? pendingOutbox : throwUnsupported(method.getName()));
+        SourceGapRepository gaps = proxy(SourceGapRepository.class, (method, args) -> switch (method.getName()) {
+            case "countBySourceAndRecoveryState" -> openGaps;
+            case "findTop20BySourceOrderByIdDesc" -> List.of();
+            default -> throwUnsupported(method.getName());
+        });
         DriftwatchProperties properties = new DriftwatchProperties(
                 new DriftwatchProperties.Detector(
                         new DriftwatchProperties.Detector.Duplicate(Duration.ofMinutes(5)),

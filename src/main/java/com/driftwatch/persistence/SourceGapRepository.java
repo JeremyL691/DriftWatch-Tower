@@ -9,4 +9,8 @@ public interface SourceGapRepository extends JpaRepository<SourceGapEntity, Long
     List<SourceGapEntity> findByRecoveryStateOrderByIdAsc(String recoveryState);
 
     long countByRecoveryState(String recoveryState);
+
+    long countBySourceAndRecoveryState(String source, String recoveryState);
+
+    List<SourceGapEntity> findTop20BySourceOrderByIdDesc(String source);
 }

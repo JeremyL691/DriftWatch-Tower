@@ -8,6 +8,7 @@ import java.time.Instant;
 
 public record EventResponse(
         Long id,
+        @JsonProperty("ingestion_id") String ingestionId,
         @JsonProperty("event_id") String eventId,
         String source,
         @JsonProperty("event_type") String eventType,
@@ -20,6 +21,7 @@ public record EventResponse(
     public static EventResponse from(RawEventEntity e) {
         return new EventResponse(
                 e.getId(),
+                e.getIngestionId(),
                 e.getEventId(),
                 e.getSource(),
                 e.getEventType(),

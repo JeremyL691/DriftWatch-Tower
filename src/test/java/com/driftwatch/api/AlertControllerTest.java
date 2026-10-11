@@ -32,10 +32,11 @@ class AlertControllerTest {
 
         QualityAlertEntity alert = alert(AlertType.SCHEMA_DRIFT, "demo-api");
         QualityAlertRepository repository = proxy(QualityAlertRepository.class, (method, args) -> switch (method.getName()) {
-            case "findByAlertTypeAndSourceOrderByCreatedAtDesc" -> {
+            case "managementFilter" -> {
                 capturedType.set((AlertType) args[0]);
                 capturedSource.set((String) args[1]);
-                capturedPage.set((PageRequest) args[2]);
+                assertThat(args[2]).isNull(); // No status was requested; preserve the original two-filter contract.
+                capturedPage.set((PageRequest) args[3]);
                 yield new PageImpl<>(List.of(alert));
             }
             default -> unsupported(method.getName());

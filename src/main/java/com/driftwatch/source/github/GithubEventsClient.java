@@ -37,6 +37,11 @@ public class GithubEventsClient {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    public GithubEventsClient(com.driftwatch.config.RuntimeConfiguration runtime, ObjectMapper objectMapper) {
+        this(runtime.startupProperties(), objectMapper);
+    }
+
     public GithubEventsClient(DriftwatchProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;

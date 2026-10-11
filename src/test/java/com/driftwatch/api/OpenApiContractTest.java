@@ -61,6 +61,14 @@ class OpenApiContractTest extends ContainerIntegrationTest {
         assertThat(document.at("/paths").has("/api/v1/sources/collectors")).isTrue();
         assertThat(document.at("/paths").has("/api/v1/dead-letters")).isTrue();
         assertThat(document.at("/paths").has("/api/v1/events/{ingestionId}")).isTrue();
+        assertThat(document.at("/paths").has("/api/v1/configuration")).isTrue();
+        assertThat(document.at("/paths").has("/api/v1/configuration/history")).isTrue();
+        assertThat(document.at("/paths").has("/api/v1/schemas/{eventType}/baseline")).isTrue();
+        JsonNode save = document.at("/paths/~1api~1v1~1configuration/put");
+        assertThat(save.at("/responses").has("400")).isTrue();
+        assertThat(save.at("/responses").has("409")).isTrue();
+        assertThat(document.at("/components/schemas/SaveRequest/properties").has("expected_revision")).isTrue();
+        assertThat(document.at("/components/schemas/SaveRequest/properties").has("config")).isTrue();
     }
 
     private static java.util.List<String> toTextSet(java.util.Iterator<JsonNode> nodes) {

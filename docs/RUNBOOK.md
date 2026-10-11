@@ -145,6 +145,43 @@ admin_post /api/v1/demo/run-scenario/duplicate
 admin_post /api/v1/operations/retention/run
 ```
 
+## Persisted management configuration
+
+See [Management configuration API](management-configuration-api.md) for complete requests, bounds,
+revision/conflict semantics and supporting console endpoints. Admin-only GET/PUT
+`/api/v1/configuration` separates saved and effective snapshots; PUT requires the same CSRF
+cookie/header pair as other browser mutations. Flyway V13 adds the singleton saved revision and
+append-only successful operation history; earlier migrations are unchanged. Invalid/stale writes
+never change configuration or history. Live changes publish only after their own transaction commits.
+
+Late/null/anomaly trigger thresholds and precompiled numeric/format rules apply to subsequent
+processing. Range/format field names are literal top-level payload keys, not nested path traversal.
+Anomaly evaluation always requires the complete baseline-window span (WARMING_UP otherwise).
+New PUT couples min_history to baseline; historical lesser startup/saved values remain readable
+and are not rewritten, but do not relax full-span detection. Duplicate/window/grace/retention/baseline span and **all** GitHub settings wait for a
+real restart. Pending enabled=false is not an emergency stop. After the first save, saved
+nonsecret fields override startup environment defaults on restart; credentials, destinations and
+infrastructure remain environment-owned. No second collector is created. Drain the old source's
+pending poll/outbox work before changing repositories; old identities/checkpoints remain durable.
+
+Window policies use a cached versioned fingerprint namespace, isolating counts/fired flags,
+accepted watermarks and anomaly observation history when restart settings change. Same-policy
+restart/live threshold updates preserve unexpired state. Each policy/scope has an inactivity lease
+using processor wall-clock time and its owning retention. Active windows expire against the
+accepted watermark, not rejected future event timestamps. Once per minute, wall-clock cleanup
+removes inactive namespaces' windows and watermark/observation/lease metadata after retention;
+accepted access also resets an expired lease. Downtime counts toward expiry. Switching back may
+resume only still-valid state; otherwise it warms up. Upgrade deliberately warms up legacy
+unnamespaced null/anomaly state instead of guessing its policy. No delivery receipt, duplicate
+identity store, schema baseline, DB checkpoint/outbox, Kafka topic or store name is reset.
+
+GET `/api/v1/configuration/history` is bounded and records authenticated actor, revision, changed
+field names, result and time only. GET `/api/v1/schemas/{eventType}/baseline` shows durable
+publication evidence and explicitly UNCONFIRMED consumer application. Collector reads expose
+checkpoint/pending-run evidence, source-scoped backlog/gap counts and newest20 gap records;
+unknown missing counts remain unknown. Never interpret publication/replay acceptance as proof
+of every downstream consumer completing.
+
 ## Retention
 
 Retention runs daily in batches of at most 1000 rows: raw events and metric windows after 30

@@ -31,7 +31,14 @@ public class FieldFormatDetector implements QualityDetector {
     private final ObjectMapper objectMapper;
     private final Map<String, Pattern> patterns;
 
+    private com.driftwatch.config.RuntimeConfiguration runtime;
+
     @Autowired
+    public FieldFormatDetector(ObjectMapper objectMapper, com.driftwatch.config.RuntimeConfiguration runtime) {
+        this(objectMapper, runtime.startupProperties());
+        this.runtime = runtime;
+    }
+
     public FieldFormatDetector(ObjectMapper objectMapper, DriftwatchProperties properties) {
         this(objectMapper, properties.detector().fieldFormat().patterns());
     }
@@ -43,6 +50,7 @@ public class FieldFormatDetector implements QualityDetector {
 
     @Override
     public List<DraftAlert> detect(DetectionContext ctx) {
+        Map<String, Pattern> patterns = runtime == null ? this.patterns : runtime.snapshot().patterns();
         if (patterns.isEmpty()) {
             return List.of();
         }

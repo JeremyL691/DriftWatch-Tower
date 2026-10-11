@@ -167,7 +167,7 @@ schema 按 event_type 管理，保持既有契约。registry 在 sink 事务中�
 | POST /api/v1/incidents/{id}/resolve | 事务内解决关联未解决告警，保留 root_cause |
 | 原告警 acknowledge/resolve | 幂等状态转换；重复同操作保持原时间，非法回退返回 409 |
 
-instance v1 不提供在线修改真实来源仓库的界面；通过配置与重启调整，避免额外的任意 URL 请求入口。OpenAPI 同步更新并纳入契约测试。
+管理控制台允许保存单一 GitHub 采集器的 enabled/repository/poll/page 设置，但全部明确等待重启才生效；仓库仅允许 owner/repository，不增加任意 URL 入口。凭证与官方目的地保持环境管理。配置 API、校验边界、修订冲突以及窗口策略隔离/过期语义见 [Management configuration API](management-configuration-api.md)。OpenAPI 保留现有接口并公开新增管理路由。
 
 ### 4.6 历史升级与 Kafka 合同转换
 

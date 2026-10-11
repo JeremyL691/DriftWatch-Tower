@@ -18,7 +18,14 @@ public class LateEventDetector implements QualityDetector {
     private final ObjectMapper objectMapper;
     private final Duration threshold;
 
+    private com.driftwatch.config.RuntimeConfiguration runtime;
+
     @Autowired
+    public LateEventDetector(ObjectMapper objectMapper, com.driftwatch.config.RuntimeConfiguration runtime) {
+        this(objectMapper, runtime.startupProperties());
+        this.runtime = runtime;
+    }
+
     public LateEventDetector(ObjectMapper objectMapper, DriftwatchProperties properties) {
         this(objectMapper, properties.detector().late().threshold());
     }
@@ -30,6 +37,12 @@ public class LateEventDetector implements QualityDetector {
 
     @Override
     public List<DraftAlert> detect(DetectionContext ctx) {
+        Duration threshold = this.threshold;
+        if (runtime != null) {
+            var config = runtime.snapshot().config();
+            threshold = Duration.ofMillis(ctx.event().source().startsWith("github:")
+                    ? config.github_late_threshold_ms() : config.late_threshold_ms());
+        }
         Duration lateness = Duration.between(ctx.event().eventTimestamp(), ctx.receivedAt());
         if (lateness.compareTo(threshold) <= 0) {
             return List.of();
