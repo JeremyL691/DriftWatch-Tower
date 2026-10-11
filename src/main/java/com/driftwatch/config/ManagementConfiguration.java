@@ -44,6 +44,9 @@ public record ManagementConfiguration(
                 g.pollInterval().toMillis(), g.maxPages(), g.pageSize());
     }
 
+    /** 64 character source columns minus the "github:" prefix of the collector source id. */
+    public static final int MAX_GITHUB_REPOSITORY_LENGTH = 64 - "github:".length();
+
     public void validate() {
         duration("duplicate_window_ms", duplicate_window_ms);
         duration("late_threshold_ms", late_threshold_ms);
@@ -77,6 +80,10 @@ public record ManagementConfiguration(
         require(github_repository != null && github_repository.length() <= 201
                 && github_repository.matches("[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9_.-]{1,100}")
                 && !github_repository.endsWith("/.") && !github_repository.endsWith("/.."), "github_repository must be owner/repository");
+        // The collector's source id "github:<owner/repository>" is stored in 64 character source
+        // columns; a longer name would dead-letter every collected event.
+        require(github_repository.length() <= MAX_GITHUB_REPOSITORY_LENGTH,
+                "github_repository must be at most " + MAX_GITHUB_REPOSITORY_LENGTH + " characters");
         require(github_poll_interval_ms >= 300000 && github_poll_interval_ms <= 86400000, "github_poll_interval_ms must be 300000..86400000");
         bounded("github_max_pages", github_max_pages, 1, 10); bounded("github_page_size", github_page_size, 1, 100);
     }

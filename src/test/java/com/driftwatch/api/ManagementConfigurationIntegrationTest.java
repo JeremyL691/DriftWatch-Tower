@@ -280,6 +280,12 @@ class ManagementConfigurationIntegrationTest extends ContainerIntegrationTest {
                     .contentType(MediaType.APPLICATION_JSON).content(request.toString()))
                     .andExpect(status().isBadRequest());
         }
+        // "github:" + this name would not fit the 64 character source column of every collected event.
+        ObjectNode longRepository = request(before);
+        ((ObjectNode) longRepository.get("config")).put("github_repository", "owner/" + "r".repeat(52));
+        mockMvc.perform(put("/api/v1/configuration").with(asAdmin()).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(longRepository.toString()))
+                .andExpect(status().isBadRequest());
         ObjectNode secret = request(before);
         ((ObjectNode) secret.get("config")).put("token", "must-not-be-stored");
         mockMvc.perform(put("/api/v1/configuration").with(asAdmin()).with(csrf())
