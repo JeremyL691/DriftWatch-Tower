@@ -4,7 +4,7 @@
   "private": true,
   "description": "Browser acceptance tooling for DriftWatch Tower.",
   "scripts": {
-    "test": "node --test scripts/tests/browser-health.test.mjs"
+    "test": "node --test scripts/tests/browser-health.test.mjs scripts/tests/management-console.test.mjs"
   },
   "repository": {
     "type": "git",

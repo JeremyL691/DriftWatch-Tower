@@ -47,6 +47,22 @@ public class SchemaController {
                 .map(SchemaResponse::from).toList();
     }
 
+    /** Publication is durable evidence, not an acknowledgement from every Streams consumer. */
+    @GetMapping("/{eventType}/baseline")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public ResponseEntity<Map<String, Object>> baselineStatus(@PathVariable String eventType) {
+        return repository.findFirstByEventTypeAndStatus(eventType, "ACTIVE").map(active -> {
+            var outbox = outboxRepository.findFirstByEventTypeAndVersionIdOrderByIdDesc(eventType, active.getId());
+            Map<String, Object> sync = new java.util.LinkedHashMap<>();
+            String state = outbox.map(row -> "SENT".equals(row.getStatus()) ? "PUBLISHED" : row.getStatus()).orElse("UNKNOWN");
+            sync.put("state", state);
+            sync.put("consumer_application", "UNCONFIRMED");
+            sync.put("outbox_id", outbox.map(com.driftwatch.persistence.BaselineOutboxEntity::getId).orElse(null));
+            sync.put("published_at", outbox.map(com.driftwatch.persistence.BaselineOutboxEntity::getSentAt).orElse(null));
+            return ResponseEntity.ok(Map.<String, Object>of("event_type", eventType, "version_id", active.getId(), "baseline_sync", sync));
+        }).orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
     /**
      * Explicitly activates an existing version (guide 4.4). Activation and the outbox row commit
      * together; the response reports whether the compacted baseline topic has been updated yet,
@@ -66,20 +82,19 @@ public class SchemaController {
             throw new IllegalArgumentException("version_id must be a number");
         }
         var activated = schemaObservationService.activateBaseline(eventType, versionId, Instant.now());
-        var outboxRow = outboxRepository.findTop50ByStatusOrderByIdAsc(
-                        com.driftwatch.persistence.BaselineOutboxEntity.STATUS_PENDING).stream()
-                .filter(row -> row.getVersionId().equals(activated.getId()))
-                .findFirst();
-        boolean published = outboxRow.map(row -> outboxRelay.publishNow(row.getId())).orElse(false);
-        String syncState = published ? "PUBLISHED" : "PENDING";
+        var outboxRow = outboxRepository.findFirstByEventTypeAndVersionIdOrderByIdDesc(eventType, activated.getId());
+        boolean published = outboxRow.map(row -> "SENT".equals(row.getStatus())
+                || outboxRelay.publishNow(row.getId())).orElse(false);
+        String syncState = published ? "PUBLISHED" : outboxRow.map(row -> row.getStatus()).orElse("UNKNOWN");
         return ResponseEntity.ok(Map.of(
                 "event_type", eventType,
                 "version_id", activated.getId(),
                 "status", activated.getStatus(),
                 "baseline_sync", Map.of(
                         "state", syncState,
+                        "consumer_application", "UNCONFIRMED",
                         "detail", published
-                                ? "published to schema-baselines-v1"
-                                : "queued in the baseline outbox; Streams has not applied it yet")));
+                                ? "published to schema-baselines-v1; consumer application is unconfirmed"
+                                : "publication is not confirmed; re-query baseline status; consumer application is unconfirmed")));
     }
 }

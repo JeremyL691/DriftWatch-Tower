@@ -11,4 +11,6 @@ public interface SourceOutboxRepository extends JpaRepository<SourceOutboxEntity
     List<SourceOutboxEntity> findBySourceAndStatusOrderByIdAsc(String source, String status);
 
     long countByStatus(String status);
+
+    long countBySourceAndStatus(String source, String status);
 }

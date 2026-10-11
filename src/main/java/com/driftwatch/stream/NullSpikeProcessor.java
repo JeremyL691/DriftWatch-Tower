@@ -55,11 +55,14 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
         this.windowStore = context.getStateStore(QualityStreamsTopology.NULL_WINDOW_STORE);
         this.watermarkStore = context.getStateStore(QualityStreamsTopology.SCOPE_WATERMARK_STORE);
         this.baselineStore = context.getStateStore(QualityStreamsTopology.SCHEMA_BASELINE_STORE);
-        context.schedule(settings.metricsWindowSize(), PunctuationType.STREAM_TIME, this::evictExpired);
+        evictExpired(context.currentSystemTimeMs());
+        context.schedule(settings.metricsWindowSize(), PunctuationType.STREAM_TIME, ignored -> evictExpired(context.currentSystemTimeMs()));
+        context.schedule(java.time.Duration.ofMinutes(1), PunctuationType.WALL_CLOCK_TIME, this::evictExpired);
     }
 
     @Override
     public void process(Record<String, PendingEvent> record) {
+        TopologySettings settings = this.settings.forEvent();
         PendingEvent pending = record.value();
         if (pending.skipDetection) {
             context.forward(record);
@@ -69,6 +72,7 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
         String source = envelope.event().source();
         String eventType = envelope.event().eventType();
         String scope = ScopeKey.of(source, eventType);
+        String stateScope = WindowStateNamespace.key(settings, source, eventType);
         long windowSizeMs = settings.metricsWindowSize().toMillis();
         long eventMs = envelope.event().eventTimestamp().toEpochMilli();
         long windowStartMs = WindowPolicy.floorWindow(eventMs, windowSizeMs);
@@ -76,20 +80,24 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
         if (!envelope.liveWindowEligible()) {
             pending.evaluation = WindowPolicy.evaluation(scope, windowStartMs, windowSizeMs,
                     WindowEvaluation.Outcome.SKIPPED_MODE,
-                    watermarkStore.get(scope) == null ? Long.MIN_VALUE : watermarkStore.get(scope),
+                    watermarkStore.get(stateScope) == null ? Long.MIN_VALUE : watermarkStore.get(stateScope),
                     envelope.mode().name());
             context.forward(record);
             return;
         }
 
-        Long watermarkBefore = watermarkStore.get(scope);
+        if (WindowStateNamespace.inactive(watermarkStore, stateScope, context.currentSystemTimeMs())) {
+            WindowStateNamespace.clearScope(windowStore, stateScope);
+            watermarkStore.delete(stateScope);
+        }
+        Long watermarkBefore = watermarkStore.get(stateScope);
         long watermark = watermarkBefore == null ? eventMs : watermarkBefore;
         WindowEvaluation.Outcome outcome = WindowPolicy.classify(
                 eventMs, windowSizeMs, settings.metricsGrace().toMillis(),
                 settings.metricsFutureTolerance().toMillis(), watermark, envelope.receivedAt());
 
         if (outcome == WindowEvaluation.Outcome.INCLUDED && watermarkBefore == null) {
-            watermarkStore.put(scope, eventMs);
+            watermarkStore.put(stateScope, eventMs);
             watermark = eventMs;
         }
 
@@ -101,7 +109,7 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
             return;
         }
         if (watermarkBefore != null && eventMs > watermarkBefore) {
-            watermarkStore.put(scope, eventMs);
+            watermarkStore.put(stateScope, eventMs);
             watermark = eventMs;
         }
 
@@ -143,7 +151,7 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
         // previous version's, and the evidence can name the version that governed the check.
         String baselineVersion = baseline.versionId() == null ? "none" : baseline.versionId().toString();
         for (String field : confirmedFields.keySet()) {
-            String key = ScopeKey.of(source, eventType, field, Long.toString(windowStartMs), baselineVersion);
+            String key = WindowStateNamespace.key(settings, source, eventType, field, Long.toString(windowStartMs), baselineVersion);
             NullWindowState state = windowStore.get(key);
             if (state == null) {
                 state = new NullWindowState(windowStartMs, 0, 0, false);
@@ -176,22 +184,17 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
         context.forward(record);
     }
 
-    /**
-     * Drops window state older than the retention relative to the scope watermark. Using the
-     * watermark (not raw stream time) means a far-future record cannot evict a window that is
-     * still inside its grace period.
-     */
-    private void evictExpired(long ignoredStreamTimeMs) {
+    /** All policies use their own accepted watermark/retention plus a real wall-clock inactivity bound. */
+    private void evictExpired(long wallClockMs) {
         try (KeyValueIterator<String, NullWindowState> iterator = windowStore.all()) {
             while (iterator.hasNext()) {
                 var entry = iterator.next();
-                Long watermark = watermarkStore.get(ScopeKey.scopeOf(entry.key));
-                if (watermark != null
-                        && entry.value.windowStart() < watermark - settings.metricsStateRetention().toMillis()) {
+                if (WindowStateNamespace.expired(watermarkStore, entry.key, entry.value.windowStart(), wallClockMs)) {
                     windowStore.delete(entry.key);
                 }
             }
         }
+        WindowStateNamespace.evictMetadata(watermarkStore, wallClockMs);
     }
 
     @Override

@@ -20,7 +20,33 @@ document.addEventListener("DOMContentLoaded", () => {
   renderIcons();
   initTheme();
   document.getElementById("refreshAll").addEventListener("click", () => refreshDashboard());
-  document.getElementById("applyAlertFilters").addEventListener("click", () => loadAlerts());
+  document.getElementById("applyAlertFilters").addEventListener("click", () => {
+    alertPaging.page = 0;
+    loadAlerts();
+  });
+  document.getElementById("alertsPrev").addEventListener("click", () => {
+    if (alertPaging.page > 0) {
+      alertPaging.page -= 1;
+      loadAlerts();
+    }
+  });
+  document.getElementById("alertsNext").addEventListener("click", () => {
+    alertPaging.page += 1;
+    loadAlerts();
+  });
+  document.getElementById("refreshCollector").addEventListener("click", () => loadCollectorOps());
+  document.getElementById("refreshRetention").addEventListener("click", () => loadRetentionStatus());
+  document.getElementById("retentionRun").addEventListener("click", () => toggleRetentionConfirm(true));
+  document.getElementById("retentionCancel").addEventListener("click", () => toggleRetentionConfirm(false));
+  document.getElementById("retentionConfirm").addEventListener("click", () => runRetention());
+  document.getElementById("recentEvents").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-event-detail]");
+    if (button) showEventDetail(button.getAttribute("data-event-detail"));
+  });
+  document.getElementById("schemasTable").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-schema-manage]");
+    if (button) openSchemaPanel(button.getAttribute("data-schema-manage"));
+  });
   document.querySelectorAll(".scenario-button").forEach((button) => {
     button.addEventListener("click", () => runScenario(button));
   });
@@ -161,17 +187,24 @@ function prependLiveEvent(event) {
 }
 
 async function refreshDashboard() {
-  await Promise.all([
+  const tasks = [
     loadSummary(),
     loadAlerts(),
     loadSourceHealth(),
+    loadCollectorOps(),
     loadSchemas(),
     loadRecentEvents(),
     loadCoverage(),
     loadIncidents(),
     loadMetricWindows(),
     loadDeadLetters(),
-  ]);
+    loadRetentionStatus(),
+  ];
+  // The configuration editor keeps unsaved edits across every refresh cycle.
+  if (window.DwtConfig && typeof window.DwtConfig.refresh === "function") {
+    tasks.push(window.DwtConfig.refresh({ keepEdits: true }));
+  }
+  await Promise.all(tasks);
 }
 
 async function loadIncidents() {
@@ -206,11 +239,12 @@ async function resolveIncident(button) {
   try {
     await postJson(`${API}/incidents/${id}/resolve`, { rootCause: "resolved from dashboard" });
     button.textContent = "Resolved";
-    await loadIncidents();
+    setStatus("incidentStatus", `Incident ${id} resolved. Re-querying incidents and alerts.`);
+    await Promise.all([loadIncidents(), loadAlerts()]);
   } catch (error) {
     button.disabled = false;
     button.textContent = "Retry resolve";
-    showActionError(`Resolve failed: ${error.message}`);
+    setStatus("incidentStatus", `Incident ${id} resolve failed: ${error.message}`, true);
   }
 }
 
@@ -230,6 +264,60 @@ async function loadMetricWindows() {
         <td>${row.metric_value}</td>
       </tr>`)
     .join("");
+}
+
+// Retention: policy and counters first; the manual run is an explicit two-step action and
+// reports the real response instead of assuming completion.
+async function loadRetentionStatus() {
+  const container = document.getElementById("retentionSummary");
+  try {
+    const status = await fetchJson(`${API}/operations/retention`);
+    container.innerHTML = kvGrid([
+      ["Raw events retention", `${status.raw_retention_days} day(s)`],
+      ["Metric retention", `${status.metric_retention_days} day(s)`],
+      ["Resolved alerts retention", `${status.resolved_alert_retention_days} day(s)`],
+      ["Completed dead letters retention", `${status.completed_dead_letter_retention_days} day(s)`],
+      ["Inbox identity retention", `${status.inbox_identity_retention_days} day(s)`],
+      ["Delete batch size", status.batch_size],
+      ["Unresolved alerts", status.unresolved_alerts],
+      ["Open incidents", status.open_incidents],
+      ["Open dead letters", status.open_dead_letters],
+      ["Pending source outbox", status.pending_source_outbox],
+      ["Pending baseline outbox", status.pending_baseline_outbox],
+      ["Collector states", status.collector_states],
+      ["Schema versions", status.schema_versions],
+    ]);
+  } catch (error) {
+    container.innerHTML = `<p class="action-error">Retention status failed: ${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function toggleRetentionConfirm(show) {
+  document.getElementById("retentionRun").hidden = show;
+  document.getElementById("retentionConfirm").hidden = !show;
+  document.getElementById("retentionCancel").hidden = !show;
+  if (show) document.getElementById("retentionConfirm").focus();
+}
+
+async function runRetention() {
+  const confirm = document.getElementById("retentionConfirm");
+  confirm.disabled = true;
+  setStatus("retentionStatus", "Running retention...");
+  try {
+    const response = await requestJson(`${API}/operations/retention/run`, {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!response.ok) throw new Error(describeHttpError(response));
+    const completed = response.body && response.body.status === "completed";
+    setStatus("retentionStatus", window.DwtConsole.retentionRunLabel(response.body), !completed);
+    await loadRetentionStatus();
+  } catch (error) {
+    setStatus("retentionStatus", `Retention run failed: ${error.message}. Nothing was reported as completed.`, true);
+  } finally {
+    confirm.disabled = false;
+    toggleRetentionConfirm(false);
+  }
 }
 
 async function loadDeadLetters() {
@@ -255,41 +343,95 @@ async function loadDeadLetters() {
 }
 
 async function showDeadLetter(id) {
-  const detail = await fetchJson(`${API}/dead-letters/${id}`);
   const panel = document.getElementById("deadLetterDetail");
   panel.hidden = false;
-  panel.innerHTML = `
-    <div class="subpanel-head">
-      <h3>${escapeHtml(detail.diagnostic_id || `Dead letter ${id}`)}</h3>
-      <button class="ghost-button" id="replayDeadLetter">Replay</button>
-    </div>
-    <p class="muted">${escapeHtml(detail.reason || "")}</p>
-    <p><span class="code-chip">${escapeHtml(detail.kafka_topic || "")}</span>
-       partition ${detail.kafka_partition ?? "-"} offset ${detail.kafka_offset ?? "-"}</p>
-    <details><summary>Payload and recovery history</summary>
-      <pre tabindex="0" role="region" aria-label="Dead letter payload and recovery history">${escapeHtml(JSON.stringify({ payload: detail.payload, replays: detail.replays }, null, 2))}</pre>
-    </details>`;
-  document.getElementById("replayDeadLetter").addEventListener("click", async (event) => {
-    const button = event.currentTarget;
-    button.disabled = true;
-    button.textContent = "Replaying…";
-    try {
-      await postJson(`${API}/dead-letters/${id}/replay`, {});
-      button.textContent = "Replayed";
-      await loadDeadLetters();
-      await showDeadLetter(id);
-    } catch (error) {
-      button.disabled = false;
-      button.textContent = "Retry replay";
-      showActionError(`Replay failed: ${error.message}`);
-    }
-  });
+  panel.innerHTML = `<p class="muted">Loading dead letter ${escapeHtml(id)}...</p>`;
+  try {
+    const detail = await fetchJson(`${API}/dead-letters/${encodeURIComponent(id)}`);
+    const kafka = detail.kafka || {};
+    const history = Array.isArray(detail.replay_history) ? detail.replay_history : [];
+    panel.innerHTML = `
+      <div class="subpanel-head">
+        <h3>${escapeHtml(detail.diagnostic_id || `Dead letter ${id}`)} <span class="status-chip">${escapeHtml(detail.status || "")}</span></h3>
+        <button class="ghost-button" type="button" id="replayDeadLetter">Replay</button>
+        <button class="ghost-button" type="button" id="replayConfirm" hidden>Confirm replay</button>
+        <button class="ghost-button" type="button" id="replayCancel" hidden>Cancel</button>
+      </div>
+      <p class="muted">${escapeHtml(detail.reason || "")}</p>
+      ${kvGrid([
+        ["Stage", detail.stage],
+        ["Ingestion id", detail.ingestion_id],
+        ["Source", detail.source],
+        ["Event type", detail.event_type],
+        ["Attempts", detail.attempts],
+        ["Topic", kafka.topic],
+        ["Partition", kafka.partition],
+        ["Offset", kafka.offset],
+        ["Created", formatDate(detail.created_at)],
+        ["Recovered at", formatDate(detail.recovered_at)],
+      ])}
+      <p class="muted">An accepted replay or a REPLAYED state proves the record was published again, not that sink processing succeeded. Re-query the outcome, the replay history and the event rows.</p>
+      <h4>Replay history</h4>
+      ${renderReplayHistory(history)}
+      <details><summary>Payload</summary>
+        <pre tabindex="0" role="region" aria-label="Dead letter payload">${escapeHtml(JSON.stringify(detail.payload, null, 2))}</pre>
+      </details>`;
+    const replayButton = document.getElementById("replayDeadLetter");
+    const confirmButton = document.getElementById("replayConfirm");
+    const cancelButton = document.getElementById("replayCancel");
+    replayButton.addEventListener("click", () => {
+      replayButton.hidden = true;
+      confirmButton.hidden = false;
+      cancelButton.hidden = false;
+      confirmButton.focus();
+    });
+    cancelButton.addEventListener("click", () => {
+      replayButton.hidden = false;
+      confirmButton.hidden = true;
+      cancelButton.hidden = true;
+      replayButton.focus();
+    });
+    confirmButton.addEventListener("click", async () => {
+      confirmButton.disabled = true;
+      setStatus("deadLetterStatus", `Replaying dead letter ${id}...`);
+      try {
+        const response = await requestJson(`${API}/dead-letters/${encodeURIComponent(id)}/replay`, {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        if (!response.ok) throw new Error(describeHttpError(response));
+        const label = window.DwtConsole.replayOutcomeLabel(response.body);
+        const outcome = String((response.body && response.body.outcome) || "UNKNOWN").toUpperCase();
+        const attempt = response.body && response.body.replay_attempt_id ? response.body.replay_attempt_id : "";
+        setStatus("deadLetterStatus", `Replay ${attempt}: ${label}`, outcome === "FAILED" || outcome === "UNKNOWN");
+        await loadDeadLetters();
+        await showDeadLetter(id);
+      } catch (error) {
+        setStatus("deadLetterStatus", `Replay failed: ${error.message}`, true);
+        confirmButton.disabled = false;
+      }
+    });
+  } catch (error) {
+    panel.innerHTML = `<p class="action-error">Failed to load dead letter ${escapeHtml(id)}: ${escapeHtml(error.message)}</p>`;
+  }
 }
 
-function showActionError(message) {
-  const panel = document.getElementById("deadLetterDetail");
-  panel.hidden = false;
-  panel.innerHTML = `<p class="action-error">${escapeHtml(message)}</p>`;
+function renderReplayHistory(history) {
+  if (!history.length) {
+    return `<p class="muted">No replay attempts recorded.</p>`;
+  }
+  return `<div class="table-shell" tabindex="0" role="region" aria-label="Replay history">
+    <table class="data-table">
+      <thead><tr><th>Attempt</th><th>Stage</th><th>Outcome</th><th>Detail</th><th>Requested</th></tr></thead>
+      <tbody>${history.map((entry) => `<tr>
+        <td>${escapeHtml(entry.replay_attempt_id)}</td>
+        <td>${escapeHtml(entry.stage)}</td>
+        <td><span class="status-chip">${escapeHtml(entry.outcome)}</span></td>
+        <td>${escapeHtml(entry.detail)}</td>
+        <td>${formatDate(entry.requested_at)}</td>
+      </tr>`).join("")}</tbody>
+    </table>
+  </div>`;
 }
 
 // Evaluation coverage (guide 5.3): an OK status must not be read as "the window evaluated this".
@@ -326,19 +468,99 @@ async function loadSummary() {
   renderLatestAlerts(alerts);
 }
 
+const alertPaging = { page: 0, size: 30 };
+
 async function loadAlerts() {
   const source = document.getElementById("alertSourceFilter").value.trim();
   const type = document.getElementById("alertTypeFilter").value;
-  const params = new URLSearchParams({ size: "30" });
-  if (source) params.set("source", source);
-  if (type) params.set("type", type);
-  const alerts = await fetchJson(`${API}/alerts?${params.toString()}`);
+  const status = document.getElementById("alertStatusFilter").value;
+  const params = window.DwtConsole.composeAlertParams({
+    source, type, status, page: alertPaging.page, size: alertPaging.size,
+  });
+  const alerts = await fetchJson(`${API}/alerts?${params}`);
   renderAlertsTable(alerts);
 }
 
 async function loadSourceHealth() {
   const rows = await fetchJson(`${API}/sources/health`);
   renderSourceHealthTable(rows);
+}
+
+// Collector operations: effective enablement first, stored state second. A disabled collector's
+// historical LOST/QUIET row must never be read as a running poller.
+async function loadCollectorOps() {
+  const headline = document.getElementById("collectorHeadline");
+  const summary = document.getElementById("collectorSummary");
+  const gaps = document.getElementById("collectorGaps");
+  try {
+    const collectors = await fetchJson(`${API}/sources/collectors`);
+    const server = window.DwtConfig && typeof window.DwtConfig.state === "function"
+      ? window.DwtConfig.state() : null;
+    const effective = server && server.effective ? server.effective : null;
+    const collector = Array.isArray(collectors) && collectors.length ? collectors[0] : null;
+    const fallback = collector ? {
+      github_enabled: collector.collector_enabled,
+      github_repository: null,
+      github_poll_interval_ms: collector.poll_interval_ms,
+    } : null;
+    const view = window.DwtConsole.collectorViewModel(collector, effective || fallback || {});
+    headline.textContent = view.headline;
+    headline.className = `collector-headline ${view.enabled ? "enabled" : "disabled"}`;
+    if (!collector) {
+      summary.innerHTML = kvGrid([
+        ["Effective enabled", view.enabled ? "yes" : "no"],
+        ["Effective repository", view.repository],
+        ["Effective poll interval", formatDurationMs(view.interval)],
+      ]);
+      gaps.innerHTML = "";
+      return;
+    }
+    summary.innerHTML = kvGrid([
+      ["Effective enabled", view.enabled ? "yes" : "no"],
+      ["Effective repository", view.repository],
+      ["Effective poll interval", formatDurationMs(view.interval)],
+      ["Stored status", `${collector.status}${view.enabled ? "" : " (historical)"}`],
+      ["Last poll", formatDate(collector.last_poll_at)],
+      ["Last success", formatDate(collector.last_success_at)],
+      ["Next poll", formatDate(collector.next_poll_at)],
+      ["Last event", formatDate(collector.last_event_at)],
+      ["Upstream lag", collector.upstream_lag_seconds === null || collector.upstream_lag_seconds === undefined
+        ? "-" : `${collector.upstream_lag_seconds}s`],
+      ["Lost (stored)", collector.lost ? `yes, after ${collector.lost_after_seconds}s` : "no"],
+      ["Backoff until", formatDate(collector.backoff_until)],
+      ["ETag applied", collector.etag_applied ? "yes" : "no"],
+      ["ETag candidate", collector.etag_candidate ? "yes" : "no"],
+      ["Pending poll run", collector.pending_poll_run_id],
+      ["Observed from", formatDate(collector.observed_from)],
+      ["State updated", formatDate(collector.updated_at)],
+      ["Pending outbox", collector.pending_outbox],
+      ["Open gaps", window.DwtConsole.gapsLabel(collector)],
+      ["Last error", collector.last_error],
+    ]);
+    const recent = Array.isArray(collector.recent_gaps) ? collector.recent_gaps : [];
+    gaps.innerHTML = recent.length
+      ? `<div class="table-shell" tabindex="0" role="region" aria-label="Recent collector gaps">
+          <table class="data-table">
+            <thead><tr><th>Poll run</th><th>Reason</th><th>Visible from</th><th>Visible to</th><th>Missing</th><th>Recovery</th><th>Created</th><th>Recovered</th></tr></thead>
+            <tbody>${recent.map((gap) => `<tr>
+              <td>${escapeHtml(gap.poll_run_id)}</td>
+              <td>${escapeHtml(gap.reason)}</td>
+              <td>${formatDate(gap.visible_from)}</td>
+              <td>${formatDate(gap.visible_to)}</td>
+              <td>${escapeHtml(gap.missing_count)}</td>
+              <td><span class="status-chip">${escapeHtml(gap.recovery_state)}</span></td>
+              <td>${formatDate(gap.created_at)}</td>
+              <td>${formatDate(gap.recovered_at)}</td>
+            </tr>`).join("")}</tbody>
+          </table>
+        </div>`
+      : `<p class="muted">No recent gaps recorded for this source.</p>`;
+  } catch (error) {
+    headline.textContent = "Collector status unavailable.";
+    headline.className = "collector-headline disabled";
+    summary.innerHTML = `<p class="action-error">Collector status failed: ${escapeHtml(error.message)}</p>`;
+    gaps.innerHTML = "";
+  }
 }
 
 async function loadSchemas() {
@@ -404,29 +626,111 @@ function renderRecentEvents(events) {
         <strong>${escapeHtml(event.event_type)} · ${escapeHtml(event.source)}</strong>
         <p>${escapeHtml(event.event_id)} <span class="code-chip">${escapeHtml(event.quality_status)}</span></p>
         <p>${formatDate(event.event_timestamp)}</p>
+        ${event.ingestion_id
+          ? `<p><button class="ghost-button small-button" type="button" data-event-detail="${escapeHtml(event.ingestion_id)}">Detail</button></p>`
+          : `<p class="muted">No ingestion identity reported for this event.</p>`}
       </article>
     `).join("")
     : `<div class="empty-state">No events ingested yet.</div>`;
 }
 
+async function showEventDetail(ingestionId) {
+  const panel = document.getElementById("eventDetailPanel");
+  panel.hidden = false;
+  if (!ingestionId || ingestionId === "undefined") {
+    panel.innerHTML = `<div class="subpanel-head"><h3>Event detail</h3>`
+      + `<button class="ghost-button" type="button" id="closeEventDetail">Close</button></div>`
+      + `<p class="action-error">This summary did not include an ingestion identity, so no detail request was made.</p>`;
+    document.getElementById("closeEventDetail").addEventListener("click", () => {
+      panel.hidden = true;
+      panel.innerHTML = "";
+    });
+    return;
+  }
+  panel.innerHTML = `<p class="muted">Loading event ${escapeHtml(ingestionId)}...</p>`;
+  try {
+    const detail = await fetchJson(`${API}/events/${encodeURIComponent(ingestionId)}`);
+    const evaluation = detail.window_evaluation || null;
+    const outcome = evaluation && evaluation.outcome ? evaluation.outcome : "NO EVALUATION";
+    const alerts = Array.isArray(detail.alerts) ? detail.alerts : [];
+    panel.innerHTML = `
+      <div class="subpanel-head">
+        <h3>Event ${escapeHtml(detail.ingestion_id)}</h3>
+        <button class="ghost-button" type="button" id="closeEventDetail">Close</button>
+      </div>
+      ${kvGrid([
+        ["Event id", detail.event_id],
+        ["Source", detail.source],
+        ["Event type", detail.event_type],
+        ["Origin", detail.origin],
+        ["Mode", detail.mode],
+        ["Quality status", detail.quality_status],
+        ["Baseline status", detail.baseline_status],
+        ["Event timestamp", formatDate(detail.event_timestamp)],
+        ["Received at", formatDate(detail.received_at)],
+        ["Window outcome", outcome],
+      ])}
+      <p class="muted">An OK outcome records that no rule fired in that window; it is not by itself proof that the event fully participated. Baseline-dependent checks are skipped while no active baseline exists.</p>
+      <details><summary>Window evaluation</summary><pre tabindex="0" role="region" aria-label="Window evaluation">${escapeHtml(JSON.stringify(evaluation, null, 2))}</pre></details>
+      <details><summary>Payload</summary><pre tabindex="0" role="region" aria-label="Event payload">${escapeHtml(JSON.stringify(detail.payload, null, 2))}</pre></details>
+      <div class="subpanel-head"><h3>Linked alerts</h3><span class="muted">Matched by ingestion identity, not business event id</span></div>
+      ${renderLinkedAlerts(alerts)}`;
+    document.getElementById("closeEventDetail").addEventListener("click", () => {
+      panel.hidden = true;
+      panel.innerHTML = "";
+    });
+  } catch (error) {
+    panel.innerHTML = `<div class="subpanel-head"><h3>Event detail</h3>`
+      + `<button class="ghost-button" type="button" id="closeEventDetail">Close</button></div>`
+      + `<p class="action-error">Failed to load ${escapeHtml(ingestionId)}: ${escapeHtml(error.message)}</p>`;
+    document.getElementById("closeEventDetail").addEventListener("click", () => {
+      panel.hidden = true;
+      panel.innerHTML = "";
+    });
+  }
+}
+
+function renderLinkedAlerts(alerts) {
+  if (!alerts.length) {
+    return `<p class="muted">No alerts linked to this ingestion.</p>`;
+  }
+  return `<div class="table-shell" tabindex="0" role="region" aria-label="Linked alerts">
+    <table class="data-table">
+      <thead><tr><th>Type</th><th>Severity</th><th>Status</th><th>Message</th><th>Created</th></tr></thead>
+      <tbody>${alerts.map((alert) => `<tr>
+        <td>${renderPill(alert.alert_type, "flagged")}</td>
+        <td>${renderSeverity(alert.severity)}</td>
+        <td><span class="status-chip">${escapeHtml(alert.status)}</span></td>
+        <td>${escapeHtml(alert.message)}</td>
+        <td>${formatDate(alert.created_at)}</td>
+      </tr>`).join("")}</tbody>
+    </table>
+  </div>`;
+}
+
 function renderAlertsTable(alerts) {
   const shell = document.getElementById("alertsTable");
+  document.getElementById("alertsPageLabel").textContent =
+    `Page ${alertPaging.page + 1}; ${alertPaging.size} per page; filters compose with AND`;
+  document.getElementById("alertsPrev").disabled = alertPaging.page === 0;
+  document.getElementById("alertsNext").disabled = alerts.length < alertPaging.size;
   if (!alerts.length) {
-    shell.innerHTML = `<div class="empty-state">No alerts matched the current filters.</div>`;
+    shell.innerHTML = `<div class="empty-state">No alerts matched the current filters on this page.</div>`;
     return;
   }
   shell.innerHTML = `
-    <table>
+    <table class="data-table">
       <thead>
         <tr>
           <th>Type</th>
           <th>Severity</th>
+          <th>Status</th>
           <th>Source</th>
           <th>Event Type</th>
-          <th>Field</th>
           <th>Message</th>
           <th>Created</th>
           <th>Evidence</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -434,18 +738,71 @@ function renderAlertsTable(alerts) {
           <tr>
             <td>${renderPill(alert.alert_type, "flagged")}</td>
             <td>${renderSeverity(alert.severity)}</td>
+            <td>${renderAlertStatus(alert)}</td>
             <td>${escapeHtml(alert.source)}</td>
             <td>${escapeHtml(alert.event_type)}</td>
-            <td>${escapeHtml(alert.field_path ?? "-")}</td>
-            <td>${escapeHtml(alert.message)}</td>
+            <td>${escapeHtml(alert.message)}${alert.root_cause ? `<div class="muted">Root cause: ${escapeHtml(alert.root_cause)}</div>` : ""}</td>
             <td>${formatDate(alert.created_at)}</td>
             <td><details><summary>View</summary><pre tabindex="0" role="region" aria-label="Alert evidence">${escapeHtml(JSON.stringify(alert.evidence, null, 2))}</pre></details></td>
+            <td>${renderAlertActions(alert)}</td>
           </tr>
         `).join("")}
       </tbody>
     </table>
   `;
+  shell.querySelectorAll("[data-alert-action]").forEach((button) => {
+    button.addEventListener("click", () => alertAction(button));
+  });
   crossfadePills(shell);
+}
+
+function renderAlertStatus(alert) {
+  const tone = alert.status === "RESOLVED" ? "healthy" : alert.status === "ACKNOWLEDGED" ? "info" : "warn";
+  const lifecycle = [];
+  if (alert.acknowledged_by || alert.acknowledged_at) {
+    lifecycle.push(`ack: ${escapeHtml(alert.acknowledged_by || "operator")} ${formatDate(alert.acknowledged_at)}`);
+  }
+  if (alert.resolved_at) {
+    lifecycle.push(`resolved ${formatDate(alert.resolved_at)}`);
+  }
+  return `${renderPill(alert.status, tone)}`
+    + (lifecycle.length ? `<div class="muted lifecycle">${lifecycle.join("<br>")}</div>` : "");
+}
+
+function renderAlertActions(alert) {
+  const id = escapeHtml(alert.id);
+  if (alert.status === "RESOLVED") {
+    return `<span class="muted">No action</span>`;
+  }
+  const acknowledge = alert.status === "OPEN"
+    ? `<button class="ghost-button small-button" type="button" data-alert-action="acknowledge" data-alert-id="${id}">Acknowledge</button>`
+    : "";
+  return `${acknowledge}<button class="ghost-button small-button" type="button" data-alert-action="resolve" data-alert-id="${id}">Resolve</button>`;
+}
+
+// Loading, disabled repeat submission and explicit success/failure feedback (guide 7.5).
+// A repeated action is idempotent server-side; 404/409 stay visible and retryable.
+async function alertAction(button) {
+  const id = button.getAttribute("data-alert-id");
+  const action = button.getAttribute("data-alert-action");
+  button.disabled = true;
+  setStatus("alertsStatus", `Submitting ${action} for alert ${id}...`);
+  try {
+    const response = await requestJson(`${API}/alerts/${encodeURIComponent(id)}/${action}`, {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (response.status === 404) throw new Error("alert no longer exists; refresh the list");
+    if (response.status === 409) throw new Error("illegal transition for this alert; refresh the list and retry");
+    if (!response.ok) throw new Error(describeHttpError(response));
+    const status = response.body && response.body.status ? response.body.status : `${action} applied`;
+    setStatus("alertsStatus", `Alert ${id}: ${status}. Re-querying alerts, incidents and summary.`);
+    await Promise.all([loadAlerts(), loadIncidents(), loadSummary()]);
+  } catch (error) {
+    setStatus("alertsStatus", `Alert ${id} ${action} failed: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function renderSourceHealthTable(rows) {
@@ -510,7 +867,7 @@ function renderSchemasTable(rows) {
   }
 
   shell.innerHTML = `
-    <table>
+    <table class="data-table">
       <thead>
         <tr>
           <th>Event Type</th>
@@ -519,6 +876,7 @@ function renderSchemasTable(rows) {
           <th>First Seen</th>
           <th>Last Seen</th>
           <th>Drift History</th>
+          <th>Manage</th>
         </tr>
       </thead>
       <tbody>
@@ -532,14 +890,154 @@ function renderSchemasTable(rows) {
             <td>
               <details>
                 <summary>${item.versions.length} version(s), ${item.drifting.length} drifting</summary>
-                <pre>${escapeHtml(JSON.stringify(item.versions, null, 2))}</pre>
+                <pre tabindex="0" role="region" aria-label="Schema versions for ${escapeHtml(item.eventType)}">${escapeHtml(JSON.stringify(item.versions, null, 2))}</pre>
               </details>
             </td>
+            <td><button class="ghost-button small-button" type="button" data-schema-manage="${escapeHtml(item.eventType)}">Manage</button></td>
           </tr>
         `).join("")}
       </tbody>
     </table>
   `;
+}
+
+// Version comparison and baseline activation over the real stored versions.
+// Publication (PUBLISHED) never implies that Streams applied the baseline.
+async function openSchemaPanel(eventType, notice) {
+  const panel = document.getElementById("schemaPanel");
+  panel.hidden = false;
+  panel.innerHTML = `<p class="muted">Loading schema versions for ${escapeHtml(eventType)}...</p>`;
+  try {
+    const encoded = encodeURIComponent(eventType);
+    const versions = await fetchJson(`${API}/schemas/${encoded}`);
+    const baselineResponse = await fetch(`${API}/schemas/${encoded}/baseline`);
+    let baseline = null;
+    if (baselineResponse.ok) {
+      baseline = await baselineResponse.json();
+    } else if (baselineResponse.status !== 404) {
+      throw new Error(`baseline status request failed with ${baselineResponse.status}`);
+    }
+    renderSchemaPanel(eventType, versions, baseline, notice);
+  } catch (error) {
+    panel.innerHTML = `<div class="subpanel-head"><h3>Schema: ${escapeHtml(eventType)}</h3>`
+      + `<button class="ghost-button" type="button" id="closeSchemaPanel">Close</button></div>`
+      + `<p class="action-error">Failed to load schema data: ${escapeHtml(error.message)}</p>`;
+    bindSchemaPanelClose();
+  }
+}
+
+function bindSchemaPanelClose() {
+  const close = document.getElementById("closeSchemaPanel");
+  if (close) {
+    close.addEventListener("click", () => {
+      const panel = document.getElementById("schemaPanel");
+      panel.hidden = true;
+      panel.innerHTML = "";
+    });
+  }
+}
+
+function renderSchemaPanel(eventType, versions, baseline, notice) {
+  const panel = document.getElementById("schemaPanel");
+  if (!versions.length) {
+    panel.innerHTML = `<div class="subpanel-head"><h3>Schema: ${escapeHtml(eventType)}</h3>`
+      + `<button class="ghost-button" type="button" id="closeSchemaPanel">Close</button></div>`
+      + `<p class="muted">No stored versions for this event type.</p>`;
+    bindSchemaPanelClose();
+    return;
+  }
+  const active = versions.find((version) => version.status === "ACTIVE") || versions[0];
+  const sync = baseline && baseline.baseline_sync
+    ? window.DwtConsole.schemaSyncLabel(baseline.baseline_sync) : null;
+  const options = versions.map((version) =>
+    `<option value="${version.id}">#${version.id} ${escapeHtml(shortHash(version.schema_hash))} ${escapeHtml(version.status)}</option>`).join("");
+  panel.innerHTML = `
+    <div class="subpanel-head">
+      <h3>Schema: ${escapeHtml(eventType)}</h3>
+      <button class="ghost-button" type="button" id="closeSchemaPanel">Close</button>
+    </div>
+    ${kvGrid([
+      ["Active version", `#${active.id}`],
+      ["Active hash", shortHash(active.schema_hash)],
+      ["First seen", formatDate(active.first_seen_at)],
+      ["Last seen", formatDate(active.last_seen_at)],
+      ["Publication state", sync ? sync.state : "no active baseline"],
+    ])}
+    ${sync
+      ? `<p class="muted">${escapeHtml(sync.publication)} ${escapeHtml(sync.application)}</p>`
+      : `<p class="muted">Publication is not proof of consumer application; no active baseline is recorded yet.</p>`}
+    <div class="compare-row">
+      <label><span>Baseline version</span><select id="schemaCompareBase">${options}</select></label>
+      <label><span>Candidate version</span><select id="schemaCompareCandidate">${options}</select></label>
+      <button id="schemaCompare" class="ghost-button" type="button">Compare structure</button>
+      <button id="schemaActivate" class="ghost-button" type="button">Activate as baseline</button>
+      <button id="schemaConfirmActivate" class="ghost-button" type="button" hidden>Confirm activation</button>
+      <button id="schemaCancelActivate" class="ghost-button" type="button" hidden>Cancel</button>
+    </div>
+    <p id="schemaPanelStatus" class="action-status" role="status" aria-live="polite"></p>
+    <div id="schemaDiff"></div>`;
+  const base = document.getElementById("schemaCompareBase");
+  const candidate = document.getElementById("schemaCompareCandidate");
+  base.value = String(active.id);
+  candidate.value = String(versions[versions.length - 1].id);
+  bindSchemaPanelClose();
+  document.getElementById("schemaCompare").addEventListener("click", () => {
+    const baseVersion = versions.find((version) => String(version.id) === base.value);
+    const candidateVersion = versions.find((version) => String(version.id) === candidate.value);
+    renderSchemaDiff(baseVersion, candidateVersion);
+  });
+  const activate = document.getElementById("schemaActivate");
+  const confirmActivate = document.getElementById("schemaConfirmActivate");
+  const cancelActivate = document.getElementById("schemaCancelActivate");
+  activate.addEventListener("click", () => {
+    activate.hidden = true;
+    confirmActivate.hidden = false;
+    cancelActivate.hidden = false;
+    confirmActivate.focus();
+  });
+  cancelActivate.addEventListener("click", () => {
+    activate.hidden = false;
+    confirmActivate.hidden = true;
+    cancelActivate.hidden = true;
+    activate.focus();
+  });
+  confirmActivate.addEventListener("click", async () => {
+    confirmActivate.disabled = true;
+    setStatus("schemaPanelStatus", "Activating baseline...");
+    try {
+      const response = await requestJson(`${API}/schemas/${encodeURIComponent(eventType)}/baseline`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version_id: Number(candidate.value) }),
+      });
+      if (!response.ok) throw new Error(describeHttpError(response));
+      const label = window.DwtConsole.schemaSyncLabel(response.body && response.body.baseline_sync);
+      await loadSchemas();
+      await openSchemaPanel(eventType, `${label.publication} ${label.application}`);
+    } catch (error) {
+      setStatus("schemaPanelStatus", `Activation failed: ${error.message}`, true);
+      confirmActivate.disabled = false;
+    }
+  });
+  if (notice) setStatus("schemaPanelStatus", notice);
+}
+
+function renderSchemaDiff(baseVersion, candidateVersion) {
+  const container = document.getElementById("schemaDiff");
+  const base = baseVersion.schema || {};
+  const candidate = candidateVersion.schema || {};
+  const added = Object.keys(candidate).filter((key) => !(key in base));
+  const missing = Object.keys(base).filter((key) => !(key in candidate));
+  const changed = Object.keys(base).filter((key) => key in candidate && String(base[key]) !== String(candidate[key]));
+  const block = (title, keys, describe) => `
+    <div class="diff-block"><h4>${title} (${keys.length})</h4>
+      ${keys.length
+        ? `<ul>${keys.map((key) => `<li><span class="code-chip">${escapeHtml(key)}</span> ${escapeHtml(describe(key))}</li>`).join("")}</ul>`
+        : `<p class="muted">None.</p>`}
+    </div>`;
+  container.innerHTML = block(`Added in #${candidateVersion.id}`, added, (key) => `type ${String(candidate[key])}`)
+    + block(`Missing from #${candidateVersion.id}`, missing, (key) => `baseline type ${String(base[key])}`)
+    + block("Type changed", changed, (key) => `${String(base[key])} to ${String(candidate[key])}`);
 }
 
 function renderStatus(status) {
@@ -598,6 +1096,52 @@ async function postJson(url, body) {
     throw new Error(`Request failed for ${url}: ${response.status}`);
   }
   return response.status === 204 ? null : response.json();
+}
+
+/** POST/PUT with the CSRF header that also exposes HTTP status and parsed body for retry logic. */
+async function requestJson(url, options = {}) {
+  const response = await mutate(url, Object.assign({}, options, { method: options.method || "POST" }));
+  let body = null;
+  try {
+    body = await response.json();
+  } catch (error) {
+    body = null;
+  }
+  return { ok: response.ok, status: response.status, body };
+}
+
+function describeHttpError(response) {
+  const body = response.body;
+  if (body && body.message) {
+    return `${body.error || `HTTP ${response.status}`}: ${body.message}`;
+  }
+  if (body && body.error) {
+    return String(body.error);
+  }
+  return `HTTP ${response.status}`;
+}
+
+function setStatus(id, message, isError) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = message;
+  el.classList.toggle("error", Boolean(isError));
+}
+
+function kvGrid(rows) {
+  return `<div class="kv-grid">${rows.map(([label, value]) => {
+    const text = value === null || value === undefined || value === "" ? "-" : String(value);
+    return `<div class="kv"><span>${escapeHtml(label)}</span><strong>${escapeHtml(text)}</strong></div>`;
+  }).join("")}</div>`;
+}
+
+function formatDurationMs(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const seconds = Math.round(Number(value) / 1000);
+  if (!Number.isFinite(seconds)) return "-";
+  if (seconds % 3600 === 0) return `${seconds / 3600} h (${value} ms)`;
+  if (seconds % 60 === 0) return `${seconds / 60} min (${value} ms)`;
+  return `${seconds} s (${value} ms)`;
 }
 
 // Browser mutations must carry the CSRF token from the readable XSRF-TOKEN cookie.

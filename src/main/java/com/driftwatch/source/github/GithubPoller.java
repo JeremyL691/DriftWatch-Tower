@@ -19,7 +19,6 @@ import com.driftwatch.quality.ScopeKey;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -44,7 +43,6 @@ import java.util.concurrent.TimeUnit;
  * updates poll health only and never advances the event cursor.
  */
 @Component
-@ConditionalOnProperty(name = "driftwatch.source.github.enabled", havingValue = "true")
 public class GithubPoller {
 
     private static final Logger log = LoggerFactory.getLogger(GithubPoller.class);
@@ -70,6 +68,25 @@ public class GithubPoller {
     private final com.driftwatch.persistence.DeadLetterRecordRepository deadLetterRepository;
     private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     private final DriftwatchMetrics metrics;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public GithubPoller(com.driftwatch.config.RuntimeConfiguration runtime,
+                        GithubEventsClient client,
+                        GithubEventConverter converter,
+                        CollectorStateRepository stateRepository,
+                        SourceInboxRepository inboxRepository,
+                        SourceOutboxRepository outboxRepository,
+                        SourcePollRunRepository pollRunRepository,
+                        SourceGapRepository gapRepository,
+                        KafkaTemplate<String, RawEnvelope> rawTemplate,
+                        com.driftwatch.persistence.ProcessedReceiptRepository receiptRepository,
+                        com.driftwatch.persistence.DeadLetterRecordRepository deadLetterRepository,
+                        org.springframework.transaction.PlatformTransactionManager transactionManager,
+                        DriftwatchMetrics metrics) {
+        this(runtime.startupProperties(), client, converter, stateRepository, inboxRepository, outboxRepository,
+                pollRunRepository, gapRepository, rawTemplate, receiptRepository, deadLetterRepository,
+                transactionManager, metrics);
+    }
 
     public GithubPoller(DriftwatchProperties properties,
                         GithubEventsClient client,
@@ -105,6 +122,7 @@ public class GithubPoller {
      */
     public void pollNow() {
         DriftwatchProperties.Source.Github config = properties.source().github();
+        if (!config.enabled()) return;
         String source = config.sourceId();
         Instant now = Instant.now();
         CollectorStateEntity state = stateRepository.findById(source)
