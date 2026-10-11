@@ -134,10 +134,12 @@ public class DemoScenarioService {
                 now.minusSeconds(900),
                 Map.of("symbol", "BTC/USDT", "bid", 108000.1, "ask", 108002.4, "trace", eventId)
         );
-        producer.publish(com.driftwatch.event.RawEnvelope.forRest(stale, java.time.Instant.now()));
+        // Freshness follows when this application last received the source (guide 7.2), so the
+        // demo simulates a source whose only delivery arrived 15 minutes ago.
+        producer.publish(com.driftwatch.event.RawEnvelope.forRest(stale, now.minusSeconds(900)));
         return new ScenarioRun("stale-source",
                 "Published source " + source
-                        + " whose latest event_timestamp is 15 minutes old — expect source health to become STALE and a STALE_SOURCE alert.",
+                        + " whose last delivery was received 15 minutes ago — expect source health to become STALE and a STALE_SOURCE alert.",
                 List.of(eventId));
     }
 
