@@ -9,4 +9,6 @@ public interface BaselineOutboxRepository extends JpaRepository<BaselineOutboxEn
     List<BaselineOutboxEntity> findTop50ByStatusOrderByIdAsc(String status);
 
     long countByStatus(String status);
+
+    java.util.Optional<BaselineOutboxEntity> findFirstByEventTypeAndVersionIdOrderByIdDesc(String eventType, Long versionId);
 }

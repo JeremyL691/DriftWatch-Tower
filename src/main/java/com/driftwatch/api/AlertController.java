@@ -38,19 +38,16 @@ public class AlertController {
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
-        PageRequest pageable = PageRequest.of(page, size);
-        Page<QualityAlertEntity> result;
-        if (status != null && !status.isBlank()) {
-            result = repository.findByStatusOrderByCreatedAtDesc(status, pageable);
-        } else if (type != null && source != null && !source.isBlank()) {
-            result = repository.findByAlertTypeAndSourceOrderByCreatedAtDesc(type, source, pageable);
-        } else if (type != null) {
-            result = repository.findByAlertTypeOrderByCreatedAtDesc(type, pageable);
-        } else if (source != null && !source.isBlank()) {
-            result = repository.findBySourceOrderByCreatedAtDesc(source, pageable);
-        } else {
-            result = repository.findAllByOrderByCreatedAtDesc(pageable);
+        if (page < 0 || page > 1000000 || size < 1 || size > 100) {
+            throw new IllegalArgumentException("page must be 0..1000000 and size 1..100");
         }
+        status = status == null || status.isBlank() ? null : status;
+        source = source == null || source.isBlank() ? null : source;
+        if (status != null && !List.of("OPEN", "ACKNOWLEDGED", "RESOLVED").contains(status)) {
+            throw new IllegalArgumentException("status must be OPEN, ACKNOWLEDGED or RESOLVED");
+        }
+        PageRequest pageable = PageRequest.of(page, size);
+        Page<QualityAlertEntity> result = repository.managementFilter(type, source, status, pageable);
         return result.getContent().stream()
                 .map(AlertResponse::from)
                 .toList();

@@ -34,6 +34,12 @@
         <a href="#deadletters" class="rail-link" data-target="deadletters" aria-label="Dead letters">
             <i data-lucide="mail-warning"></i>
         </a>
+        <a href="#operations" class="rail-link" data-target="operations" aria-label="Data retention">
+            <i data-lucide="database" aria-hidden="true"></i>
+        </a>
+        <a href="#configuration" class="rail-link" data-target="configuration" aria-label="Configuration">
+            <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+        </a>
         <a href="#demos" class="rail-link" data-target="demos" aria-label="Demo scenarios">
             <i data-lucide="play-circle" aria-hidden="true"></i>
         </a>
@@ -53,7 +59,7 @@
                 <i data-lucide="sun-moon" aria-hidden="true"></i>
                 <span id="themeToggleLabel">Light</span>
             </button>
-            <div id="clock" class="clock" aria-label="Local time">--:--:--</div>
+            <div id="clock" class="clock" role="timer" aria-label="Local time">--:--:--</div>
             <div id="wsStatus" class="ws-status disconnected">
                 <span class="ws-dot"></span>
                 <span class="ws-label">Disconnected</span>
@@ -126,6 +132,7 @@
                 </table>
                 </div>
             </div>
+            <div id="eventDetailPanel" class="subpanel event-detail" hidden></div>
         </section>
 
         <section id="alerts" class="panel">
@@ -153,10 +160,25 @@
                             <option value="FIELD_FORMAT_MISMATCH">FIELD_FORMAT_MISMATCH</option>
                         </select>
                     </label>
+                    <label>
+                        <span>Status</span>
+                        <select id="alertStatusFilter">
+                            <option value="">All</option>
+                            <option value="OPEN">OPEN</option>
+                            <option value="ACKNOWLEDGED">ACKNOWLEDGED</option>
+                            <option value="RESOLVED">RESOLVED</option>
+                        </select>
+                    </label>
                     <button id="applyAlertFilters" class="ghost-button">Apply</button>
                 </div>
             </div>
+            <p id="alertsStatus" class="action-status" role="status" aria-live="polite"></p>
             <div id="alertsTable" class="table-shell"></div>
+            <div class="pager">
+                <button id="alertsPrev" class="ghost-button" type="button">Previous</button>
+                <span id="alertsPageLabel" class="muted">Page 1</span>
+                <button id="alertsNext" class="ghost-button" type="button">Next</button>
+            </div>
         </section>
 
         <section id="health" class="panel">
@@ -168,6 +190,15 @@
                 <span class="muted">Sorted by lowest health score first</span>
             </div>
             <div id="sourceHealthTable" class="table-shell" tabindex="0" role="region" aria-label="Source health table"></div>
+            <div class="subpanel collector-panel">
+                <div class="subpanel-head">
+                    <h3>GitHub collector operations</h3>
+                    <button id="refreshCollector" class="ghost-button" type="button">Refresh</button>
+                </div>
+                <p id="collectorHeadline" class="collector-headline"></p>
+                <div id="collectorSummary" class="kv-grid"></div>
+                <div id="collectorGaps"></div>
+            </div>
         </section>
 
         <section id="schemas" class="panel">
@@ -179,6 +210,7 @@
                 <span class="muted">Grouped by event type</span>
             </div>
             <div id="schemasTable" class="table-shell"></div>
+            <div id="schemaPanel" class="subpanel schema-panel" hidden></div>
         </section>
 
         <section id="incidents" class="panel">
@@ -189,7 +221,7 @@
                 </div>
                 <span class="muted">Alerts grouped by source and event type</span>
             </div>
-            <div class="table-shell" tabindex="0" role="region" aria-label="Scrollable table">
+            <div class="table-shell" tabindex="0" role="region" aria-label="Incidents table">
                 <table class="data-table">
                     <thead>
                         <tr><th>ID</th><th>Title</th><th>Source</th><th>Status</th><th>Created</th><th>Action</th></tr>
@@ -199,6 +231,7 @@
                     </tbody>
                 </table>
             </div>
+            <p id="incidentStatus" class="action-status" role="status" aria-live="polite"></p>
         </section>
 
         <section id="metrics" class="panel">
@@ -209,7 +242,7 @@
                 </div>
                 <span class="muted">Per source, event type and one-minute window</span>
             </div>
-            <div class="table-shell" tabindex="0" role="region" aria-label="Scrollable table">
+            <div class="table-shell" tabindex="0" role="region" aria-label="Metric windows table">
                 <table class="data-table">
                     <thead>
                         <tr><th>Source</th><th>Event type</th><th>Metric</th><th>Window start</th><th>Value</th></tr>
@@ -229,7 +262,7 @@
                 </div>
                 <span class="muted">Durable failures with a replay action</span>
             </div>
-            <div class="table-shell" tabindex="0" role="region" aria-label="Scrollable table">
+            <div class="table-shell" tabindex="0" role="region" aria-label="Dead letters table">
                 <table class="data-table">
                     <thead>
                         <tr><th>Diagnostic</th><th>Stage</th><th>Source</th><th>Attempts</th><th>State</th><th>Detail</th></tr>
@@ -239,7 +272,65 @@
                     </tbody>
                 </table>
             </div>
+            <p id="deadLetterStatus" class="action-status" role="status" aria-live="polite"></p>
             <div id="deadLetterDetail" class="subpanel dead-letter-detail" hidden></div>
+        </section>
+
+        <section id="operations" class="panel">
+            <div class="section-head">
+                <div>
+                    <p class="section-kicker">Operations</p>
+                    <h2>Data retention</h2>
+                </div>
+                <div class="head-actions">
+                    <button id="refreshRetention" class="ghost-button" type="button">Refresh</button>
+                </div>
+            </div>
+            <p class="muted retention-note">
+                A manual run prunes only rows past the policy below. Zero pruned rows is a valid
+                result when the stored fixture is recent; it does not prove aged data is handled.
+            </p>
+            <div id="retentionSummary" class="kv-grid"></div>
+            <div class="form-actions">
+                <button id="retentionRun" class="ghost-button" type="button">Run retention now</button>
+                <button id="retentionConfirm" class="ghost-button" type="button" hidden>Confirm run</button>
+                <button id="retentionCancel" class="ghost-button" type="button" hidden>Cancel</button>
+            </div>
+            <p id="retentionStatus" class="action-status" role="status" aria-live="polite"></p>
+        </section>
+
+        <section id="configuration" class="panel">
+            <div class="section-head">
+                <div>
+                    <p class="section-kicker">Configuration</p>
+                    <h2>Detector rules and GitHub collector</h2>
+                </div>
+                <div class="head-actions">
+                    <button id="configReload" class="ghost-button" type="button">Load latest</button>
+                    <button id="configRevert" class="ghost-button" type="button">Reset form</button>
+                </div>
+            </div>
+            <div class="state-banner info" id="configBanner" role="status" aria-live="polite" hidden></div>
+            <div class="config-state">
+                <p><strong id="configRevision">Saved revision -</strong> <span id="configEffective" class="muted"></span></p>
+                <p id="configPending"></p>
+                <p id="configHistoryNotice" class="field-error" hidden></p>
+                <p id="configDirtyCount" class="muted">No unsaved edits</p>
+            </div>
+            <form id="configForm" novalidate>
+                <div class="form-actions">
+                    <button id="configSave" class="ghost-button" type="submit" disabled>Save configuration</button>
+                    <span class="muted">A save replaces the complete document; every field below is validated together.</span>
+                </div>
+            </form>
+            <div class="subpanel config-history">
+                <div class="subpanel-head">
+                    <h3>Operation history</h3>
+                    <span class="muted">Successful saves only; field names, never values</span>
+                </div>
+                <ul id="configHistoryList" class="history-list"></ul>
+                <button id="configHistoryMore" class="ghost-button" type="button" hidden>Load more</button>
+            </div>
         </section>
 
         <section id="demos" class="panel">
@@ -270,6 +361,8 @@
 <script src="/dashboard/vendor/lucide.min.js"></script>
 <script src="/dashboard/vendor/sockjs.min.js"></script>
 <script src="/dashboard/vendor/stomp.min.js"></script>
+<script src="/dashboard/console-lib.js"></script>
+<script src="/dashboard/configuration.js"></script>
 <script src="/dashboard/app.js"></script>
 </body>
 </html>

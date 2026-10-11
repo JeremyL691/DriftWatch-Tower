@@ -19,6 +19,10 @@ public class MetricWindowService implements MetricWindowRecorder {
     private final Duration windowSize;
 
     @Autowired
+    public MetricWindowService(MetricWindowRepository repository, com.driftwatch.config.RuntimeConfiguration runtime) {
+        this(repository, runtime.startupProperties());
+    }
+
     public MetricWindowService(MetricWindowRepository repository, DriftwatchProperties properties) {
         this(repository, properties.metrics().windowSize());
     }

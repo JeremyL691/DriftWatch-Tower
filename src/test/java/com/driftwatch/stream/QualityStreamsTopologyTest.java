@@ -220,6 +220,37 @@ class QualityStreamsTopologyTest {
         }
     }
 
+    @Test
+    void legacyLesserMinimumHistoryStillWarmsUpUntilTheEntireBaselineSpanIsObserved() {
+        assertFullSpanHistory(3, 1);
+    }
+
+    @Test
+    void defaultHistoryWarmsUpUntilBothCompleteBaselineWindowsAreObserved() {
+        assertFullSpanHistory(2, 2);
+    }
+
+    private void assertFullSpanHistory(int baselineWindows, int legacyMinimumHistory) {
+        TopologySettings configured = new TopologySettings(Duration.ofMinutes(5), Duration.ofMinutes(1), .6, 3,
+                baselineWindows, legacyMinimumHistory, 3, 5);
+        try (Driver driver = driver(quietLate(), emptyRange(), emptyFormat(), NO_BASELINE, configured)) {
+            Instant t = Instant.now().minusSeconds(60).truncatedTo(ChronoUnit.MINUTES);
+            driver.pipe(new DataEvent("history-first", "history-config", "probe", t.minusSeconds(60), Map.of("nonce", 0)));
+            for (int i=1; i<=5; i++) driver.pipe(new DataEvent("warming-"+i, "history-config", "probe", t.plusSeconds(i), Map.of("nonce", i)));
+            var warming = driver.output();
+            assertThat(warming).flatExtracting(kv -> kv.value.alerts()).noneMatch(a -> a.type() == AlertType.ANOMALY_SPIKE);
+            assertThat(warming.subList(1, warming.size())).allSatisfy(kv -> assertThat(kv.value.windowEvaluation().detail()).isEqualTo("WARMING_UP"));
+            // Complete the full observed span; zero windows inside it count, unknown earlier history does not.
+            Instant complete = t.plusSeconds((baselineWindows - 1L) * 60);
+            for (int i=1; i<=10; i++) driver.pipe(new DataEvent("complete-"+i, "history-config", "probe", complete.plusSeconds(i), Map.of("nonce", i+5)));
+            assertThat(driver.output()).flatExtracting(kv -> kv.value.alerts()).filteredOn(a -> a.type() == AlertType.ANOMALY_SPIKE)
+                    .singleElement().satisfies(alert -> {
+                        assertThat(alert.evidence().get("history_windows").asInt()).isEqualTo(baselineWindows);
+                        assertThat(alert.evidence().get("baseline").asDouble()).isEqualTo(6.0 / baselineWindows);
+                    });
+        }
+    }
+
     private static FieldRangeDetector.Bounds range(double min, double max) {
         FieldRangeDetector.Bounds b = new FieldRangeDetector.Bounds();
         b.setMin(min);

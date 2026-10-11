@@ -35,6 +35,15 @@ public class CollectorStatusService {
     private final DriftwatchProperties properties;
     private final Clock clock;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    public CollectorStatusService(CollectorStateRepository stateRepository,
+                                  SourceOutboxRepository outboxRepository,
+                                  SourceGapRepository gapRepository,
+                                  com.driftwatch.config.RuntimeConfiguration runtime,
+                                  Clock clock) {
+        this(stateRepository, outboxRepository, gapRepository, runtime.startupProperties(), clock);
+    }
+
     public CollectorStatusService(CollectorStateRepository stateRepository,
                                   SourceOutboxRepository outboxRepository,
                                   SourceGapRepository gapRepository,
@@ -77,10 +86,28 @@ public class CollectorStatusService {
         view.put("lost_after_seconds", lostAfter.getSeconds());
         view.put("backoff_until", state.getBackoffUntil());
         view.put("etag_applied", state.getEtagApplied() != null);
-        view.put("pending_outbox", outboxRepository.countByStatus(SourceOutboxEntity.STATUS_PENDING));
-        view.put("open_gaps", gapRepository.countByRecoveryState(
+        view.put("etag_candidate", state.getEtagCandidate() != null);
+        view.put("pending_poll_run_id", state.getPendingPollRunId());
+        view.put("observed_from", state.getObservedFrom());
+        view.put("updated_at", state.getUpdatedAt());
+        view.put("collector_enabled", properties.source().github().enabled());
+        view.put("poll_interval_ms", properties.source().github().pollInterval().toMillis());
+        view.put("pending_outbox", outboxRepository.countBySourceAndStatus(state.getSource(), SourceOutboxEntity.STATUS_PENDING));
+        view.put("open_gaps", gapRepository.countBySourceAndRecoveryState(state.getSource(),
                 com.driftwatch.persistence.SourceGapEntity.STATE_OPEN));
+        view.put("recent_gaps", gapRepository.findTop20BySourceOrderByIdDesc(state.getSource()).stream()
+                .map(this::gapView).toList());
         view.put("last_error", state.getLastError());
+        return view;
+    }
+
+    private Map<String, Object> gapView(com.driftwatch.persistence.SourceGapEntity gap) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("id", gap.getId()); view.put("poll_run_id", gap.getPollRunId());
+        view.put("reason", gap.getReason()); view.put("visible_from", gap.getVisibleFrom());
+        view.put("visible_to", gap.getVisibleTo()); view.put("confirmed_from", gap.getConfirmedFrom());
+        view.put("missing_count", gap.getMissingCount()); view.put("recovery_state", gap.getRecoveryState());
+        view.put("created_at", gap.getCreatedAt()); view.put("recovered_at", gap.getRecoveredAt());
         return view;
     }
 
