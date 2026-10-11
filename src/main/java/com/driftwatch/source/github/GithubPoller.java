@@ -172,7 +172,11 @@ public class GithubPoller {
             runRound(config, state, now);
         } catch (Exception e) {
             log.error("poll round for {} failed unexpectedly: {}", source, e.toString());
-            applyBackoff(state, SERVER_BACKOFF_MIN, "unexpected: " + e.getClass().getSimpleName(), now);
+            // The round may have staged before failing. Back off from the stored row: the pre-stage
+            // object still has no pending run, and saving it would erase pending_poll_run_id and the
+            // candidate ETag.
+            CollectorStateEntity current = stateRepository.findById(source).orElse(state);
+            applyBackoff(current, SERVER_BACKOFF_MIN, "unexpected: " + e.getClass().getSimpleName(), now);
         } finally {
             releaseLease(state, Instant.now());
         }
@@ -213,8 +217,12 @@ public class GithubPoller {
         if (first.body() != null) {
             toList(first.body()).forEach(node -> paged.add(new PagedRecord(node, firstUrl)));
         }
+        // Visibility checks compare against what this collector knew before this round stages rows.
+        Instant previousLastEventAt = state.getLastEventAt();
+        Instant previousLastPollSuccess = state.getLastPollSuccess();
         int pagesRead = 1;
         boolean truncated = false;
+        boolean paginationIncomplete = false;
         while (pagesRead < config.maxPages()) {
             List<JsonNode> page = recordsOfLastPage(paged.stream().map(PagedRecord::node).toList(),
                     config.pageSize(), pagesRead);
@@ -229,29 +237,47 @@ public class GithubPoller {
             String pageUrl = config.eventsUrlForPage(pagesRead, config.pageSize());
             GithubFetchResult next = client.fetchPage(pageUrl, null);
             if (next.status() != GithubFetchResult.Status.OK) {
-                // A failed later page keeps the records already read; the checkpoint is not applied.
+                // A failed later page keeps the records already read, but the round must not move
+                // the checkpoint: page 1's ETag would answer 304 next time and the missing page
+                // would never be read again.
                 recordGap(source, run.getId(), "PAGINATION_INCOMPLETE",
                         null, null, "page " + pagesRead + " failed: " + next.failureReason());
                 truncated = true;
+                paginationIncomplete = true;
                 break;
             }
             toList(next.body()).forEach(node -> paged.add(new PagedRecord(node, pageUrl)));
         }
+        // LIVE rounds that stop at max-pages while the last page was full of unknown records never
+        // saw the older records behind it: that is a truncation, not a clean stop (guide 6.3 step 7).
+        // This must run before the sort, because page slicing follows the fetch order.
+        if (!bootstrap && !truncated && pagesRead >= config.maxPages()) {
+            List<JsonNode> lastPage = recordsOfLastPage(paged.stream().map(PagedRecord::node).toList(),
+                    config.pageSize(), pagesRead);
+            if (lastPage.size() >= config.pageSize() && !allKnown(source, lastPage)) {
+                truncated = true;
+            }
+        }
         paged.sort((left, right) -> GithubEventConverter.compareForOrdering(left.node(), right.node()));
-        List<JsonNode> records = paged.stream().map(PagedRecord::node).toList();
 
-        StageResult staged = stage(source, run, paged, first, config);
+        // An incomplete traversal stages with no ETag candidate, so the next round re-reads page 1
+        // unconditionally instead of accepting a 304 that would skip the missing page.
+        String etagCandidate = paginationIncomplete ? null : first.etag();
+        StageResult staged = stage(source, run, paged, first, etagCandidate, config);
         if (truncated) {
             recordGap(source, run.getId(), "PAGINATION_TRUNCATED",
                     staged.oldestCreatedAt(), staged.newestCreatedAt(),
                     "stopped after " + pagesRead + " pages; later records are not yet visible");
         }
-        detectVisibilityGaps(state, run, staged, now);
+        detectVisibilityGaps(source, run, staged, previousLastEventAt, previousLastPollSuccess);
         if (first.rateLimitRemaining() != null && first.rateLimitRemaining() <= 0) {
             recordGap(source, run.getId(), "BUDGET_EXHAUSTED", staged.oldestCreatedAt(),
                     staged.newestCreatedAt(), "rate-limit budget exhausted; the round stays pending");
         }
 
+        // stage() committed a new row with the pending run. Continue from that stored row, not the
+        // pre-stage object, so promotion sees pending_poll_run_id in this same round.
+        state = stateRepository.findById(source).orElseThrow();
         relayPending(source);
         promoteIfComplete(source, state, now);
     }
@@ -268,12 +294,14 @@ public class GithubPoller {
      * bean, so an annotation on this method would be bypassed.
      */
     StageResult stage(String source, SourcePollRunEntity run, List<PagedRecord> records,
-                      GithubFetchResult first, DriftwatchProperties.Source.Github config) {
-        return transactionTemplate.execute(status -> stageInTransaction(source, run, records, first, config));
+                      GithubFetchResult first, String etagCandidate, DriftwatchProperties.Source.Github config) {
+        return transactionTemplate.execute(status ->
+                stageInTransaction(source, run, records, first, etagCandidate, config));
     }
 
     private StageResult stageInTransaction(String source, SourcePollRunEntity run, List<PagedRecord> records,
-                                           GithubFetchResult first, DriftwatchProperties.Source.Github config) {
+                                           GithubFetchResult first, String etagCandidate,
+                                           DriftwatchProperties.Source.Github config) {
         Instant now = Instant.now();
         int newRecords = 0;
         Instant oldest = null;
@@ -315,7 +343,7 @@ public class GithubPoller {
             newRecords++;
         }
         run.setStatus(SourcePollRunEntity.STATUS_STAGED);
-        run.setEtagCandidate(first.etag());
+        run.setEtagCandidate(etagCandidate);
         run.setPagesRead(Math.max(1, (records.size() + config.pageSize() - 1) / config.pageSize()));
         run.setRecordsSeen(records.size());
         run.setNewRecords(newRecords);
@@ -327,7 +355,7 @@ public class GithubPoller {
 
         CollectorStateEntity state = stateRepository.findById(source).orElseThrow();
         state.setStatus(CollectorStateEntity.STATUS_STAGED);
-        state.setEtagCandidate(first.etag());
+        state.setEtagCandidate(etagCandidate);
         state.setPendingPollRunId(run.getId());
         state.setLastPollSuccess(now);
         state.setConsecutiveFailures(0);
@@ -414,8 +442,13 @@ public class GithubPoller {
             state.setObservedFrom(staged.stream().map(SourceInboxEntity::getCreatedAt)
                     .min(Comparator.naturalOrder()).orElse(null));
         }
-        state.setLastEventAt(staged.stream().map(SourceInboxEntity::getCreatedAt)
-                .max(Comparator.naturalOrder()).orElse(state.getLastEventAt()));
+        // lastEventAt is the newest upstream event this collector has applied. A round whose records
+        // are older must not move it backwards, or the next no-overlap check compares against the wrong bound.
+        Instant newestStaged = staged.stream().map(SourceInboxEntity::getCreatedAt)
+                .max(Comparator.naturalOrder()).orElse(null);
+        if (newestStaged != null && (state.getLastEventAt() == null || newestStaged.isAfter(state.getLastEventAt()))) {
+            state.setLastEventAt(newestStaged);
+        }
         metrics.recordCollectorUpstreamLag(state.getLastEventAt());
         state.setNextPollAt(now.plus(nextInterval(state, null)));
         state.setUpdatedAt(now);
@@ -507,17 +540,21 @@ public class GithubPoller {
 
     // ------------------------------------------------------------------ gaps and helpers
 
-    private void detectVisibilityGaps(CollectorStateEntity state, SourcePollRunEntity run,
-                                      StageResult staged, Instant now) {
-        String source = state.getSource();
+    /**
+     * Compares this round with what the collector knew before it: the newest upstream event
+     * ({@code previousLastEventAt}) and the last successful poll. observedFrom is not used here, because
+     * it is the bootstrap's oldest event and every busy round would then look like a gap.
+     */
+    private void detectVisibilityGaps(String source, SourcePollRunEntity run, StageResult staged,
+                                      Instant previousLastEventAt, Instant previousLastPollSuccess) {
         if (staged.oldestCreatedAt() == null) {
             return;
         }
-        if (state.getObservedFrom() != null && staged.oldestCreatedAt().isAfter(state.getObservedFrom())) {
+        if (previousLastEventAt != null && staged.oldestCreatedAt().isAfter(previousLastEventAt)) {
             recordGap(source, run.getId(), "NO_OVERLAP", staged.oldestCreatedAt(), staged.newestCreatedAt(),
-                    "the visible window starts after the previously observed range");
+                    "the visible window starts after the newest event already observed");
         }
-        Instant lastSuccess = state.getLastPollSuccess();
+        Instant lastSuccess = previousLastPollSuccess;
         if (lastSuccess != null
                 && staged.oldestCreatedAt().isAfter(lastSuccess.plus(properties.source().github().pollInterval()))) {
             recordGap(source, run.getId(), "DOWNTIME_BEYOND_VISIBLE_RANGE",

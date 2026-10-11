@@ -13,11 +13,16 @@ public interface RawEventRepository extends JpaRepository<RawEventEntity, Long> 
     java.util.Optional<RawEventEntity> findFirstByPayloadHashAndReceivedAtAfterAndEventIdNot(
             String payloadHash, java.time.Instant cutoff, String eventId);
 
-    long countBySourceAndEventTimestampAfter(String source, java.time.Instant cutoff);
+    /**
+     * Source health counts by when this application received the event, not by the upstream
+     * event_timestamp: a backfilled or historic payload must not make a live source look quiet or
+     * stale (guide 7.2).
+     */
+    long countBySourceAndReceivedAtAfter(String source, java.time.Instant cutoff);
 
-    long countBySourceAndEventTimestampAfterAndQualityStatus(String source, java.time.Instant cutoff, String qualityStatus);
+    long countBySourceAndReceivedAtAfterAndQualityStatus(String source, java.time.Instant cutoff, String qualityStatus);
 
-    java.util.Optional<RawEventEntity> findFirstBySourceOrderByEventTimestampDescIdDesc(String source);
+    java.util.Optional<RawEventEntity> findFirstBySourceOrderByReceivedAtDescIdDesc(String source);
 
     @org.springframework.data.jpa.repository.Query("select distinct r.source from RawEventEntity r order by r.source asc")
     java.util.List<String> findDistinctSources();

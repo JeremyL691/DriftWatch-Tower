@@ -48,18 +48,22 @@ public class DeadLetterService {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * One page of dead letters, newest first. The caller validates the paging bounds; an invalid
+     * value is rejected here rather than silently adjusted.
+     */
     public List<DeadLetterRecordEntity> list(String stage, String state, int page, int size) {
-        PageRequest pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100));
+        PageRequest pageable = PageRequest.of(page, size);
         if (stage != null && state != null) {
-            return recordRepository.findByStageAndRecoveryStateOrderByIdAsc(stage, state, pageable).getContent();
+            return recordRepository.findByStageAndRecoveryStateOrderByIdDesc(stage, state, pageable).getContent();
         }
         if (stage != null) {
-            return recordRepository.findByStageOrderByIdAsc(stage, pageable).getContent();
+            return recordRepository.findByStageOrderByIdDesc(stage, pageable).getContent();
         }
         if (state != null) {
-            return recordRepository.findByRecoveryStateOrderByIdAsc(state, pageable).getContent();
+            return recordRepository.findByRecoveryStateOrderByIdDesc(state, pageable).getContent();
         }
-        return recordRepository.findAll(pageable).getContent();
+        return recordRepository.findAllByOrderByIdDesc(pageable).getContent();
     }
 
     public DeadLetterRecordEntity get(long id) {

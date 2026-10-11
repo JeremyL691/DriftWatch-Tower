@@ -1,5 +1,8 @@
 package com.driftwatch.source;
 
+import com.driftwatch.operations.DriftwatchMetrics;
+import com.driftwatch.persistence.CollectorStateEntity;
+import com.driftwatch.persistence.CollectorStateRepository;
 import com.driftwatch.persistence.MetricWindowRepository;
 import com.driftwatch.persistence.QualityAlertEntity;
 import com.driftwatch.persistence.QualityAlertRepository;
@@ -21,6 +24,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Source health and STALE_SOURCE transitions (execution guide, section 7.2).
+ *
+ * <p>An ordinary push source is stale when its newest received_at is older than its freshness
+ * threshold. A source that has a GitHub collector row is stale only when the collector is LOST,
+ * using the collector's own rule, so historic upstream event timestamps never stand in for a
+ * silent collector. Every new transition alert is correlated into an incident like sink alerts.
+ */
 @Service
 public class SourceHealthService {
 
@@ -33,6 +44,10 @@ public class SourceHealthService {
     private final SourceFreshnessPolicy freshnessPolicy;
     private final SourceHealthCalculator calculator;
     private final ObjectMapper objectMapper;
+    private final CollectorStateRepository collectorStateRepository;
+    private final CollectorStatusService collectorStatusService;
+    private final AlertIncidentService alertIncidentService;
+    private final DriftwatchMetrics metrics;
 
     public SourceHealthService(RawEventRepository rawEventRepository,
                                QualityAlertRepository alertRepository,
@@ -40,7 +55,11 @@ public class SourceHealthService {
                                SourceHealthRepository sourceHealthRepository,
                                SourceFreshnessPolicy freshnessPolicy,
                                SourceHealthCalculator calculator,
-                               ObjectMapper objectMapper) {
+                               ObjectMapper objectMapper,
+                               CollectorStateRepository collectorStateRepository,
+                               CollectorStatusService collectorStatusService,
+                               AlertIncidentService alertIncidentService,
+                               DriftwatchMetrics metrics) {
         this.rawEventRepository = rawEventRepository;
         this.alertRepository = alertRepository;
         this.metricWindowRepository = metricWindowRepository;
@@ -48,6 +67,10 @@ public class SourceHealthService {
         this.freshnessPolicy = freshnessPolicy;
         this.calculator = calculator;
         this.objectMapper = objectMapper;
+        this.collectorStateRepository = collectorStateRepository;
+        this.collectorStatusService = collectorStatusService;
+        this.alertIncidentService = alertIncidentService;
+        this.metrics = metrics;
     }
 
     /** Full scan used by the scheduler: every registered source is checked. */
@@ -57,11 +80,16 @@ public class SourceHealthService {
         for (String source : rawEventRepository.findDistinctSources()) {
             refreshSource(source, now).ifPresent(drafts::add);
         }
-        List<QualityAlertEntity> alerts = drafts.stream()
+        if (drafts.isEmpty()) {
+            return List.of();
+        }
+        List<QualityAlertEntity> alerts = alertRepository.saveAll(drafts.stream()
                 .map(draft -> toEntity(draft, now))
-                .toList();
-        if (!alerts.isEmpty()) {
-            alertRepository.saveAll(alerts);
+                .toList());
+        // Non-INFO alerts join an incident for their scope, exactly like sink alerts (guide 7.2).
+        for (QualityAlertEntity alert : alerts) {
+            alertIncidentService.correlate(alert);
+            metrics.recordAlert(alert.getAlertType(), alert.getSeverity().name());
         }
         return alerts;
     }
@@ -88,28 +116,41 @@ public class SourceHealthService {
     }
 
     private Optional<DraftAlert> refreshSource(String source, Instant now) {
-        Optional<RawEventEntity> latestOpt = rawEventRepository.findFirstBySourceOrderByEventTimestampDescIdDesc(source);
+        Optional<RawEventEntity> latestOpt = rawEventRepository.findFirstBySourceOrderByReceivedAtDescIdDesc(source);
         if (latestOpt.isEmpty()) {
             return Optional.empty();
         }
 
         RawEventEntity latest = latestOpt.get();
-        Duration staleAfter = freshnessPolicy.staleAfter(source, latest.getEventType());
-        boolean stale = latest.getEventTimestamp().isBefore(now.minus(staleAfter));
+        Instant lastReceivedAt = latest.getReceivedAt();
+        Optional<CollectorStateEntity> collector = collectorStateRepository.findById(source);
+        Duration staleAfter;
+        boolean stale;
+        String basis;
+        if (collector.isPresent()) {
+            staleAfter = collectorStatusService.lostAfter();
+            stale = collectorStatusService.isLost(collector.get(), now);
+            basis = "collector_last_poll_success";
+        } else {
+            staleAfter = freshnessPolicy.staleAfter(source, latest.getEventType());
+            stale = lastReceivedAt.isBefore(now.minus(staleAfter));
+            basis = "last_received_at";
+        }
 
-        long eventsLast5m = rawEventRepository.countBySourceAndEventTimestampAfter(source, now.minus(Duration.ofMinutes(5)));
-        long eventsLast1h = rawEventRepository.countBySourceAndEventTimestampAfter(source, now.minus(Duration.ofHours(1)));
+        Instant oneHourAgo = now.minus(Duration.ofHours(1));
+        long eventsLast5m = rawEventRepository.countBySourceAndReceivedAtAfter(source, now.minus(Duration.ofMinutes(5)));
+        long eventsLast1h = rawEventRepository.countBySourceAndReceivedAtAfter(source, oneHourAgo);
         double duplicateRate = rate(
-                rawEventRepository.countBySourceAndEventTimestampAfterAndQualityStatus(source, now.minus(Duration.ofHours(1)), "DUPLICATE"),
+                rawEventRepository.countBySourceAndReceivedAtAfterAndQualityStatus(source, oneHourAgo, "DUPLICATE"),
                 eventsLast1h);
         double lateRate = rate(
-                rawEventRepository.countBySourceAndEventTimestampAfterAndQualityStatus(source, now.minus(Duration.ofHours(1)), "LATE"),
+                rawEventRepository.countBySourceAndReceivedAtAfterAndQualityStatus(source, oneHourAgo, "LATE"),
                 eventsLast1h);
         double nullRate = Optional.ofNullable(
                         metricWindowRepository.maxMetricValueBySourceAndMetricNamePrefixAndWindowEndAfter(
-                                source, NULL_RATE_PREFIX, now.minus(Duration.ofHours(1))))
+                                source, NULL_RATE_PREFIX, oneHourAgo))
                 .orElse(0.0d);
-        long recentAlerts = alertRepository.countBySourceAndCreatedAtAfter(source, now.minus(Duration.ofHours(1)));
+        long recentAlerts = alertRepository.countBySourceAndCreatedAtAfter(source, oneHourAgo);
 
         SourceHealthCalculator.Inputs inputs = new SourceHealthCalculator.Inputs(
                 duplicateRate, lateRate, nullRate, recentAlerts, stale);
@@ -122,7 +163,7 @@ public class SourceHealthService {
         SourceHealthEntity row = previous != null ? previous : new SourceHealthEntity();
         row.setSource(source);
         row.setStatus(status);
-        row.setLastSeenAt(latest.getEventTimestamp());
+        row.setLastSeenAt(lastReceivedAt);
         row.setEventsLast5m(eventsLast5m);
         row.setEventsLast1h(eventsLast1h);
         row.setDuplicateRate(duplicateRate);
@@ -133,30 +174,41 @@ public class SourceHealthService {
         sourceHealthRepository.save(row);
 
         if (stale && !wasStale) {
-            return Optional.of(staleAlert(source, latest.getEventType(), latest.getEventTimestamp(), staleAfter, status, healthScore));
+            return Optional.of(staleAlert(source, latest.getEventType(), lastReceivedAt,
+                    collector.orElse(null), staleAfter, basis, status, healthScore));
         }
         return Optional.empty();
     }
 
     private DraftAlert staleAlert(String source,
                                   String eventType,
-                                  Instant lastSeenAt,
+                                  Instant lastReceivedAt,
+                                  CollectorStateEntity collector,
                                   Duration staleAfter,
+                                  String basis,
                                   String status,
                                   double healthScore) {
         ObjectNode evidence = objectMapper.createObjectNode();
         evidence.put("source", source);
-        evidence.put("last_seen_at", lastSeenAt.toString());
+        evidence.put("last_seen_at", lastReceivedAt.toString());
+        evidence.put("freshness_basis", basis);
         evidence.put("stale_after", staleAfter.toString());
         evidence.put("status", status);
         evidence.put("health_score", healthScore);
+        String message = "Source " + source + " is stale; last received at " + lastReceivedAt;
+        if (collector != null) {
+            Instant lastPollSuccess = collector.getLastPollSuccess();
+            evidence.put("last_poll_success_at", lastPollSuccess == null ? null : lastPollSuccess.toString());
+            message = "Source " + source + " is stale; collector has not polled successfully since "
+                    + lastPollSuccess + " (last received at " + lastReceivedAt + ")";
+        }
         return new DraftAlert(
                 AlertType.STALE_SOURCE,
                 Severity.WARN,
                 source,
                 eventType,
                 null,
-                "Source " + source + " is stale; last event timestamp " + lastSeenAt,
+                message,
                 evidence
         );
     }
