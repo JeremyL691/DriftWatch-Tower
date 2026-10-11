@@ -259,6 +259,32 @@ class QualityStreamsTopologyTest {
     }
 
     /** Wraps a TopologyTestDriver wired to a fully-built topology. */
+    @Test
+    void deliveryIdentityStoreEvictsIdentitiesAfterRetention() {
+        try (Driver driver = driver()) {
+            DataEvent event = new DataEvent("evt-evict", "demo-api", "market_tick", Instant.now(), Map.of("bid", 1.0));
+            driver.pipe(event);
+            driver.output();
+            var store = driver.driver.<String, String>getKeyValueStore(QualityStreamsTopology.ENVELOPE_DIGEST_STORE);
+            String id;
+            try (var entries = store.all()) {
+                var entry = entries.next();
+                id = entry.key;
+                assertThat(entry.value).as("first-seen time is recorded with the digest").contains("@");
+            }
+            // A legacy bare-digest entry is kept and starts its retention at the next eviction pass.
+            store.put("legacy-id", "abc123");
+
+            driver.driver.advanceWallClockTime(QualityStreamsTopology.DIGEST_EVICTION_INTERVAL);
+            assertThat(store.get(id)).isNotNull();
+            assertThat(store.get("legacy-id")).startsWith("abc123@");
+
+            driver.driver.advanceWallClockTime(QualityStreamsTopology.DIGEST_RETENTION.plus(QualityStreamsTopology.DIGEST_EVICTION_INTERVAL));
+            assertThat(store.get(id)).as("identities older than the retention are evicted").isNull();
+            assertThat(store.get("legacy-id")).isNull();
+        }
+    }
+
     private class Driver implements AutoCloseable {
         private final TopologyTestDriver driver;
         private final TestInputTopic<String, com.driftwatch.event.RawEnvelope> input;
