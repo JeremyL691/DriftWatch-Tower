@@ -109,14 +109,17 @@ public class IngestionService {
         }
 
         String digest = digests.of(event);
-        Reservation reservation = reserve(event, idempotencyKey, digest, envelope.ingestionId().toString());
+        Reservation reservation = reserve(event, idempotencyKey, digest, envelope.ingestionId().toString(),
+                envelope.receivedAt());
         if (reservation.replayed()
                 && IngestionReceiptEntity.STATE_CONFIRMED.equals(reservation.state())) {
             return new Acceptance(reservation.ingestionId(), event.eventId(), true, true);
         }
-        // A replayed-but-unconfirmed receipt keeps its reserved identity and publishes again.
+        // A replayed-but-unconfirmed receipt keeps its reserved identity and publishes again with
+        // the first receipt time (guide 4.1: received_at does not change on retry), so the stream
+        // recognises the same envelope as a redelivery.
         RawEnvelope reserved = new RawEnvelope(RawEnvelope.CONTRACT_VERSION,
-                UUID.fromString(reservation.ingestionId()), event, envelope.receivedAt(),
+                UUID.fromString(reservation.ingestionId()), event, reservation.receivedAt(),
                 RawEnvelope.Origin.REST, RawEnvelope.Mode.LIVE, null, null);
         boolean confirmed = producer.publishAndAwait(reserved);
         metrics.recordIngest(Duration.between(startedAt, Instant.now()), confirmed);
@@ -195,11 +198,18 @@ public class IngestionService {
                 }
                 // Guide 4.2: a retried batch re-sends only the items that are not confirmed, each
                 // with its reserved identity, so a partially accepted batch can complete.
+                // The retry reproduces the first envelope exactly (same identity, receipt time and
+                // replay_of), so the stream treats it as a redelivery rather than a conflict.
+                Instant itemReceivedAt = item.map(entry -> entry.path("received_at").asText(null))
+                        .filter(value -> value != null && !value.isBlank())
+                        .map(Instant::parse)
+                        .orElse(envelope.receivedAt());
                 RawEnvelope reservedItem = new RawEnvelope(RawEnvelope.CONTRACT_VERSION,
-                        UUID.fromString(identity), event, envelope.receivedAt(),
-                        RawEnvelope.Origin.REST, RawEnvelope.Mode.LIVE, null, null);
+                        UUID.fromString(identity), event, itemReceivedAt,
+                        RawEnvelope.Origin.REST, RawEnvelope.Mode.LIVE, null, batchDigest);
                 boolean confirmed = producer.publishAndAwait(reservedItem);
-                recordBatchItem(event, idempotencyKey, batchId, identity, index, confirmed, batchDigest);
+                recordBatchItem(event, idempotencyKey, batchId, identity, index, confirmed, batchDigest,
+                        itemReceivedAt);
                 if (confirmed) {
                     accepted.add(new Acceptance(identity, event.eventId(), true, true));
                 } else {
@@ -210,7 +220,8 @@ public class IngestionService {
 
             String identity = envelope.ingestionId().toString();
             boolean confirmed = producer.publishAndAwait(envelope);
-            recordBatchItem(event, idempotencyKey, batchId, identity, index, confirmed, batchDigest);
+            recordBatchItem(event, idempotencyKey, batchId, identity, index, confirmed, batchDigest,
+                    envelope.receivedAt());
             if (confirmed) {
                 accepted.add(new Acceptance(identity, event.eventId(), true, false));
             } else {
@@ -222,7 +233,8 @@ public class IngestionService {
 
     // ------------------------------------------------------------------ receipts
 
-    public record Reservation(String ingestionId, String state, boolean replayed) {}
+    /** {@code receivedAt} is the first receipt time of the reserved identity. */
+    public record Reservation(String ingestionId, String state, boolean replayed, Instant receivedAt) {}
 
     /**
      * Reserves the identity in its own transaction. Two concurrent requests with one key race on
@@ -231,6 +243,11 @@ public class IngestionService {
      * as that race; any other failure is rethrown at once.
      */
     public Reservation reserve(DataEvent event, String idempotencyKey, String digest, String newIngestionId) {
+        return reserve(event, idempotencyKey, digest, newIngestionId, receivedNow());
+    }
+
+    public Reservation reserve(DataEvent event, String idempotencyKey, String digest, String newIngestionId,
+                               Instant receivedAt) {
         IngestionReceiptEntity.Key key = receiptKey(event, idempotencyKey);
         Optional<IngestionReceiptEntity> existing = liveReceipt(event, idempotencyKey);
         if (existing.isPresent()) {
@@ -246,13 +263,14 @@ public class IngestionService {
                 receipt.setIngestionId(newIngestionId);
                 receipt.setEventId(event.eventId());
                 receipt.setPublishState(IngestionReceiptEntity.STATE_PENDING);
-                receipt.setCreatedAt(Instant.now());
+                // created_at doubles as the identity's first receipt time for retries.
+                receipt.setCreatedAt(receivedAt);
                 receipt.setExpiresAt(Instant.now().plus(IDEMPOTENCY_WINDOW));
                 // persist, not save/merge: with an assigned id a merge would silently UPDATE a
                 // concurrent winner's row and hand out two identities for one key.
                 entityManager.persist(receipt);
                 entityManager.flush();
-                return new Reservation(newIngestionId, IngestionReceiptEntity.STATE_PENDING, false);
+                return new Reservation(newIngestionId, IngestionReceiptEntity.STATE_PENDING, false, receivedAt);
             });
         } catch (RuntimeException insertFailure) {
             if (!isUniqueViolation(insertFailure)) {
@@ -298,7 +316,7 @@ public class IngestionService {
         if (!receipt.getRequestDigest().equals(digest)) {
             throw new ResponseStatusException(CONFLICT, CONFLICT_MESSAGE);
         }
-        return new Reservation(receipt.getIngestionId(), receipt.getPublishState(), true);
+        return new Reservation(receipt.getIngestionId(), receipt.getPublishState(), true, receipt.getCreatedAt());
     }
 
     /**
@@ -361,7 +379,7 @@ public class IngestionService {
      * what the broker last confirmed. The expiry is fixed when the receipt is first written.
      */
     private void recordBatchItem(DataEvent event, String idempotencyKey, String batchId, String identity,
-                                 int index, boolean confirmed, String batchDigest) {
+                                 int index, boolean confirmed, String batchDigest, Instant receivedAt) {
         IngestionReceiptEntity.Key key = receiptKey(event, idempotencyKey);
         IngestionReceiptEntity receipt = receiptRepository.findById(key).orElseGet(IngestionReceiptEntity::new);
         ArrayNode items = objectMapper.createArrayNode();
@@ -377,6 +395,7 @@ public class IngestionService {
         item.put("index", index);
         item.put("event_id", event.eventId());
         item.put("ingestion_id", identity);
+        item.put("received_at", receivedAt.toString());
         item.put("status", confirmed ? IngestionReceiptEntity.STATE_CONFIRMED
                 : IngestionReceiptEntity.STATE_FAILED);
         items.add(item);
@@ -485,8 +504,16 @@ public class IngestionService {
         return false;
     }
 
+    /**
+     * Receipt times are kept at the database's microsecond precision, so an identity re-published
+     * from its stored receipt carries exactly the received_at of its first envelope.
+     */
+    private static Instant receivedNow() {
+        return Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+    }
+
     private RawEnvelope envelope(DataEvent event, String replayOf) {
-        return new RawEnvelope(RawEnvelope.CONTRACT_VERSION, UUID.randomUUID(), event, Instant.now(),
+        return new RawEnvelope(RawEnvelope.CONTRACT_VERSION, UUID.randomUUID(), event, receivedNow(),
                 RawEnvelope.Origin.REST, RawEnvelope.Mode.LIVE, null, replayOf);
     }
 
