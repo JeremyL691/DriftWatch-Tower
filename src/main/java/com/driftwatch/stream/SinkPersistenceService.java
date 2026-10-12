@@ -118,7 +118,7 @@ public class SinkPersistenceService {
         SchemaObservationService.Observation observation =
                 schemaObservationService.observe(event.eventType(), raw.getPayloadJson(), now);
         if (observation.drift() && !observation.changedFields().isEmpty()) {
-            alerts.add(schemaDriftAlert(event, observation, now));
+            alerts.add(schemaDriftAlert(event, observation, ingestionId, now));
         }
         if (!alerts.isEmpty()) {
             alertRepository.saveAll(alerts);
@@ -156,7 +156,7 @@ public class SinkPersistenceService {
 
     private QualityAlertEntity schemaDriftAlert(DataEvent event,
                                                 SchemaObservationService.Observation observation,
-                                                Instant now) {
+                                                String ingestionId, Instant now) {
         ObjectNode evidence = objectMapper.createObjectNode();
         evidence.put("baseline_version_id",
                 observation.baseline() == null ? null : observation.baseline().getId());
@@ -184,6 +184,8 @@ public class SinkPersistenceService {
                 .orElse(null);
 
         QualityAlertEntity alert = new QualityAlertEntity();
+        // Preserve the origin identity so operators can trace a schema alert back to its event.
+        alert.setIngestionId(ingestionId);
         alert.setAlertType(AlertType.SCHEMA_DRIFT);
         alert.setSeverity(Severity.WARN);
         alert.setSource(event.source());
