@@ -94,10 +94,16 @@ class PipelineHardeningIntegrationTest extends ContainerIntegrationTest {
                 Map.of("ok", 1, "b".repeat(250), 2.0, longKey, 2)));
         await().atMost(Duration.ofSeconds(60)).until(() -> rawEventRepository.findByIngestionId(second).isPresent());
 
-        List<String> fieldPaths = jdbcTemplate.queryForList(
-                "SELECT field_path FROM quality_alerts WHERE ingestion_id = ? AND event_type = ? AND alert_type = 'SCHEMA_DRIFT'",
-                String.class, second, type);
-        assertThat(fieldPaths).isNotEmpty().allSatisfy(path -> assertThat(path).hasSizeLessThanOrEqualTo(256));
+        // Kafka processing can complete the two observations in either order. One creates
+        // the baseline and the other drifts; tie the assertion to both test ingestion identities.
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
+            List<String> fieldPaths = jdbcTemplate.queryForList(
+                    "SELECT field_path FROM quality_alerts WHERE event_type = ? "
+                            + "AND ingestion_id IN (?, ?) AND alert_type = 'SCHEMA_DRIFT'",
+                    String.class, type, first, second);
+            assertThat(fieldPaths).isNotEmpty()
+                    .allSatisfy(path -> assertThat(path).hasSizeLessThanOrEqualTo(256));
+        });
     }
 
     @Test
