@@ -57,6 +57,10 @@ public class SinkPersistenceService {
         this.objectMapper = objectMapper;
     }
 
+    /** quality_alerts.field_path and detector_key column widths (V2, V9). */
+    private static final int FIELD_PATH_MAX = 256;
+    private static final int DETECTOR_KEY_MAX = 128;
+
     /** Outcome of one persistence attempt. */
     public record PersistResult(boolean duplicate, RawEventEntity raw, List<QualityAlertEntity> alerts) {}
 
@@ -64,6 +68,14 @@ public class SinkPersistenceService {
     public PersistResult persist(ProcessedEvent p) {
         Instant now = p.receivedAt();
         String ingestionId = ingestionIdOf(p);
+        if (p.windowEvaluation() != null
+                && p.windowEvaluation().outcome() == WindowEvaluation.Outcome.CONFLICT) {
+            // The stream saw this ingestion id before with a different envelope. The receipt
+            // digest only covers the payload, so without this check the conflict would be
+            // swallowed as an ordinary redelivery (guide 4.3: a different digest is a failure).
+            throw new IllegalStateException("ingestion " + ingestionId
+                    + " was redelivered with different envelope content");
+        }
         String contentDigest = contentDigest(p);
         var existingReceipt = processedReceiptRepository.findById(ingestionId);
         if (existingReceipt.isPresent()) {
@@ -106,7 +118,7 @@ public class SinkPersistenceService {
         SchemaObservationService.Observation observation =
                 schemaObservationService.observe(event.eventType(), raw.getPayloadJson(), now);
         if (observation.drift() && !observation.changedFields().isEmpty()) {
-            alerts.add(schemaDriftAlert(event, observation, now));
+            alerts.add(schemaDriftAlert(event, observation, ingestionId, now));
         }
         if (!alerts.isEmpty()) {
             alertRepository.saveAll(alerts);
@@ -144,7 +156,7 @@ public class SinkPersistenceService {
 
     private QualityAlertEntity schemaDriftAlert(DataEvent event,
                                                 SchemaObservationService.Observation observation,
-                                                Instant now) {
+                                                String ingestionId, Instant now) {
         ObjectNode evidence = objectMapper.createObjectNode();
         evidence.put("baseline_version_id",
                 observation.baseline() == null ? null : observation.baseline().getId());
@@ -172,11 +184,13 @@ public class SinkPersistenceService {
                 .orElse(null);
 
         QualityAlertEntity alert = new QualityAlertEntity();
+        // Preserve the origin identity so operators can trace a schema alert back to its event.
+        alert.setIngestionId(ingestionId);
         alert.setAlertType(AlertType.SCHEMA_DRIFT);
         alert.setSeverity(Severity.WARN);
         alert.setSource(event.source());
         alert.setEventType(event.eventType());
-        alert.setFieldPath(firstField);
+        alert.setFieldPath(ColumnBounds.fit(firstField, FIELD_PATH_MAX));
         alert.setMessage("Schema drift in " + event.eventType()
                 + " (missing=" + observation.diff().missing().size()
                 + ", added=" + observation.diff().added().size()
@@ -203,14 +217,14 @@ public class SinkPersistenceService {
                 detectorKey += ":" + duplicateKind;
             }
         }
-        e.setDetectorKey(detectorKey);
+        e.setDetectorKey(ColumnBounds.fit(detectorKey, DETECTOR_KEY_MAX));
         e.setWindowKey(p.windowEvaluation() == null || p.windowEvaluation().windowStart() == null
                 ? null : p.windowEvaluation().windowStart().toString());
         e.setAlertType(a.type());
         e.setSeverity(a.severity());
         e.setSource(a.source());
         e.setEventType(a.eventType());
-        e.setFieldPath(a.fieldPath());
+        e.setFieldPath(ColumnBounds.fit(a.fieldPath(), FIELD_PATH_MAX));
         e.setMessage(a.message());
         e.setEvidenceJson(a.evidence());
         e.setCreatedAt(now);

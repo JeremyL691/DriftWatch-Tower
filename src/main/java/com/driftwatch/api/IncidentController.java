@@ -5,12 +5,16 @@ import com.driftwatch.persistence.AlertIncidentRepository;
 import com.driftwatch.persistence.QualityAlertEntity;
 import com.driftwatch.persistence.QualityAlertRepository;
 import com.driftwatch.source.AlertIncidentService;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
@@ -20,6 +24,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/incidents")
 public class IncidentController {
+
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final AlertIncidentRepository incidentRepository;
     private final QualityAlertRepository alertRepository;
@@ -33,9 +39,20 @@ public class IncidentController {
         this.incidentService = incidentService;
     }
 
+    /**
+     * Newest incidents first, one page at a time. The response stays a plain JSON array because
+     * the dashboard reads it directly; the id tiebreak keeps the page order stable.
+     */
     @GetMapping
-    public List<IncidentResponse> list() {
-        return incidentRepository.findAllByOrderByCreatedAtDesc().stream()
+    public List<IncidentResponse> list(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size) {
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException("page must be >= 0 and size between 1 and " + MAX_PAGE_SIZE);
+        }
+        Pageable pageable = PageRequest.of(page, size,
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+        return incidentRepository.findAll(pageable).getContent().stream()
                 .map(IncidentResponse::from)
                 .toList();
     }

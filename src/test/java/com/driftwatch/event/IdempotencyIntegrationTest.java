@@ -192,5 +192,11 @@ class IdempotencyIntegrationTest extends ContainerIntegrationTest {
         String ingestionId = identities.iterator().next();
         await().atMost(Duration.ofSeconds(60)).until(() -> rawRows(ingestionId) >= 1);
         assertThat(rawRows(ingestionId)).isEqualTo(1);
+        // Losers of the race re-publish the reserved identity with its first received_at, so the
+        // stream sees plain redeliveries: none of them may reach the sink as a conflict.
+        Thread.sleep(3_000);
+        Integer conflicts = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM dead_letter_records WHERE ingestion_id = ?", Integer.class, ingestionId);
+        assertThat(conflicts).as("a same-key retry must not become a dead-lettered conflict").isZero();
     }
 }

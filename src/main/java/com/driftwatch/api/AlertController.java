@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.security.Principal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -61,15 +62,22 @@ public class AlertController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /** Idempotent: repeating the same acknowledge keeps the original timestamp. */
+    /**
+     * Idempotent: repeating the same acknowledge keeps the original timestamp. The acknowledger is
+     * the body's acknowledgedBy when given, otherwise the authenticated principal.
+     */
     @PostMapping("/{id}/acknowledge")
     public ResponseEntity<AlertResponse> acknowledge(@PathVariable Long id,
-                                                     @RequestBody(required = false) Map<String, String> body) {
+                                                     @RequestBody(required = false) Map<String, String> body,
+                                                     Principal principal) {
         if (!repository.existsById(id)) {
             return ResponseEntity.notFound().build();
         }
         try {
             String by = body == null ? null : body.get("acknowledgedBy");
+            if (by == null || by.isBlank()) {
+                by = principal == null ? null : principal.getName();
+            }
             return ResponseEntity.ok(AlertResponse.from(incidentService.acknowledgeAlert(id, by)));
         } catch (IllegalStateException illegalTransition) {
             return ResponseEntity.status(409).build();

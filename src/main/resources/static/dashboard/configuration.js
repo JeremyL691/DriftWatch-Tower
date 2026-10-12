@@ -442,6 +442,7 @@
       state.server = response.body;
       state.loaded = true;
       renderState(state.server);
+      announceEffective();
       const previousSaved = state.lastKnownSaved;
       if (previousSaved && options.keepEdits && hadEdits) {
         const changed = diffFields(previousSaved, state.server.saved);
@@ -463,11 +464,21 @@
         applyServerValues(state.server.saved);
       }
       state.lastKnownSaved = state.server.saved;
-      await loadHistory(true);
+      // Background refreshes keep the operator's place in the history; only an explicit reload restarts it.
+      await loadHistory(Boolean(options.manual) || state.historyPage === 0);
       renderDirtyAndErrors();
     } catch (error) {
       setBanner("error", `Configuration load failed: ${error.message}`);
     }
+  }
+
+  // app.js re-renders the collector panel when the effective configuration changes.
+  let announcedEffective = null;
+  function announceEffective() {
+    const current = JSON.stringify(state.server ? state.server.effective : null);
+    if (current === announcedEffective) return;
+    announcedEffective = current;
+    document.dispatchEvent(new CustomEvent("dwt:configuration-state"));
   }
 
   function diffFields(before, after) {
@@ -521,6 +532,7 @@
         state.errors = {};
         state.lastKnownSaved = state.server.saved;
         renderState(state.server);
+        announceEffective();
         applyServerValues(state.server.saved);
         setBanner("info", `Saved revision ${state.server.saved_revision}. Live-safe fields apply now; `
           + "restart-pending fields stay effective at their startup values until a real restart.");

@@ -1,6 +1,11 @@
 package com.driftwatch.source;
 
 import com.driftwatch.config.DriftwatchProperties;
+import com.driftwatch.operations.DriftwatchMetrics;
+import com.driftwatch.persistence.AlertIncidentEntity;
+import com.driftwatch.persistence.BaselineOutboxRepository;
+import com.driftwatch.persistence.CollectorStateRepository;
+import com.driftwatch.persistence.DeadLetterRecordRepository;
 import com.driftwatch.persistence.MetricWindowRepository;
 import com.driftwatch.persistence.QualityAlertEntity;
 import com.driftwatch.persistence.QualityAlertRepository;
@@ -8,8 +13,10 @@ import com.driftwatch.persistence.RawEventEntity;
 import com.driftwatch.persistence.RawEventRepository;
 import com.driftwatch.persistence.SourceHealthEntity;
 import com.driftwatch.persistence.SourceHealthRepository;
+import com.driftwatch.persistence.SourceOutboxRepository;
 import com.driftwatch.support.MutableClock;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
@@ -21,6 +28,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 /**
  * Gate G10, scheduler half (execution guide, section 7.2): the scheduled refresh, not a dashboard
@@ -34,22 +42,24 @@ class SourceHealthSchedulerTest {
     private static final Instant T0 = Instant.parse("2026-10-01T00:00:00Z");
 
     private final MutableClock clock = new MutableClock(T0);
-    private final AtomicReference<Instant> latestEventTimestamp = new AtomicReference<>(T0.minusSeconds(1));
+    private final AtomicReference<Instant> latestReceivedAt = new AtomicReference<>(T0.minusSeconds(1));
     private final List<QualityAlertEntity> persistedAlerts = new ArrayList<>();
+    private final List<QualityAlertEntity> correlatedAlerts = new ArrayList<>();
     private final AtomicReference<SourceHealthEntity> healthRow = new AtomicReference<>();
 
     private SourceHealthService service() {
         RawEventRepository rawEvents = proxy(RawEventRepository.class, (method, args) -> switch (method.getName()) {
             case "findDistinctSources" -> List.of(SOURCE);
-            case "findFirstBySourceOrderByEventTimestampDescIdDesc" -> {
+            case "findFirstBySourceOrderByReceivedAtDescIdDesc" -> {
                 RawEventEntity row = new RawEventEntity();
                 row.setSource(SOURCE);
                 row.setEventType(EVENT_TYPE);
-                row.setEventTimestamp(latestEventTimestamp.get());
+                row.setEventTimestamp(latestReceivedAt.get());
+                row.setReceivedAt(latestReceivedAt.get());
                 yield Optional.of(row);
             }
-            case "countBySourceAndEventTimestampAfter" -> 1L;
-            case "countBySourceAndEventTimestampAfterAndQualityStatus" -> 0L;
+            case "countBySourceAndReceivedAtAfter" -> 1L;
+            case "countBySourceAndReceivedAtAfterAndQualityStatus" -> 0L;
             default -> throw new UnsupportedOperationException(method.getName());
         });
         QualityAlertRepository alerts = proxy(QualityAlertRepository.class, (method, args) -> switch (method.getName()) {
@@ -83,9 +93,23 @@ class SourceHealthSchedulerTest {
             }
             default -> throw new UnsupportedOperationException(method.getName());
         });
+        CollectorStateRepository collectors = proxy(CollectorStateRepository.class, (method, args) ->
+                method.getName().equals("findById") ? Optional.empty() : throwUnsupported(method.getName()));
+        AlertIncidentService incidents = new AlertIncidentService(null, null, clock) {
+            @Override
+            public Optional<AlertIncidentEntity> correlate(QualityAlertEntity alert) {
+                correlatedAlerts.add(alert);
+                return Optional.empty();
+            }
+        };
+        DriftwatchMetrics driftwatchMetrics = new DriftwatchMetrics(new SimpleMeterRegistry(),
+                mock(SourceOutboxRepository.class), mock(DeadLetterRecordRepository.class),
+                mock(BaselineOutboxRepository.class), clock);
         return new SourceHealthService(rawEvents, alerts, metrics, health,
                 new SourceFreshnessPolicy(Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofHours(24)),
-                new SourceHealthCalculator(), new ObjectMapper());
+                new SourceHealthCalculator(), new ObjectMapper(),
+                collectors, CollectorStatusFixtures.collectorStatus(clock, Duration.ofMinutes(5)),
+                incidents, driftwatchMetrics);
     }
 
     private static Object throwUnsupported(String name) {
@@ -112,11 +136,12 @@ class SourceHealthSchedulerTest {
         assertThat(persistedAlerts).as("a single loss must alert once").hasSize(1);
 
         // Recovery: a fresh event, then silence again -> a second transition alert.
-        latestEventTimestamp.set(clock.instant());
+        latestReceivedAt.set(clock.instant());
         assertThat(service.refreshScheduled(clock.instant())).isEmpty();
         clock.advance(Duration.ofMinutes(10));
         assertThat(service.refreshScheduled(clock.instant())).hasSize(1);
         assertThat(persistedAlerts).hasSize(2);
+        assertThat(correlatedAlerts).as("every transition alert joins an incident").hasSize(2);
     }
 
     @Test

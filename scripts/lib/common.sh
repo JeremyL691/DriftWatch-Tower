@@ -73,10 +73,12 @@ write_gate() {
   local out_dir="$1" id="$2" status="$3" command="$4" started="$5" ended="$6" exit_code="$7"
   shift 7
   mkdir -p "$out_dir"
-  python3 - "$out_dir" "$id" "$status" "$command" "$started" "$ended" "$exit_code" "$@" <<'PY'
-import json, sys, os
+  DWT_REPO_ROOT="$DWT_REPO_ROOT" python3 - "$out_dir" "$id" "$status" "$command" "$started" "$ended" "$exit_code" "$@" <<'PY'
+import json, sys, os, shlex
 out_dir, gate_id, status, command, started, ended, exit_code = sys.argv[1:8]
 evidence = list(sys.argv[8:])
+# The git SHA comes from the repository root, whatever directory the caller ran from.
+repo_root = os.environ.get("DWT_REPO_ROOT") or os.getcwd()
 payload = {
     "id": gate_id,
     "status": status,
@@ -85,7 +87,7 @@ payload = {
     "ended_at": ended,
     "exit_code": int(exit_code),
     "evidence_paths": evidence,
-    "git_sha": os.popen("git -C " + json.dumps(os.getcwd()) + " rev-parse HEAD 2>/dev/null").read().strip() or None,
+    "git_sha": os.popen("git -C " + shlex.quote(repo_root) + " rev-parse HEAD 2>/dev/null").read().strip() or None,
 }
 path = os.path.join(out_dir, "gate.json")
 with open(path, "w") as handle:

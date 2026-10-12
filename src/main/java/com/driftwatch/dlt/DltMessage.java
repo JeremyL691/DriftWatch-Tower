@@ -30,7 +30,12 @@ public record DltMessage(
 ) {
 
     public static final int MAX_REASON_LENGTH = 500;
-    public static final int MAX_PAYLOAD_LENGTH = 8 * 1024;
+    /**
+     * UTF-8 byte budget for the carried record. It must hold a complete record of the largest
+     * accepted event (256 KiB) so a dead letter stays replayable, while the JSON-escaped dead
+     * letter still fits the broker's default 1 MiB message limit.
+     */
+    public static final int MAX_PAYLOAD_BYTES = 512 * 1024;
 
     /** Stable diagnostic identity when the ingestion id is unknown. */
     public static String diagnosticIdFor(String ingestionId, String topic, Integer partition, Long offset) {
@@ -38,6 +43,22 @@ public record DltMessage(
             return "ingestion:" + ingestionId;
         }
         return "kafka:" + topic + ":" + partition + ":" + offset;
+    }
+
+    /** Truncates the carried record to {@link #MAX_PAYLOAD_BYTES} without splitting a character. */
+    public static String truncatePayload(String value) {
+        if (value == null) {
+            return null;
+        }
+        byte[] utf8 = value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (utf8.length <= MAX_PAYLOAD_BYTES) {
+            return value;
+        }
+        int end = MAX_PAYLOAD_BYTES;
+        while (end > 0 && (utf8[end] & 0xC0) == 0x80) {
+            end--;
+        }
+        return new String(utf8, 0, end, java.nio.charset.StandardCharsets.UTF_8) + "...[truncated]";
     }
 
     public static String truncate(String value, int limit) {

@@ -44,6 +44,23 @@ public class BaselineOutboxRelay {
         }
     }
 
+    /**
+     * Re-drives rows that exhausted their fast retries (guide 7.1: the outbox is kept until sent).
+     * FAILED stays visible to operators, but a broker outage longer than the fast retry budget
+     * must not leave a type BASELINE_PENDING forever. A row superseded by a newer baseline row of
+     * the same type is never re-sent: on the compacted topic it would overwrite the newer one.
+     */
+    @Scheduled(fixedDelay = 60_000L, initialDelay = 60_000L)
+    public void retryFailed() {
+        for (BaselineOutboxEntity row : outboxRepository.findTop50ByStatusOrderByIdAsc(
+                BaselineOutboxEntity.STATUS_FAILED)) {
+            if (outboxRepository.existsByEventTypeAndIdGreaterThan(row.getEventType(), row.getId())) {
+                continue;
+            }
+            publish(row);
+        }
+    }
+
     /** Publishes one row and persists the resulting status, returning true when it was sent. */
     public boolean publish(BaselineOutboxEntity row) {
         try {

@@ -21,6 +21,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.session.NullAuthenticatedSessionStrategy;
 import org.springframework.security.web.session.SessionManagementFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfToken;
@@ -66,6 +67,9 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(csrfRequestHandler)
+                        // Stateless HTTP Basic authenticates every request. Avoid rotating the
+                        // browser CSRF cookie on each GET, which invalidates concurrent mutations.
+                        .sessionAuthenticationStrategy(new NullAuthenticatedSessionStrategy())
                         .ignoringRequestMatchers("/api/v1/events", "/api/v1/events/batch"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
@@ -155,7 +159,10 @@ public class SecurityConfig {
 
     private AuthenticationEntryPoint apiEntryPoint(ObjectMapper objectMapper) {
         return (request, response, authException) -> {
-            response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Basic realm=\"driftwatch\", Bearer");
+            // One challenge per header: Chromium rejects the combined form
+            // 'Basic realm="driftwatch", Bearer' and then never shows the sign-in prompt.
+            response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Basic realm=\"driftwatch\"");
+            response.addHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
             writeJson(response, objectMapper, HttpStatus.UNAUTHORIZED,
                     "authentication required", request.getRequestURI());
         };

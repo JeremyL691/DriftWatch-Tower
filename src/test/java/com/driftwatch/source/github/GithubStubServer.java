@@ -7,8 +7,11 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -33,12 +36,15 @@ final class GithubStubServer {
     private final HttpServer server;
     private final Deque<ScriptedResponse> scripted = new ArrayDeque<>();
     private final AtomicInteger requests = new AtomicInteger();
+    /** The If-None-Match validator each request carried, in order; null when the request was unconditional. */
+    private final List<String> ifNoneMatch = Collections.synchronizedList(new ArrayList<>());
     private volatile ScriptedResponse last;
 
     GithubStubServer(int port) throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
         server.createContext("/", exchange -> {
             requests.incrementAndGet();
+            ifNoneMatch.add(exchange.getRequestHeaders().getFirst("If-None-Match"));
             ScriptedResponse response = next();
             if (response.delayMillis() > 0) {
                 try {
@@ -85,10 +91,18 @@ final class GithubStubServer {
             last = null;
         }
         requests.set(0);
+        ifNoneMatch.clear();
     }
 
     int requestCount() {
         return requests.get();
+    }
+
+    /** Validators carried by the requests so far, in order; a null entry is an unconditional request. */
+    List<String> requestedIfNoneMatch() {
+        synchronized (ifNoneMatch) {
+            return new ArrayList<>(ifNoneMatch);
+        }
     }
 
     void stop() {

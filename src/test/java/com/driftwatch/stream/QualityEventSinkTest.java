@@ -5,6 +5,10 @@ import com.driftwatch.event.DataEvent;
 import com.driftwatch.persistence.ProcessedReceiptRepository;
 import com.driftwatch.persistence.QualityAlertRepository;
 import com.driftwatch.persistence.RawEventRepository;
+import com.driftwatch.persistence.QualityAlertEntity;
+import com.driftwatch.quality.AlertType;
+import com.driftwatch.quality.Severity;
+import com.driftwatch.operations.DriftwatchMetrics;
 import com.driftwatch.quality.schema.SchemaInferrer;
 import com.driftwatch.quality.schema.SchemaObservationService;
 import com.driftwatch.source.AlertIncidentService;
@@ -99,5 +103,32 @@ class QualityEventSinkTest {
         verify(alertRepository, never()).saveAll(anyList());
         verify(webSocket, never()).broadcastAlert(any());
         verify(metricWindowProjector).project(processed);
+    }
+
+    @Test
+    void forwardsPersistedAlertToMetricsWithDetectorAndSeverityLabels() {
+        var persistence = mock(SinkPersistenceService.class);
+        var metrics = mock(DriftwatchMetrics.class);
+        Instant now = Instant.parse("2026-10-01T12:00:00Z");
+        DataEvent event = new DataEvent("metric-probe", "probe-source", "probe-event",
+                now, Map.of("value", 1));
+        ProcessedEvent processed = new ProcessedEvent(event, UUID.randomUUID(), now,
+                "REST", "LIVE", "hash-metric", "OK", "RULES", "APPLIED",
+                WindowEvaluation.notApplicable("[]", WindowEvaluation.Outcome.SKIPPED_MODE, null),
+                List.of());
+        QualityAlertEntity alert = new QualityAlertEntity();
+        alert.setAlertType(AlertType.SCHEMA_DRIFT);
+        alert.setSeverity(Severity.WARN);
+        when(persistence.persist(processed)).thenReturn(
+                new SinkPersistenceService.PersistResult(false, null, List.of(alert)));
+        QualityEventSink sink = new QualityEventSink(persistence,
+                mock(DashboardWebSocketHandler.class),
+                mock(com.driftwatch.dlt.DltPublisher.class),
+                new ObjectMapper().findAndRegisterModules(),
+                new SimpleMeterRegistry(), metrics);
+
+        sink.onProcessed(processed);
+
+        verify(metrics).recordAlert(AlertType.SCHEMA_DRIFT, "WARN");
     }
 }

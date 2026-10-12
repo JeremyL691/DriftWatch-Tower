@@ -15,10 +15,14 @@ const fx = typeof gsap !== "undefined" ? gsap : {
 
 // All REST controllers live under /api/v1 (WebSocket /ws is registered separately, unversioned).
 const API = "/api/v1";
+// Same page size for the loaded recent-events list and the live-prepend cap.
+const RECENT_EVENTS_SIZE = 8;
 
 document.addEventListener("DOMContentLoaded", () => {
   renderIcons();
   initTheme();
+  // configuration.js announces each effective-config change; the collector panel depends on it.
+  document.addEventListener("dwt:configuration-state", () => loadCollectorOps());
   document.getElementById("refreshAll").addEventListener("click", () => refreshDashboard());
   document.getElementById("applyAlertFilters").addEventListener("click", () => {
     alertPaging.page = 0;
@@ -173,16 +177,17 @@ function prependLiveAlert(alert) {
   slideInTimeline(item);
 }
 
+// Live items use the same row renderer as the loaded list (including Detail) and the same cap.
 function prependLiveEvent(event) {
   const container = document.getElementById("recentEvents");
-  const item = document.createElement("article");
-  item.className = "timeline-item new";
-  item.innerHTML = `
-    <strong>${escapeHtml(event.event_type)} · ${escapeHtml(event.source)}</strong>
-    <p>${escapeHtml(event.event_id)} <span class="code-chip">${escapeHtml(event.quality_status)}</span></p>
-    <p>${formatDate(event.event_timestamp)}</p>
-  `;
+  const template = document.createElement("template");
+  template.innerHTML = recentEventItem(event, true).trim();
+  const item = template.content.firstElementChild;
+  container.querySelectorAll(".empty-state").forEach((el) => el.remove());
   container.prepend(item);
+  while (container.children.length > RECENT_EVENTS_SIZE) {
+    container.lastElementChild.remove();
+  }
   slideInTimeline(item);
 }
 
@@ -207,9 +212,20 @@ async function refreshDashboard() {
   await Promise.all(tasks);
 }
 
+// A failed table load replaces the "Loading…" placeholder with one visible error row.
+function renderTableError(body, colspan, label, error) {
+  body.innerHTML = `<tr><td colspan="${colspan}"><p class="action-error">${escapeHtml(label)}: ${escapeHtml(error.message)}</p></td></tr>`;
+}
+
 async function loadIncidents() {
-  const rows = await fetchJson(`${API}/incidents`);
   const body = document.getElementById("incidentRows");
+  let rows;
+  try {
+    rows = await fetchJson(`${API}/incidents`);
+  } catch (error) {
+    renderTableError(body, 6, "Incidents failed to load", error);
+    return;
+  }
   if (!rows.length) {
     body.innerHTML = '<tr><td colspan="6" class="muted">No incidents</td></tr>';
     return;
@@ -249,8 +265,14 @@ async function resolveIncident(button) {
 }
 
 async function loadMetricWindows() {
-  const rows = await fetchJson(`${API}/metrics/windows?size=20`);
   const body = document.getElementById("metricRows");
+  let rows;
+  try {
+    rows = await fetchJson(`${API}/metrics/windows?size=20`);
+  } catch (error) {
+    renderTableError(body, 5, "Metric windows failed to load", error);
+    return;
+  }
   if (!rows.length) {
     body.innerHTML = '<tr><td colspan="5" class="muted">No metric windows yet</td></tr>';
     return;
@@ -321,8 +343,14 @@ async function runRetention() {
 }
 
 async function loadDeadLetters() {
-  const rows = await fetchJson(`${API}/dead-letters?size=20`);
   const body = document.getElementById("deadLetterRows");
+  let rows;
+  try {
+    rows = await fetchJson(`${API}/dead-letters?size=20`);
+  } catch (error) {
+    renderTableError(body, 6, "Dead letters failed to load", error);
+    return;
+  }
   if (!rows.length) {
     body.innerHTML = '<tr><td colspan="6" class="muted">No dead letters</td></tr>';
     return;
@@ -436,7 +464,13 @@ function renderReplayHistory(history) {
 
 // Evaluation coverage (guide 5.3): an OK status must not be read as "the window evaluated this".
 async function loadCoverage() {
-  const body = await fetchJson(`${API}/events/coverage?hours=24`);
+  let body;
+  try {
+    body = await fetchJson(`${API}/events/coverage?hours=24`);
+  } catch (error) {
+    renderTableError(document.getElementById("coverageRows"), 3, "Coverage failed to load", error);
+    return;
+  }
   const total = body.total || 0;
   const rows = [
     ["Included in a window", body.included, true],
@@ -569,7 +603,7 @@ async function loadSchemas() {
 }
 
 async function loadRecentEvents() {
-  const rows = await fetchJson(`${API}/events/recent?size=8`);
+  const rows = await fetchJson(`${API}/events/recent?size=${RECENT_EVENTS_SIZE}`);
   renderRecentEvents(rows);
 }
 
@@ -618,11 +652,9 @@ function renderLatestAlerts(alerts) {
     : `<div class="empty-state">No alerts yet.</div>`;
 }
 
-function renderRecentEvents(events) {
-  const container = document.getElementById("recentEvents");
-  container.innerHTML = events.length
-    ? events.map((event) => `
-      <article class="timeline-item">
+function recentEventItem(event, isNew) {
+  return `
+      <article class="timeline-item ${isNew ? "new" : ""}">
         <strong>${escapeHtml(event.event_type)} · ${escapeHtml(event.source)}</strong>
         <p>${escapeHtml(event.event_id)} <span class="code-chip">${escapeHtml(event.quality_status)}</span></p>
         <p>${formatDate(event.event_timestamp)}</p>
@@ -630,7 +662,13 @@ function renderRecentEvents(events) {
           ? `<p><button class="ghost-button small-button" type="button" data-event-detail="${escapeHtml(event.ingestion_id)}">Detail</button></p>`
           : `<p class="muted">No ingestion identity reported for this event.</p>`}
       </article>
-    `).join("")
+    `;
+}
+
+function renderRecentEvents(events) {
+  const container = document.getElementById("recentEvents");
+  container.innerHTML = events.length
+    ? events.map((event) => recentEventItem(event, false)).join("")
     : `<div class="empty-state">No events ingested yet.</div>`;
 }
 

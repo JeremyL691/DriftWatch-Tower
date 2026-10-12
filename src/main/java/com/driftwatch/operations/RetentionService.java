@@ -37,6 +37,7 @@ public class RetentionService {
     static final Duration RESOLVED_ALERT_RETENTION = Duration.ofDays(90);
     static final Duration COMPLETED_DLT_RETENTION = Duration.ofDays(90);
     static final Duration INBOX_IDENTITY_RETENTION = Duration.ofDays(35);
+    static final Duration RECEIPT_GRACE = Duration.ofDays(1);
 
     private final JdbcTemplate jdbcTemplate;
     private final DriftwatchMetrics metrics;
@@ -92,20 +93,44 @@ public class RetentionService {
                       AND NOT EXISTS (SELECT 1 FROM quality_alerts a WHERE a.incident_id = i.id)
                     ORDER BY i.id LIMIT %d)
                 """.formatted(BATCH_SIZE), now.minus(RESOLVED_ALERT_RETENTION));
+        // Dependent rows are removed in the same statement as their parent. The foreign keys from
+        // dead_letter_replays and source_outbox have no ON DELETE action, and PostgreSQL checks them
+        // at the end of the statement, so the children are gone by the time the parent delete is checked.
         total += prune(pruned, "dead_letter_records", """
-                DELETE FROM dead_letter_records WHERE id IN (
+                WITH victims AS (
                     SELECT d.id FROM dead_letter_records d
                     WHERE d.recovery_state <> 'OPEN' AND d.recovered_at < ?
-                    ORDER BY d.id LIMIT %d)
+                    ORDER BY d.id LIMIT %d
+                ), dropped_replays AS (
+                    DELETE FROM dead_letter_replays r
+                    USING victims v
+                    WHERE r.dead_letter_id = v.id
+                    RETURNING r.id
+                )
+                DELETE FROM dead_letter_records WHERE id IN (SELECT id FROM victims)
                 """.formatted(BATCH_SIZE), now.minus(COMPLETED_DLT_RETENTION));
         total += prune(pruned, "source_inbox", """
-                DELETE FROM source_inbox WHERE id IN (
+                WITH victims AS (
                     SELECT i.id FROM source_inbox i
                     WHERE i.received_at < ?
                       AND NOT EXISTS (SELECT 1 FROM source_outbox o
                                       WHERE o.inbox_id = i.id AND o.status = 'PENDING')
-                    ORDER BY i.id LIMIT %d)
+                    ORDER BY i.id LIMIT %d
+                ), dropped_outbox AS (
+                    DELETE FROM source_outbox o
+                    USING victims v
+                    WHERE o.inbox_id = v.id AND o.status <> 'PENDING'
+                    RETURNING o.id
+                )
+                DELETE FROM source_inbox WHERE id IN (SELECT id FROM victims)
                 """.formatted(BATCH_SIZE), now.minus(INBOX_IDENTITY_RETENTION));
+        // Idempotency receipts expire on their own clock; a day of grace keeps late retries deduplicated.
+        total += prune(pruned, "ingestion_receipts", """
+                DELETE FROM ingestion_receipts WHERE (source, event_type, idempotency_key) IN (
+                    SELECT r.source, r.event_type, r.idempotency_key FROM ingestion_receipts r
+                    WHERE r.expires_at < ?
+                    ORDER BY r.expires_at LIMIT %d)
+                """.formatted(BATCH_SIZE), now.minus(RECEIPT_GRACE));
         total += prune(pruned, "processed_receipts", """
                 DELETE FROM processed_receipts WHERE ingestion_id IN (
                     SELECT p.ingestion_id FROM processed_receipts p

@@ -346,4 +346,102 @@ class GithubPollerIntegrationTest extends ContainerIntegrationTest {
                 .isEqualTo("\"v7\"");
         assertThat(inboxRepository.countBySource(SOURCE)).isEqualTo(1);
     }
+
+    /**
+     * Regression: NO_OVERLAP used observed_from, the bootstrap's oldest event, so every live window on a
+     * busy repository recorded a spurious gap. Overlap is judged against the newest event already observed.
+     */
+    @Test
+    void busyRoundThatOverlapsTheKnownRangeRecordsNoNoOverlapGap() {
+        stub.script(GithubStubServer.ScriptedResponse.withHeaders(200,
+                GithubStubServer.headers("etag", "\"b1\""),
+                GithubStubServer.array(
+                        GithubStubServer.event("8001", "PushEvent", "2026-10-01T00:00:00Z", null),
+                        GithubStubServer.event("8002", "PushEvent", "2026-10-01T00:10:00Z", null))));
+        pollAndAwait();
+        assertThat(state().getObservedFrom()).isEqualTo(Instant.parse("2026-10-01T00:00:00Z"));
+        assertThat(state().getLastEventAt()).isEqualTo(Instant.parse("2026-10-01T00:10:00Z"));
+
+        // Starts after observed_from but reaches back before the newest known event: overlap, no gap.
+        stub.script(GithubStubServer.ScriptedResponse.withHeaders(200,
+                GithubStubServer.headers("etag", "\"b2\""),
+                GithubStubServer.array(GithubStubServer.event("8003", "PushEvent", "2026-10-01T00:05:00Z", null))));
+        pollAndAwait();
+        assertThat(gapCount("NO_OVERLAP")).as("an overlapping window is not a gap").isZero();
+        assertThat(state().getLastEventAt()).as("the newest known event never moves backwards")
+                .isEqualTo(Instant.parse("2026-10-01T00:10:00Z"));
+
+        // Starts after the newest known event: the range in between was not seen, so this is a gap.
+        stub.script(GithubStubServer.ScriptedResponse.withHeaders(200,
+                GithubStubServer.headers("etag", "\"b3\""),
+                GithubStubServer.array(GithubStubServer.event("8004", "PushEvent", "2026-10-01T00:30:00Z", null))));
+        pollAndAwait();
+        assertThat(gapCount("NO_OVERLAP")).isEqualTo(1);
+    }
+
+    /**
+     * Regression: a failed later page left page 1's ETag as the candidate, so once applied, the next poll could
+     * answer 304 and the missing page was never read again. An incomplete round stages with no candidate.
+     */
+    @Test
+    void incompletePaginationDoesNotCheckpointTheEtagSoTheNextRoundRereadsPageOne() {
+        stub.script(
+                GithubStubServer.ScriptedResponse.withHeaders(200, GithubStubServer.headers("etag", "\"p1\""),
+                        GithubStubServer.array(
+                                GithubStubServer.event("9001", "PushEvent", "2026-10-01T01:00:00Z", null),
+                                GithubStubServer.event("9002", "PushEvent", "2026-10-01T01:01:00Z", null))),
+                GithubStubServer.ScriptedResponse.of(500, "{\"message\":\"boom\"}"));
+        pollAndAwait();
+
+        assertThat(inboxRepository.countBySource(SOURCE)).isEqualTo(2);
+        assertThat(gapCount("PAGINATION_INCOMPLETE")).isEqualTo(1);
+        assertThat(state().getEtagApplied()).as("the page-1 ETag must not become the checkpoint").isNull();
+
+        stub.script(GithubStubServer.ScriptedResponse.withHeaders(200, GithubStubServer.headers("etag", "\"p2\""),
+                GithubStubServer.array(GithubStubServer.event("9003", "PushEvent", "2026-10-01T01:02:00Z", null))));
+        pollAndAwait();
+
+        assertThat(stub.requestedIfNoneMatch())
+                .as("no request may be conditioned on the incomplete round's ETag")
+                .doesNotContain("\"p1\"");
+        assertThat(inboxRepository.countBySource(SOURCE)).isEqualTo(3);
+        assertThat(state().getEtagApplied()).isEqualTo("\"p2\"");
+    }
+
+    /**
+     * Regression: a LIVE round that stopped at max-pages while its last page was full of unknown records
+     * dropped the older records without a trace. It must record a truncation gap.
+     */
+    @Test
+    void liveRoundThatStopsAtMaxPagesWithUnreadRecordsRecordsATruncationGap() {
+        stub.script(GithubStubServer.ScriptedResponse.withHeaders(200, GithubStubServer.headers("etag", "\"t1\""),
+                GithubStubServer.array(GithubStubServer.event("9101", "PushEvent", "2026-10-01T02:00:00Z", null))));
+        pollAndAwait();
+        assertThat(state().getEtagApplied()).isEqualTo("\"t1\"");
+
+        stub.script(
+                GithubStubServer.ScriptedResponse.withHeaders(200, GithubStubServer.headers("etag", "\"t2\""),
+                        GithubStubServer.array(
+                                GithubStubServer.event("9102", "PushEvent", "2026-10-01T02:01:00Z", null),
+                                GithubStubServer.event("9103", "PushEvent", "2026-10-01T02:02:00Z", null))),
+                GithubStubServer.ScriptedResponse.withHeaders(200, GithubStubServer.headers("etag", "\"t2\""),
+                        GithubStubServer.array(
+                                GithubStubServer.event("9104", "PushEvent", "2026-10-01T02:03:00Z", null),
+                                GithubStubServer.event("9105", "PushEvent", "2026-10-01T02:04:00Z", null))),
+                GithubStubServer.ScriptedResponse.withHeaders(200, GithubStubServer.headers("etag", "\"t2\""),
+                        GithubStubServer.array(
+                                GithubStubServer.event("9106", "PushEvent", "2026-10-01T02:05:00Z", null),
+                                GithubStubServer.event("9107", "PushEvent", "2026-10-01T02:06:00Z", null))));
+        pollAndAwait();
+
+        assertThat(runs().get(0).getMode()).isEqualTo("LIVE");
+        assertThat(gapCount("PAGINATION_TRUNCATED")).as("older records behind max-pages are recorded as a gap")
+                .isEqualTo(1);
+        assertThat(inboxRepository.countBySource(SOURCE)).isEqualTo(7);
+        assertThat(state().getEtagApplied()).isEqualTo("\"t2\"");
+    }
+
+    private long gapCount(String reason) {
+        return gapRepository.findAll().stream().filter(gap -> reason.equals(gap.getReason())).count();
+    }
 }

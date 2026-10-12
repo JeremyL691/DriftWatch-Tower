@@ -100,7 +100,10 @@ a {
 
 .table-shell {
     margin-top: 20px;
-    overflow: hidden;
+    /* Wide tables scroll inside their shell instead of squeezing every cell to one character
+       per line (the schema table sits in a 5/12 column) or widening the page. */
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
 /* Section + subpanel heads: kicker in --gold mono uppercase, h2/h3 Fraunces 500-600 --ink */
@@ -322,9 +325,9 @@ td {
     border-bottom: 1px solid var(--gold-line);
     color: var(--ink);
     /* Long unbreakable tokens (event types such as github.PullRequestReviewCommentEvent, ids and
-       timestamps) must wrap instead of widening the page: at 320px they pushed the document to
-       411px even though every panel is already a single column there. */
-    overflow-wrap: anywhere;
+       timestamps) must not widen the page: at 320px they pushed the document to 411px. The shell
+       scrolls horizontally, so words break only when a single token exceeds its cell. */
+    overflow-wrap: break-word;
 }
 
 th {

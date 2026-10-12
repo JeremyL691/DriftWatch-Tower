@@ -13,6 +13,8 @@ import java.util.List;
 @RequestMapping("/api/v1/metrics")
 public class MetricWindowController {
 
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final MetricWindowRepository repository;
 
     public MetricWindowController(MetricWindowRepository repository) {
@@ -26,6 +28,9 @@ public class MetricWindowController {
             @RequestParam(required = false) String metricName,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "100") int size) {
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException("page must be >= 0 and size between 1 and " + MAX_PAGE_SIZE);
+        }
         return repository.search(source, eventType, metricName, PageRequest.of(page, size))
                 .getContent()
                 .stream()

@@ -6,6 +6,8 @@ import com.driftwatch.persistence.CollectorStateRepository;
 import com.driftwatch.persistence.SourceGapRepository;
 import com.driftwatch.persistence.SourceOutboxEntity;
 import com.driftwatch.persistence.SourceOutboxRepository;
+import com.driftwatch.persistence.SourcePollRunEntity;
+import com.driftwatch.persistence.SourcePollRunRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,14 +17,16 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Collector status for the operations API (execution guide, sections 4.5 and 7.2).
  *
  * <p>The collector is "lost" only when {@code last_poll_success} is older than
  * {@code max(15 minutes, 2x the current legal poll interval)}; a successful poll without new
- * events is QUIET, not lost, and an upstream backoff is reported as its own state. Reads are
- * pure.
+ * events is QUIET, not lost, and an upstream backoff is reported as its own state. RUNNING means
+ * the most recent finished poll delivered new records; a 304 or a round without new records is
+ * QUIET. Reads are pure.
  */
 @Service
 public class CollectorStatusService {
@@ -32,6 +36,7 @@ public class CollectorStatusService {
     private final CollectorStateRepository stateRepository;
     private final SourceOutboxRepository outboxRepository;
     private final SourceGapRepository gapRepository;
+    private final SourcePollRunRepository pollRunRepository;
     private final DriftwatchProperties properties;
     private final Clock clock;
 
@@ -39,19 +44,22 @@ public class CollectorStatusService {
     public CollectorStatusService(CollectorStateRepository stateRepository,
                                   SourceOutboxRepository outboxRepository,
                                   SourceGapRepository gapRepository,
+                                  SourcePollRunRepository pollRunRepository,
                                   com.driftwatch.config.RuntimeConfiguration runtime,
                                   Clock clock) {
-        this(stateRepository, outboxRepository, gapRepository, runtime.startupProperties(), clock);
+        this(stateRepository, outboxRepository, gapRepository, pollRunRepository, runtime.startupProperties(), clock);
     }
 
     public CollectorStatusService(CollectorStateRepository stateRepository,
                                   SourceOutboxRepository outboxRepository,
                                   SourceGapRepository gapRepository,
+                                  SourcePollRunRepository pollRunRepository,
                                   DriftwatchProperties properties,
                                   Clock clock) {
         this.stateRepository = stateRepository;
         this.outboxRepository = outboxRepository;
         this.gapRepository = gapRepository;
+        this.pollRunRepository = pollRunRepository;
         this.properties = properties;
         this.clock = clock;
     }
@@ -65,17 +73,30 @@ public class CollectorStatusService {
                 .toList();
     }
 
+    /**
+     * The silence a GitHub collector may show before it is LOST: {@code max(15 minutes, 2x the
+     * current legal poll interval)}. Source health reuses this exact threshold (guide 7.2).
+     */
+    Duration lostAfter() {
+        Duration legalInterval = properties.source().github().pollInterval();
+        return legalInterval.multipliedBy(2).compareTo(MIN_LOST_AFTER) > 0
+                ? legalInterval.multipliedBy(2) : MIN_LOST_AFTER;
+    }
+
+    /** Lost means the last successful poll is older than {@link #lostAfter()} at {@code now}. */
+    boolean isLost(CollectorStateEntity state, Instant now) {
+        return state.getLastPollSuccess() != null
+                && state.getLastPollSuccess().isBefore(now.minus(lostAfter()));
+    }
+
     Map<String, Object> view(CollectorStateEntity state) {
         Instant now = clock.instant();
-        Duration legalInterval = properties.source().github().pollInterval();
-        Duration lostAfter = legalInterval.multipliedBy(2).compareTo(MIN_LOST_AFTER) > 0
-                ? legalInterval.multipliedBy(2) : MIN_LOST_AFTER;
-        boolean lost = state.getLastPollSuccess() != null
-                && state.getLastPollSuccess().isBefore(now.minus(lostAfter));
+        Duration lostAfter = lostAfter();
+        boolean lost = isLost(state, now);
 
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("source", state.getSource());
-        view.put("status", status(state, lost));
+        view.put("status", status(state, lost, lastFinishedRun(state.getSource())));
         view.put("last_poll_at", state.getLastPollAt());
         view.put("last_success_at", state.getLastPollSuccess());
         view.put("next_poll_at", state.getNextPollAt());
@@ -111,7 +132,14 @@ public class CollectorStatusService {
         return view;
     }
 
-    private String status(CollectorStateEntity state, boolean lost) {
+    /** The newest poll run that has finished; a round still in progress does not count. */
+    private Optional<SourcePollRunEntity> lastFinishedRun(String source) {
+        return pollRunRepository.findTop20BySourceOrderByIdDesc(source).stream()
+                .filter(run -> !SourcePollRunEntity.STATUS_RUNNING.equals(run.getStatus()))
+                .findFirst();
+    }
+
+    private String status(CollectorStateEntity state, boolean lost, Optional<SourcePollRunEntity> lastFinished) {
         if (lost) {
             return "LOST";
         }
@@ -121,12 +149,14 @@ public class CollectorStatusService {
         if (CollectorStateEntity.STATUS_ERROR.equals(state.getStatus())) {
             return "ERROR";
         }
-        // A successful poll that found nothing new is QUIET, not running: the last event is not
-        // newer than the last successful poll (guide 7.2).
-        if (state.getLastEventAt() == null || state.getLastPollSuccess() == null
-                || !state.getLastEventAt().isAfter(state.getLastPollSuccess())) {
-            return "QUIET";
-        }
-        return "RUNNING";
+        // Only a finished round that staged or applied new records is RUNNING. A 304 or a round
+        // that found nothing new is QUIET, not lost (guide 6.3 and 7.2). The upstream created_at of
+        // the newest event is always older than the wall-clock poll time, so it cannot tell these apart.
+        boolean deliveredRecords = lastFinished
+                .filter(run -> SourcePollRunEntity.STATUS_STAGED.equals(run.getStatus())
+                        || SourcePollRunEntity.STATUS_APPLIED.equals(run.getStatus()))
+                .map(run -> run.getNewRecords() > 0)
+                .orElse(false);
+        return deliveredRecords ? "RUNNING" : "QUIET";
     }
 }

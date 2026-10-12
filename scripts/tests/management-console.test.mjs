@@ -111,6 +111,12 @@ test('parseConfigForm validates ranges, regex grammar and repository', () => {
   const badRepo = structuredClone(VALID_FORM);
   badRepo.values.github_repository = 'https://github.com/apache/kafka';
   assert.match(lib.parseConfigForm(badRepo).errors.github_repository, /owner\/name/);
+  badRepo.values.github_repository = 'my.org/repo';
+  assert.match(lib.parseConfigForm(badRepo).errors.github_repository, /owner\/name/);
+  badRepo.values.github_repository = 'owner/' + 'r'.repeat(52);
+  assert.match(lib.parseConfigForm(badRepo).errors.github_repository, /at most 57/);
+  badRepo.values.github_repository = 'owner/' + 'r'.repeat(51);
+  assert.equal(lib.parseConfigForm(badRepo).errors.github_repository, undefined);
 });
 
 test('parseConfigForm mirrors the server format grammar for Java regex and blank entries', () => {

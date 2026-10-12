@@ -62,6 +62,10 @@ public class QualityStreamsTopology {
     static final String ANOMALY_SCOPE_STORE = "anomaly-scope-store";
     static final String SCOPE_WATERMARK_STORE = "scope-watermark-store";
     static final String ENVELOPE_DIGEST_STORE = "envelope-digest-store";
+    /** Matches the collector inbox identity retention: redeliveries older than this cannot occur. */
+    static final Duration DIGEST_RETENTION = Duration.ofDays(35);
+    static final Duration DIGEST_EVICTION_INTERVAL = Duration.ofHours(6);
+    static final char DIGEST_TIME_SEPARATOR = '@';
     static final String SCHEMA_BASELINE_STORE = "schema-baseline-store";
     static final String DUPLICATE_EVENT_ID_STORE = "duplicate-event-id-store";
     static final String DUPLICATE_PAYLOAD_STORE = "duplicate-payload-store";
@@ -148,12 +152,37 @@ public class QualityStreamsTopology {
                             topic, partition, offset, record.value()));
                     return;
                 }
+                String missing = missingRequiredField(envelope);
+                if (missing != null) {
+                    // A parseable but incomplete envelope would throw inside the window processors
+                    // and stop the stream thread for every source; it is a malformed record.
+                    forward(record, deadLetter(envelope.ingestionId() == null
+                                    ? null : envelope.ingestionId().toString(),
+                            "MALFORMED_RECORD: missing " + missing,
+                            topic, partition, offset, record.value()));
+                    return;
+                }
                 forward(record, new ParsedRecord(envelope, null));
             } catch (Exception e) {
                 forward(record, deadLetter(null,
                         "MALFORMED_RECORD:" + e.getClass().getSimpleName() + ": " + e.getMessage(),
                         topic, partition, offset, record.value()));
             }
+        }
+
+        private static String missingRequiredField(RawEnvelope envelope) {
+            if (envelope.ingestionId() == null) return "ingestion_id";
+            if (envelope.receivedAt() == null) return "received_at";
+            if (envelope.origin() == null) return "origin";
+            if (envelope.mode() == null) return "mode";
+            var event = envelope.event();
+            if (event == null) return "event";
+            if (event.eventId() == null || event.eventId().isBlank()) return "event.event_id";
+            if (event.source() == null || event.source().isBlank()) return "event.source";
+            if (event.eventType() == null || event.eventType().isBlank()) return "event.event_type";
+            if (event.eventTimestamp() == null) return "event.event_timestamp";
+            if (event.payload() == null) return "event.payload";
+            return null;
         }
 
         /**
@@ -175,9 +204,8 @@ public class QualityStreamsTopology {
                     com.driftwatch.dlt.DltMessage.truncate(reason, com.driftwatch.dlt.DltMessage.MAX_REASON_LENGTH),
                     1,
                     topic, partition, offset,
-                    com.driftwatch.dlt.DltMessage.truncate(payload == null ? null
-                            : new String(payload, java.nio.charset.StandardCharsets.UTF_8),
-                            com.driftwatch.dlt.DltMessage.MAX_PAYLOAD_LENGTH),
+                    com.driftwatch.dlt.DltMessage.truncatePayload(payload == null ? null
+                            : new String(payload, java.nio.charset.StandardCharsets.UTF_8)),
                     Instant.now()));
         }
 
@@ -291,6 +319,10 @@ public class QualityStreamsTopology {
         public void init(ProcessorContext<String, PendingEvent> context) {
             this.context = context;
             this.digestStore = context.getStateStore(ENVELOPE_DIGEST_STORE);
+            // Identities are only needed while a redelivery is still possible; without eviction
+            // the store grows by one entry per ingestion forever.
+            context.schedule(DIGEST_EVICTION_INTERVAL, org.apache.kafka.streams.processor.PunctuationType.WALL_CLOCK_TIME,
+                    this::evictExpired);
         }
 
         @Override
@@ -298,9 +330,10 @@ public class QualityStreamsTopology {
             PendingEvent pending = record.value();
             String id = pending.envelope.ingestionId().toString();
             String digest = digest(pending.envelope);
-            String seen = digestStore.get(id);
+            String stored = digestStore.get(id);
+            String seen = stored == null ? null : digestOf(stored);
             if (seen == null) {
-                digestStore.put(id, digest);
+                digestStore.put(id, digest + DIGEST_TIME_SEPARATOR + context.currentSystemTimeMs());
                 context.forward(record);
                 return;
             }
@@ -313,6 +346,32 @@ public class QualityStreamsTopology {
                     : WindowEvaluation.notApplicable(scope, WindowEvaluation.Outcome.CONFLICT,
                             "INGESTION_ID_REUSED_WITH_DIFFERENT_CONTENT");
             context.forward(record);
+        }
+
+        /** Stored values are {@code digest@firstSeenEpochMs}; older entries hold the bare digest. */
+        static String digestOf(String stored) {
+            int separator = stored.indexOf(DIGEST_TIME_SEPARATOR);
+            return separator < 0 ? stored : stored.substring(0, separator);
+        }
+
+        void evictExpired(long now) {
+            long cutoff = now - DIGEST_RETENTION.toMillis();
+            List<String> expired = new java.util.ArrayList<>();
+            List<String> legacy = new java.util.ArrayList<>();
+            try (var entries = digestStore.all()) {
+                while (entries.hasNext()) {
+                    var entry = entries.next();
+                    int separator = entry.value.indexOf(DIGEST_TIME_SEPARATOR);
+                    if (separator < 0) {
+                        legacy.add(entry.key);
+                    } else if (Long.parseLong(entry.value.substring(separator + 1)) < cutoff) {
+                        expired.add(entry.key);
+                    }
+                }
+            }
+            expired.forEach(digestStore::delete);
+            // Entries written before first-seen times were recorded start their retention now.
+            legacy.forEach(key -> digestStore.put(key, digestStore.get(key) + DIGEST_TIME_SEPARATOR + now));
         }
 
         private String digest(RawEnvelope envelope) {

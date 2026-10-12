@@ -36,9 +36,7 @@ public class DriftwatchMetrics {
     private final Timer processingDuration;
     private final Counter processingFailures;
     private final Counter collectorPolls;
-    private final Counter collectorFailures;
     private final AtomicLong collectorUpstreamLagSeconds = new AtomicLong(0);
-    private final Counter alertsFired;
     private final AtomicLong rowsPruned = new AtomicLong(0);
     private final AtomicLong lastRetentionSuccessEpochSeconds = new AtomicLong(0);
     private final DistributionSummary eventsPerBatch;
@@ -75,12 +73,21 @@ public class DriftwatchMetrics {
                 .description("Poll rounds by outcome")
                 .tag("outcome", "started")
                 .register(registry);
-        this.collectorFailures = Counter.builder("driftwatch_collector_failures_total")
-                .description("Poll rounds that failed by reason class")
-                .register(registry);
-        this.alertsFired = Counter.builder("driftwatch_alerts_fired_total")
-                .description("Alerts persisted, labelled by detector type and severity")
-                .register(registry);
+        // Prometheus requires every series of one meter name to carry the same label keys, so the
+        // labelled counters are initialised at zero with their real labels; an unlabelled
+        // pre-registration made every later labelled increment fail registration silently.
+        for (com.driftwatch.source.github.GithubFetchResult.Status status
+                : com.driftwatch.source.github.GithubFetchResult.Status.values()) {
+            if (status != com.driftwatch.source.github.GithubFetchResult.Status.OK
+                    && status != com.driftwatch.source.github.GithubFetchResult.Status.NOT_MODIFIED) {
+                collectorFailureCounter(status.name());
+            }
+        }
+        for (AlertType type : AlertType.values()) {
+            for (com.driftwatch.quality.Severity severity : com.driftwatch.quality.Severity.values()) {
+                alertCounter(type, severity.name());
+            }
+        }
         this.eventsPerBatch = DistributionSummary.builder("driftwatch_ingestion_batch_size")
                 .description("Accepted events per batch request")
                 .register(registry);
@@ -135,11 +142,14 @@ public class DriftwatchMetrics {
     }
 
     public void recordCollectorFailure(String reasonClass) {
-        Counter.builder("driftwatch_collector_failures_total")
+        collectorFailureCounter(reasonClass).increment();
+    }
+
+    private Counter collectorFailureCounter(String reasonClass) {
+        return Counter.builder("driftwatch_collector_failures_total")
                 .description("Poll rounds that failed by reason class")
                 .tag("reason", reasonClass)
-                .register(registry)
-                .increment();
+                .register(registry);
     }
 
     public void recordCollectorUpstreamLag(Instant lastEventAt) {
@@ -148,12 +158,15 @@ public class DriftwatchMetrics {
     }
 
     public void recordAlert(AlertType type, String severity) {
-        Counter.builder("driftwatch_alerts_fired_total")
+        alertCounter(type, severity).increment();
+    }
+
+    private Counter alertCounter(AlertType type, String severity) {
+        return Counter.builder("driftwatch_alerts_fired_total")
                 .description("Alerts persisted, labelled by detector type and severity")
                 .tag("detector", type.name())
                 .tag("severity", severity)
-                .register(registry)
-                .increment();
+                .register(registry);
     }
 
     public void recordBatchSize(int size) {

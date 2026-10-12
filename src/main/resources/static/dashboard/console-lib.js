@@ -96,7 +96,10 @@
   const DURATION_MS_MIN = 1;
   const DURATION_MS_MAX = 2592000000;
   const FIELD_NAME = /^[A-Za-z_][A-Za-z0-9_.-]{0,127}$/;
-  const REPOSITORY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
+  // Mirrors ManagementConfiguration: GitHub owners are letters, digits and hyphens; the whole
+  // name must fit the 64 character source id "github:<owner/name>".
+  const REPOSITORY = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
+  const MAX_REPOSITORY_LENGTH = 57;
 
   function parseConfigForm(form) {
     const values = (form && form.values) || {};
@@ -242,7 +245,9 @@
     const repository = String(values.github_repository ?? "").trim();
     config.github_repository = repository;
     if (!REPOSITORY.test(repository)) {
-      errors.github_repository = "Use owner/name with letters, digits, _ . - only.";
+      errors.github_repository = "Use owner/name: the owner uses letters, digits and -; the name letters, digits, _ . -.";
+    } else if (repository.length > MAX_REPOSITORY_LENGTH) {
+      errors.github_repository = `Use at most ${MAX_REPOSITORY_LENGTH} characters.`;
     }
     config.github_poll_interval_ms = integer("github_poll_interval_ms", 300000, 86400000);
     config.github_max_pages = integer("github_max_pages", 1, 10);

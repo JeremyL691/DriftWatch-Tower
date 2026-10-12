@@ -182,13 +182,15 @@ cmd_unit() {
   fi
   echo "$attempts" > "$OUT_DIR/attempts.txt"
 
-  python3 - "$OUT_DIR" <<'PY'
+  # Surefire reports live under the repo root, not the caller's cwd.
+  python3 - "$OUT_DIR" "$DWT_REPO_ROOT" <<'PY'
 import glob, json, os, sys, xml.etree.ElementTree as ET
-out_dir = sys.argv[1]
+out_dir, repo_root = sys.argv[1], sys.argv[2]
 seen = set()
 tot = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
 classes = []
-for path in sorted(glob.glob('target/surefire-reports/TEST-*.xml'), key=os.path.getmtime):
+pattern = os.path.join(repo_root, 'target', 'surefire-reports', 'TEST-*.xml')
+for path in sorted(glob.glob(pattern), key=os.path.getmtime):
     root = ET.parse(path).getroot()
     name = root.get('name')
     if name in seen:
