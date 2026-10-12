@@ -88,11 +88,11 @@ An admin-only endpoint exercises the detectors with generated events, which is u
 confirming that alerting works before real traffic arrives:
 
 ```bash
-admin_post /api/v1/demo/run-scenario/duplicate
+admin_post /api/v1/demo/run-scenario/duplicate-events
 ```
 
-Scenarios: `duplicate`, `normal`, `schema-drift`, `late`, `null-spike`, `anomaly-spike`,
-`stale-source`, `field-range`. Their events carry `source` values starting with `demo` (for
+Scenarios: `normal-flow`, `duplicate-events`, `late-events`, `null-spike`, `anomaly-spike`,
+`stale-source`, `mixed-incident`, `schema-drift`, `field-range`, `field-format`. Their events carry `source` values starting with `demo` (for
 example `demo-api`), so they stay distinguishable from real source data everywhere. Nothing
 collected from the GitHub source is ever synthesised, and the acceptance evidence counts only
 rows whose origin is `GITHUB`. Treat those rows as test data: ignore them when reading the
@@ -140,7 +140,7 @@ admin_post() {
   return "$dwt_status"
 }
 
-admin_post /api/v1/demo/run-scenario/duplicate
+admin_post /api/v1/demo/run-scenario/duplicate-events
 # Choose an actual ID from the dead-letter list before running replay:
 # admin_post "/api/v1/dead-letters/$DWT_DLT_ID/replay"
 admin_post /api/v1/operations/retention/run

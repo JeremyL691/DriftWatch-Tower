@@ -30,6 +30,12 @@ import java.util.TreeMap;
  * DRIFTING with missing/added/type_changed evidence. NULL values never overwrite a determined
  * non-null type: they are the null-spike detector's evidence, so NULL-versus-value differences
  * are excluded from the type-changed set.
+ *
+ * <p>The reverse is a refinement, not drift: a leaf the ACTIVE baseline recorded as NULL has no
+ * determined type yet (an optional field whose first observation was null). The first concrete
+ * value for that path refines the baseline: the refined schema becomes ACTIVE, the previous row is
+ * SUPERSEDED, and a baseline outbox row lets Streams start checking the field. Determined types
+ * are never changed by a refinement.
  */
 @Service
 public class SchemaObservationService {
@@ -57,9 +63,12 @@ public class SchemaObservationService {
         TreeMap<String, String> observedSchema = SchemaInferrer.infer(payload);
         String observedHash = SchemaHasher.hash(observedSchema);
 
-        Optional<SchemaVersionEntity> existing = repository.findByEventTypeAndSchemaHash(eventType, observedHash);
         Optional<SchemaVersionEntity> active =
                 repository.findFirstByEventTypeAndStatus(eventType, SchemaVersionEntity.STATUS_ACTIVE);
+        if (active.isPresent()) {
+            active = Optional.of(refineUndeterminedLeaves(active.get(), observedSchema, now));
+        }
+        Optional<SchemaVersionEntity> existing = repository.findByEventTypeAndSchemaHash(eventType, observedHash);
 
         if (existing.isPresent()) {
             SchemaVersionEntity row = existing.get();
@@ -89,6 +98,43 @@ public class SchemaObservationService {
         SchemaVersionEntity saved = repository.save(row);
         return new Observation(active.get(), saved, observedSchema, observedHash, true,
                 driftDiff(active, observedSchema), false);
+    }
+
+    /**
+     * Resolves NULL-typed leaves of the ACTIVE baseline from concrete observed values and promotes
+     * the refined schema. Returns the (possibly new) ACTIVE version.
+     */
+    private SchemaVersionEntity refineUndeterminedLeaves(SchemaVersionEntity active,
+                                                         Map<String, String> observed, Instant now) {
+        TreeMap<String, String> baseline = objectMapper.convertValue(active.getSchemaJson(), SCHEMA_MAP);
+        TreeMap<String, String> refined = new TreeMap<>(baseline);
+        baseline.forEach((path, type) -> {
+            String seen = observed.get(path);
+            if ("NULL".equals(type) && seen != null && !"NULL".equals(seen) && !"OBJECT".equals(seen)) {
+                refined.put(path, seen);
+            }
+        });
+        if (refined.equals(baseline)) {
+            return active;
+        }
+        String refinedHash = SchemaHasher.hash(refined);
+        SchemaVersionEntity target = repository.findByEventTypeAndSchemaHash(active.getEventType(), refinedHash)
+                .orElseGet(() -> {
+                    SchemaVersionEntity row = new SchemaVersionEntity();
+                    row.setEventType(active.getEventType());
+                    row.setSchemaHash(refinedHash);
+                    row.setSchemaJson(objectMapper.valueToTree(refined));
+                    row.setFirstSeenAt(now);
+                    row.setLastSeenAt(now);
+                    return row;
+                });
+        active.setStatus(SchemaVersionEntity.STATUS_SUPERSEDED);
+        // The partial unique index allows one ACTIVE row per type at any point in the transaction.
+        repository.saveAndFlush(active);
+        target.setStatus(SchemaVersionEntity.STATUS_ACTIVE);
+        SchemaVersionEntity saved = repository.save(target);
+        appendBaselineOutbox(saved, now);
+        return saved;
     }
 
     /**
