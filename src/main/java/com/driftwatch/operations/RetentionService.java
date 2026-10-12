@@ -38,6 +38,9 @@ public class RetentionService {
     static final Duration COMPLETED_DLT_RETENTION = Duration.ofDays(90);
     static final Duration INBOX_IDENTITY_RETENTION = Duration.ofDays(35);
     static final Duration RECEIPT_GRACE = Duration.ofDays(1);
+    static final Duration COLLECTOR_GAP_RETENTION = Duration.ofDays(90);
+    /** The collector status view reads the newest rows per source; these are never pruned. */
+    static final int COLLECTOR_VIEW_ROWS = 20;
 
     private final JdbcTemplate jdbcTemplate;
     private final DriftwatchMetrics metrics;
@@ -124,6 +127,28 @@ public class RetentionService {
                 )
                 DELETE FROM source_inbox WHERE id IN (SELECT id FROM victims)
                 """.formatted(BATCH_SIZE), now.minus(INBOX_IDENTITY_RETENTION));
+        // Gaps first: a gap references its poll run, so once an old gap is gone its run can be freed in this pass.
+        total += prune(pruned, "source_gaps", """
+                DELETE FROM source_gaps WHERE id IN (
+                    SELECT g.id FROM source_gaps g
+                    WHERE g.created_at < ?
+                      AND g.id < (SELECT n.id FROM source_gaps n WHERE n.source = g.source
+                                  ORDER BY n.id DESC OFFSET %d LIMIT 1)
+                    ORDER BY g.id LIMIT %d)
+                """.formatted(COLLECTOR_VIEW_ROWS - 1, BATCH_SIZE), now.minus(COLLECTOR_GAP_RETENTION));
+        // Poll runs have no foreign keys, so the references are checked explicitly: pending collector
+        // checkpoints, inbox rows and gaps that still point at a run keep it. The newest rows per source stay.
+        total += prune(pruned, "source_poll_runs", """
+                DELETE FROM source_poll_runs WHERE id IN (
+                    SELECT r.id FROM source_poll_runs r
+                    WHERE r.started_at < ?
+                      AND NOT EXISTS (SELECT 1 FROM collector_state c WHERE c.pending_poll_run_id = r.id)
+                      AND NOT EXISTS (SELECT 1 FROM source_inbox i WHERE i.poll_run_id = r.id)
+                      AND NOT EXISTS (SELECT 1 FROM source_gaps g WHERE g.poll_run_id = r.id)
+                      AND r.id < (SELECT n.id FROM source_poll_runs n WHERE n.source = r.source
+                                  ORDER BY n.id DESC OFFSET %d LIMIT 1)
+                    ORDER BY r.id LIMIT %d)
+                """.formatted(COLLECTOR_VIEW_ROWS - 1, BATCH_SIZE), now.minus(INBOX_IDENTITY_RETENTION));
         // Idempotency receipts expire on their own clock; a day of grace keeps late retries deduplicated.
         total += prune(pruned, "ingestion_receipts", """
                 DELETE FROM ingestion_receipts WHERE (source, event_type, idempotency_key) IN (
@@ -153,6 +178,9 @@ public class RetentionService {
         status.put("resolved_alert_retention_days", RESOLVED_ALERT_RETENTION.toDays());
         status.put("completed_dead_letter_retention_days", COMPLETED_DLT_RETENTION.toDays());
         status.put("inbox_identity_retention_days", INBOX_IDENTITY_RETENTION.toDays());
+        status.put("poll_run_retention_days", INBOX_IDENTITY_RETENTION.toDays());
+        status.put("collector_gap_retention_days", COLLECTOR_GAP_RETENTION.toDays());
+        status.put("collector_view_rows_kept", COLLECTOR_VIEW_ROWS);
         status.put("batch_size", BATCH_SIZE);
         status.put("unresolved_alerts", count("SELECT count(*) FROM quality_alerts WHERE status <> 'RESOLVED'"));
         status.put("open_incidents", count("SELECT count(*) FROM alert_incidents WHERE status = 'OPEN'"));

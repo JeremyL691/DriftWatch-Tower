@@ -187,8 +187,10 @@ of every downstream consumer completing.
 
 Retention runs daily in batches of at most 1000 rows: raw events and metric windows after 30
 days, resolved alerts and incidents and recovered dead letters after 90 days, source inbox
-identities after 35 days. Unresolved alerts and incidents, unrecovered dead letters, pending
-outbox rows and collector state are never pruned. Run it manually with
+identities after 35 days. Collector poll runs older than 35 days are pruned once nothing references
+them (pending checkpoint, inbox row or gap) and they fall outside the newest 20 per source; collector
+gaps older than 90 days are pruned except the newest 20 per source. Unresolved alerts and incidents,
+unrecovered dead letters, pending outbox rows and collector state are never pruned. Run it manually with
 `POST /api/v1/operations/retention/run` when you want the counts immediately.
 
 ## Troubleshooting
