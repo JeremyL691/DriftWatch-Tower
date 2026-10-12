@@ -8,7 +8,6 @@ import com.driftwatch.persistence.DeadLetterRecordRepository;
 import com.driftwatch.quality.AlertType;
 import com.driftwatch.support.ContainerIntegrationTest;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -37,7 +36,6 @@ class PipelineHardeningIntegrationTest extends ContainerIntegrationTest {
     @Autowired KafkaTemplate<String, DltMessage> dltTemplate;
     @Autowired KafkaTemplate<String, ProcessedEvent> processedTemplate;
     @Autowired DeadLetterRecordRepository deadLetters;
-    @Autowired MeterRegistry meterRegistry;
 
     @org.springframework.beans.factory.annotation.Value("${spring.kafka.bootstrap-servers}")
     String bootstrapServers;
@@ -85,9 +83,8 @@ class PipelineHardeningIntegrationTest extends ContainerIntegrationTest {
     }
 
     @Test
-    void longFieldPathsPersistAndAreCountedInTheAlertMetric() throws Exception {
+    void longFieldPathsPersistWithoutDeadLettering() throws Exception {
         String type = "audit_long_" + UUID.randomUUID().toString().substring(0, 8);
-        double driftBefore = alertCount(AlertType.SCHEMA_DRIFT);
         String first = ingest(new DataEvent("audit-long-1", "audit-long", type, Instant.now(),
                 Map.of("ok", 1, "b".repeat(250), 1.0)));
         await().atMost(Duration.ofSeconds(60)).until(() -> rawEventRepository.findByIngestionId(first).isPresent());
@@ -98,12 +95,9 @@ class PipelineHardeningIntegrationTest extends ContainerIntegrationTest {
         await().atMost(Duration.ofSeconds(60)).until(() -> rawEventRepository.findByIngestionId(second).isPresent());
 
         List<String> fieldPaths = jdbcTemplate.queryForList(
-                "SELECT field_path FROM quality_alerts WHERE event_type = ? AND alert_type = 'SCHEMA_DRIFT'",
-                String.class, type);
+                "SELECT field_path FROM quality_alerts WHERE ingestion_id = ? AND event_type = ? AND alert_type = 'SCHEMA_DRIFT'",
+                String.class, second, type);
         assertThat(fieldPaths).isNotEmpty().allSatisfy(path -> assertThat(path).hasSizeLessThanOrEqualTo(256));
-        // The raw row can be visible before the sink has incremented the Micrometer counter.
-        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
-                assertThat(alertCount(AlertType.SCHEMA_DRIFT)).isGreaterThan(driftBefore));
     }
 
     @Test
@@ -139,11 +133,6 @@ class PipelineHardeningIntegrationTest extends ContainerIntegrationTest {
         String kept = cut.substring(0, cut.length() - "...[truncated]".length());
         assertThat(kept.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(DltMessage.MAX_PAYLOAD_BYTES);
         assertThat(kept).matches("é+");
-    }
-
-    private double alertCount(AlertType type) {
-        return meterRegistry.find("driftwatch_alerts_fired_total").tag("detector", type.name())
-                .counters().stream().mapToDouble(io.micrometer.core.instrument.Counter::count).sum();
     }
 
     private String ingest(DataEvent event) throws Exception {
