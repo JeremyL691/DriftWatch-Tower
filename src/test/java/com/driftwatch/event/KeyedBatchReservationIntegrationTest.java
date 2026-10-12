@@ -243,6 +243,16 @@ class KeyedBatchReservationIntegrationTest extends ContainerIntegrationTest {
 
     @Test
     void aLegacyPartialBatchReceiptKeepsItsReservedItemAndCompletesTheRest() throws Exception {
+        legacyPartialBatch(true);
+    }
+
+    @Test
+    void aLegacyItemWithoutAStoredReceiptTimeFallsBackToTheRowCreationTime() throws Exception {
+        // Receipts written before per-item received_at existed must still be retryable.
+        legacyPartialBatch(false);
+    }
+
+    private void legacyPartialBatch(boolean itemHasReceivedAt) throws Exception {
         // A row written by the earlier code may hold only some of its items. The retry must keep the
         // identity that item 0 already reserved and give item 2 (missing from the row) a fresh one.
         String suffix = String.valueOf(System.nanoTime());
@@ -263,7 +273,8 @@ class KeyedBatchReservationIntegrationTest extends ContainerIntegrationTest {
         String legacyIdentity = UUID.randomUUID().toString();
         String received = Instant.now().minusSeconds(60).truncatedTo(ChronoUnit.MICROS).toString();
         String legacyItems = "{\"batch_id\":\"legacy\",\"items\":[{\"index\":0,\"event_id\":\"" + x
-                + "\",\"ingestion_id\":\"" + legacyIdentity + "\",\"received_at\":\"" + received
+                + "\",\"ingestion_id\":\"" + legacyIdentity
+                + (itemHasReceivedAt ? "\",\"received_at\":\"" + received : "")
                 + "\",\"status\":\"FAILED\"}]}";
         jdbcTemplate.update("""
                         INSERT INTO ingestion_receipts (source, event_type, idempotency_key, request_digest,

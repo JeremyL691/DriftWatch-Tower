@@ -443,8 +443,11 @@ public class IngestionService {
             for (int index : group.indexes()) {
                 JsonNode entry = storedItem(row, index, events.get(index)).orElseThrow(
                         () -> new IllegalStateException("batch receipt has no reserved identity for item " + index));
+                // Items written before receipt times were stored per item fall back to the row's
+                // first receipt time instead of failing the retry.
+                String storedReceivedAt = entry.path("received_at").asText("");
                 items.put(index, new ReservedItem(entry.path("ingestion_id").asText(),
-                        Instant.parse(entry.path("received_at").asText()),
+                        storedReceivedAt.isBlank() ? row.getCreatedAt() : Instant.parse(storedReceivedAt),
                         entry.path("status").asText(),
                         !created.contains(group.key())));
             }
@@ -630,8 +633,9 @@ public class IngestionService {
         for (JsonNode entry : row.getBatchItems().path("items")) {
             if (entry.path("index").asInt() == index
                     && Objects.equals(event.eventId(), entry.path("event_id").asText(null))
-                    && !entry.path("ingestion_id").asText("").isBlank()
-                    && !entry.path("received_at").asText("").isBlank()) {
+                    // An item reserved before per-item receipt times were stored still owns its
+                    // identity; its receipt time falls back to the row's created_at.
+                    && !entry.path("ingestion_id").asText("").isBlank()) {
                 return Optional.of(entry);
             }
         }
