@@ -6,6 +6,7 @@ import com.driftwatch.operations.DriftwatchMetrics;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -23,11 +24,16 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashSet;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 
 import static org.springframework.http.HttpStatus.CONFLICT;
@@ -42,8 +48,10 @@ import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
  *   <li>an Idempotency-Key reserves the identity in its own transaction before publishing, so a
  *       restart cannot allocate a second identity; the same key with different content is 409</li>
  *   <li>a receipt is valid for 24 hours; an expired receipt no longer binds its key</li>
- *   <li>batches validate every item and check every receipt for conflicts before anything is
- *       published, and report accepted/failed indexes with per-item ingestion ids</li>
+ *   <li>a keyed batch reserves every item's identity in one transaction before the first publish,
+ *       so concurrent requests with one key share one identity per item, and a different batch
+ *       under the same key is a 409 with nothing published; accepted/failed indexes are reported
+ *       with the per-item ingestion ids</li>
  * </ul>
  */
 @Service
@@ -60,6 +68,7 @@ public class IngestionService {
     private static final long MAX_BATCH_BYTES = 4L * 1024 * 1024;
     private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
     private static final String CONFLICT_MESSAGE = "Idempotency-Key was already used for different content";
+    private static final Comparator<String> NULLS_FIRST = Comparator.nullsFirst(Comparator.naturalOrder());
 
     private final RawEventProducer producer;
     private final IngestionReceiptRepository receiptRepository;
@@ -150,80 +159,48 @@ public class IngestionService {
             validateEvent(events.get(index));
         }
         rejectOversizedBatch(events);
-
-        String batchDigest = idempotencyKey == null
-                ? null
-                : digests.sha256(events.stream().map(digests::of).toList());
-        if (batchDigest != null) {
-            // The whole batch is checked against every receipt it touches before the first publish,
-            // so a conflict cannot leave a partially published batch behind.
-            rejectBatchKeyConflicts(events, idempotencyKey, batchDigest);
-        }
         String batchId = UUID.randomUUID().toString();
 
-        List<Acceptance> accepted = new ArrayList<>();
-        List<Integer> failed = new ArrayList<>();
-        for (int index = 0; index < events.size(); index++) {
-            DataEvent event = events.get(index);
-            RawEnvelope envelope = envelope(event, batchDigest);
-            if (batchDigest == null) {
+        if (idempotencyKey == null) {
+            List<Acceptance> accepted = new ArrayList<>();
+            List<Integer> failed = new ArrayList<>();
+            for (int index = 0; index < events.size(); index++) {
+                DataEvent event = events.get(index);
+                RawEnvelope envelope = envelope(event, null);
                 if (!producer.publishAndAwait(envelope)) {
                     failed.add(index);
                     continue;
                 }
                 accepted.add(new Acceptance(envelope.ingestionId().toString(), event.eventId(), true, false));
+            }
+            return new BatchOutcome(batchId, accepted, failed, accepted.isEmpty());
+        }
+
+        // The key stands for the whole ordered batch (guide 4.2), so the digest compared for conflicts
+        // is the batch digest. Every item's identity is reserved before the first publish.
+        String batchDigest = digests.sha256(events.stream().map(digests::of).toList());
+        Map<Integer, ReservedItem> reserved = reserveBatch(events, idempotencyKey, batchDigest, batchId);
+
+        List<Acceptance> accepted = new ArrayList<>();
+        List<Integer> failed = new ArrayList<>();
+        for (int index = 0; index < events.size(); index++) {
+            DataEvent event = events.get(index);
+            ReservedItem item = reserved.get(index);
+            if (IngestionReceiptEntity.STATE_CONFIRMED.equals(item.status())) {
+                // A confirmed item is reported again and is not sent to the broker a second time.
+                accepted.add(new Acceptance(item.ingestionId(), event.eventId(), true, true));
                 continue;
             }
-
-            // The receipt key is (source, event_type, key) and one batch routinely carries many
-            // events of the same type, so a row represents every item of that type in the batch and
-            // holds their individual states in batch_items (guide 4.3). The digest compared for
-            // conflicts is the batch digest, because the key stands for the whole ordered batch
-            // (guide 4.2).
-            Optional<IngestionReceiptEntity> existing = liveReceipt(event, idempotencyKey);
-            if (existing.isPresent()) {
-                IngestionReceiptEntity receipt = existing.get();
-                if (!batchDigest.equals(receipt.getRequestDigest())) {
-                    // Only reachable if a concurrent request wrote this key after the pre-check.
-                    throw new ResponseStatusException(CONFLICT, CONFLICT_MESSAGE);
-                }
-                Optional<JsonNode> item = batchItem(receipt, index, event.eventId());
-                String identity = item.map(entry -> entry.path("ingestion_id").asText())
-                        .filter(value -> !value.isBlank())
-                        .orElseGet(() -> envelope.ingestionId().toString());
-                if (item.isPresent() && IngestionReceiptEntity.STATE_CONFIRMED
-                        .equals(item.get().path("status").asText())) {
-                    accepted.add(new Acceptance(identity, event.eventId(), true, true));
-                    continue;
-                }
-                // Guide 4.2: a retried batch re-sends only the items that are not confirmed, each
-                // with its reserved identity, so a partially accepted batch can complete.
-                // The retry reproduces the first envelope exactly (same identity, receipt time and
-                // replay_of), so the stream treats it as a redelivery rather than a conflict.
-                Instant itemReceivedAt = item.map(entry -> entry.path("received_at").asText(null))
-                        .filter(value -> value != null && !value.isBlank())
-                        .map(Instant::parse)
-                        .orElse(envelope.receivedAt());
-                RawEnvelope reservedItem = new RawEnvelope(RawEnvelope.CONTRACT_VERSION,
-                        UUID.fromString(identity), event, itemReceivedAt,
-                        RawEnvelope.Origin.REST, RawEnvelope.Mode.LIVE, null, batchDigest);
-                boolean confirmed = producer.publishAndAwait(reservedItem);
-                recordBatchItem(event, idempotencyKey, batchId, identity, index, confirmed, batchDigest,
-                        itemReceivedAt);
-                if (confirmed) {
-                    accepted.add(new Acceptance(identity, event.eventId(), true, true));
-                } else {
-                    failed.add(index);
-                }
-                continue;
-            }
-
-            String identity = envelope.ingestionId().toString();
+            // Guide 4.2: a retry re-sends only the items that are not confirmed, each with its reserved
+            // identity and first receipt time, so the stream recognises it as a redelivery.
+            RawEnvelope envelope = new RawEnvelope(RawEnvelope.CONTRACT_VERSION,
+                    UUID.fromString(item.ingestionId()), event, item.receivedAt(),
+                    RawEnvelope.Origin.REST, RawEnvelope.Mode.LIVE, null, batchDigest);
             boolean confirmed = producer.publishAndAwait(envelope);
-            recordBatchItem(event, idempotencyKey, batchId, identity, index, confirmed, batchDigest,
-                    envelope.receivedAt());
+            recordBatchItem(event, idempotencyKey, batchId, item.ingestionId(), index, confirmed, batchDigest,
+                    item.receivedAt());
             if (confirmed) {
-                accepted.add(new Acceptance(identity, event.eventId(), true, false));
+                accepted.add(new Acceptance(item.ingestionId(), event.eventId(), true, item.replayed()));
             } else {
                 failed.add(index);
             }
@@ -235,6 +212,15 @@ public class IngestionService {
 
     /** {@code receivedAt} is the first receipt time of the reserved identity. */
     public record Reservation(String ingestionId, String state, boolean replayed, Instant receivedAt) {}
+
+    /** One (source, event_type) receipt row of a keyed batch and the batch indexes it covers. */
+    private record ReceiptGroup(IngestionReceiptEntity.Key key, DataEvent first, List<Integer> indexes) {}
+
+    /**
+     * The reserved state of one batch item. {@code replayed} is false only for the request that
+     * created the reservation; every other request reports the item as a replay.
+     */
+    private record ReservedItem(String ingestionId, Instant receivedAt, String status, boolean replayed) {}
 
     /**
      * Reserves the identity in its own transaction. Two concurrent requests with one key race on
@@ -345,99 +331,307 @@ public class IngestionService {
     }
 
     /**
-     * Read-only pre-check for a keyed batch: every distinct (source, event_type, key) receipt the
-     * batch touches must either be absent, expired, or carry the same batch digest. Runs before the
-     * first publish so a conflict returns 409 with nothing published.
+     * Reserves one identity per item of a keyed batch before anything is published (guide 4.1, 4.2).
+     *
+     * <p>Live receipts for the batch's keys are read first; a receipt with a different batch digest
+     * is a 409 with nothing published. Every receipt row the batch still needs is then written in one
+     * transaction, so a batch is either reserved as a whole or not at all. If another request reserved
+     * one of the keys first, the rows it wrote are used when they are the same batch, and a different
+     * batch is a 409. Rows that an earlier version left with missing items are completed under a row
+     * lock.
      */
-    private void rejectBatchKeyConflicts(List<DataEvent> events, String idempotencyKey, String batchDigest) {
-        Set<IngestionReceiptEntity.Key> keys = new LinkedHashSet<>();
-        for (DataEvent event : events) {
-            keys.add(receiptKey(event, idempotencyKey));
+    private Map<Integer, ReservedItem> reserveBatch(List<DataEvent> events, String idempotencyKey,
+                                                    String batchDigest, String batchId) {
+        List<ReceiptGroup> groups = groupByReceiptKey(events, idempotencyKey);
+        Map<IngestionReceiptEntity.Key, IngestionReceiptEntity> live = new LinkedHashMap<>();
+        for (ReceiptGroup group : groups) {
+            liveReceipt(group.first(), idempotencyKey).ifPresent(receipt -> live.put(group.key(), receipt));
         }
-        Instant now = Instant.now();
-        for (IngestionReceiptEntity.Key key : keys) {
-            Optional<IngestionReceiptEntity> existing = receiptRepository.findById(key);
-            if (existing.isPresent()
-                    && !existing.get().getExpiresAt().isBefore(now)
-                    && !batchDigest.equals(existing.get().getRequestDigest())) {
+        requireSameBatch(live.values(), batchDigest);
+
+        Set<IngestionReceiptEntity.Key> absent = new HashSet<>();
+        Set<IngestionReceiptEntity.Key> partial = new HashSet<>();
+        for (ReceiptGroup group : groups) {
+            IngestionReceiptEntity receipt = live.get(group.key());
+            if (receipt == null) {
+                absent.add(group.key());
+            } else if (!coversAll(receipt, group, events)) {
+                partial.add(group.key());
+            }
+        }
+        if (absent.isEmpty() && partial.isEmpty()) {
+            return itemsOf(live, groups, events, Set.of());
+        }
+
+        Set<IngestionReceiptEntity.Key> created = new HashSet<>();
+        try {
+            transactionTemplate.executeWithoutResult(status -> {
+                // Groups are taken in one fixed order, so two batches cannot deadlock on each other.
+                for (ReceiptGroup group : groups) {
+                    if (partial.contains(group.key())) {
+                        IngestionReceiptEntity row = entityManager.find(IngestionReceiptEntity.class,
+                                group.key(), LockModeType.PESSIMISTIC_WRITE);
+                        if (row != null) {
+                            requireSameBatch(List.of(row), batchDigest);
+                            completeItems(row, group, events, batchId);
+                            continue;
+                        }
+                    } else if (!absent.contains(group.key())) {
+                        continue;
+                    }
+                    entityManager.persist(newBatchReceipt(group, events, idempotencyKey, batchDigest, batchId));
+                    created.add(group.key());
+                }
+                entityManager.flush();
+            });
+        } catch (RuntimeException failure) {
+            if (!isUniqueViolation(failure)) {
+                throw failure;
+            }
+            // Another request reserved one of these keys first; continue as that reservation.
+            return awaitBatchReservation(groups, events, batchDigest, failure);
+        }
+        return itemsOf(readRows(groups), groups, events, created);
+    }
+
+    /**
+     * After a lost reservation race: waits briefly for the winner's rows to become visible, then
+     * uses them if they are the same batch. A different batch is a 409 with nothing published.
+     */
+    private Map<Integer, ReservedItem> awaitBatchReservation(List<ReceiptGroup> groups, List<DataEvent> events,
+                                                             String batchDigest, RuntimeException insertFailure) {
+        for (int attempt = 0; attempt < 15; attempt++) {
+            Map<IngestionReceiptEntity.Key, IngestionReceiptEntity> rows = readRows(groups);
+            requireSameBatch(rows.values(), batchDigest);
+            if (rows.size() == groups.size() && allCovered(rows, groups, events)) {
+                return itemsOf(rows, groups, events, Set.of());
+            }
+            try {
+                Thread.sleep(200L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        throw insertFailure;
+    }
+
+    private Map<IngestionReceiptEntity.Key, IngestionReceiptEntity> readRows(List<ReceiptGroup> groups) {
+        Map<IngestionReceiptEntity.Key, IngestionReceiptEntity> rows = new LinkedHashMap<>();
+        for (ReceiptGroup group : groups) {
+            receiptRepository.findById(group.key()).ifPresent(receipt -> rows.put(group.key(), receipt));
+        }
+        return rows;
+    }
+
+    /** Every stored receipt must carry the batch digest; any other digest is a conflict. */
+    private static void requireSameBatch(Collection<IngestionReceiptEntity> rows, String batchDigest) {
+        for (IngestionReceiptEntity row : rows) {
+            if (!batchDigest.equals(row.getRequestDigest())) {
                 throw new ResponseStatusException(CONFLICT, CONFLICT_MESSAGE);
             }
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void markState(DataEvent event, String idempotencyKey, String state) {
-        receiptRepository.findById(receiptKey(event, idempotencyKey)).ifPresent(receipt -> {
-            receipt.setPublishState(state);
-            receiptRepository.save(receipt);
-        });
+    /** The reserved state of every item in the batch, keyed by batch index. */
+    private Map<Integer, ReservedItem> itemsOf(Map<IngestionReceiptEntity.Key, IngestionReceiptEntity> rows,
+                                               List<ReceiptGroup> groups, List<DataEvent> events,
+                                               Set<IngestionReceiptEntity.Key> created) {
+        Map<Integer, ReservedItem> items = new HashMap<>();
+        for (ReceiptGroup group : groups) {
+            IngestionReceiptEntity row = rows.get(group.key());
+            for (int index : group.indexes()) {
+                JsonNode entry = storedItem(row, index, events.get(index)).orElseThrow(
+                        () -> new IllegalStateException("batch receipt has no reserved identity for item " + index));
+                items.put(index, new ReservedItem(entry.path("ingestion_id").asText(),
+                        Instant.parse(entry.path("received_at").asText()),
+                        entry.path("status").asText(),
+                        !created.contains(group.key())));
+            }
+        }
+        return items;
+    }
+
+    private static boolean allCovered(Map<IngestionReceiptEntity.Key, IngestionReceiptEntity> rows,
+                                      List<ReceiptGroup> groups, List<DataEvent> events) {
+        for (ReceiptGroup group : groups) {
+            IngestionReceiptEntity row = rows.get(group.key());
+            if (row == null || !coversAll(row, group, events)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean coversAll(IngestionReceiptEntity row, ReceiptGroup group, List<DataEvent> events) {
+        for (int index : group.indexes()) {
+            if (storedItem(row, index, events.get(index)).isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private List<ReceiptGroup> groupByReceiptKey(List<DataEvent> events, String idempotencyKey) {
+        Map<IngestionReceiptEntity.Key, List<Integer>> byKey = new LinkedHashMap<>();
+        for (int index = 0; index < events.size(); index++) {
+            byKey.computeIfAbsent(receiptKey(events.get(index), idempotencyKey), key -> new ArrayList<>())
+                    .add(index);
+        }
+        List<ReceiptGroup> groups = new ArrayList<>();
+        for (Map.Entry<IngestionReceiptEntity.Key, List<Integer>> entry : byKey.entrySet()) {
+            groups.add(new ReceiptGroup(entry.getKey(), events.get(entry.getValue().get(0)), entry.getValue()));
+        }
+        groups.sort(Comparator.comparing((ReceiptGroup group) -> group.first().source(), NULLS_FIRST)
+                .thenComparing(group -> group.first().eventType(), NULLS_FIRST));
+        return groups;
+    }
+
+    /** The new receipt row for one (source, event_type) group, with a fresh identity per item. */
+    private IngestionReceiptEntity newBatchReceipt(ReceiptGroup group, List<DataEvent> events,
+                                                   String idempotencyKey, String batchDigest, String batchId) {
+        Instant receivedAt = receivedNow();
+        TreeMap<Integer, ObjectNode> entries = new TreeMap<>();
+        for (int index : group.indexes()) {
+            entries.put(index, itemEntry(index, events.get(index), UUID.randomUUID().toString(), receivedAt,
+                    IngestionReceiptEntity.STATE_PENDING));
+        }
+        IngestionReceiptEntity receipt = new IngestionReceiptEntity();
+        receipt.setSource(group.first().source());
+        receipt.setEventType(group.first().eventType());
+        receipt.setIdempotencyKey(idempotencyKey);
+        receipt.setRequestDigest(batchDigest);
+        receipt.setIngestionId(entries.firstEntry().getValue().path("ingestion_id").asText());
+        receipt.setEventId(group.first().eventId());
+        receipt.setPublishState(IngestionReceiptEntity.STATE_PENDING);
+        receipt.setBatch(true);
+        receipt.setBatchItems(batchPayload(batchId, entries));
+        // created_at is the first receipt time of the row's identities, as for single receipts.
+        receipt.setCreatedAt(receivedAt);
+        receipt.setExpiresAt(Instant.now().plus(IDEMPOTENCY_WINDOW));
+        return receipt;
     }
 
     /**
-     * Records one item's state inside its (source, event_type, key) receipt. The row is created on
-     * first use and the item entry is replaced on every retry, so what is stored always matches
-     * what the broker last confirmed. The expiry is fixed when the receipt is first written.
+     * Gives an identity to every item of the group that a legacy partial write never reserved. Runs
+     * under the row lock, so two requests cannot assign two identities to one item.
+     */
+    private void completeItems(IngestionReceiptEntity row, ReceiptGroup group, List<DataEvent> events,
+                               String batchId) {
+        TreeMap<Integer, ObjectNode> entries = itemEntries(row.getBatchItems());
+        Instant receivedAt = receivedNow();
+        for (int index : group.indexes()) {
+            DataEvent event = events.get(index);
+            if (storedItem(row, index, event).isEmpty()) {
+                entries.put(index, itemEntry(index, event, UUID.randomUUID().toString(), receivedAt,
+                        IngestionReceiptEntity.STATE_PENDING));
+            }
+        }
+        row.setBatchItems(batchPayload(batchId, entries));
+        row.setPublishState(summarise(entries));
+    }
+
+    /**
+     * Records one item's state inside its (source, event_type, key) receipt. The item keeps the
+     * identity and receipt time it was reserved with; only its status changes. The row is locked
+     * for the read-modify-write so two items of one batch recorded at the same time cannot overwrite
+     * each other.
      */
     private void recordBatchItem(DataEvent event, String idempotencyKey, String batchId, String identity,
                                  int index, boolean confirmed, String batchDigest, Instant receivedAt) {
         IngestionReceiptEntity.Key key = receiptKey(event, idempotencyKey);
-        IngestionReceiptEntity receipt = receiptRepository.findById(key).orElseGet(IngestionReceiptEntity::new);
-        ArrayNode items = objectMapper.createArrayNode();
-        JsonNode previous = receipt.getBatchItems();
-        if (previous != null && previous.isObject() && previous.path("items").isArray()) {
-            for (JsonNode entry : previous.path("items")) {
-                if (entry.path("index").asInt() != index) {
-                    items.add(entry);
+        transactionTemplate.executeWithoutResult(status -> {
+            IngestionReceiptEntity receipt = entityManager.find(IngestionReceiptEntity.class, key,
+                    LockModeType.PESSIMISTIC_WRITE);
+            boolean existed = receipt != null;
+            if (!existed) {
+                receipt = new IngestionReceiptEntity();
+            }
+            TreeMap<Integer, ObjectNode> entries = itemEntries(receipt.getBatchItems());
+            entries.put(index, itemEntry(index, event, identity, receivedAt,
+                    confirmed ? IngestionReceiptEntity.STATE_CONFIRMED : IngestionReceiptEntity.STATE_FAILED));
+
+            receipt.setSource(event.source());
+            receipt.setEventType(event.eventType());
+            receipt.setIdempotencyKey(idempotencyKey);
+            receipt.setRequestDigest(batchDigest);
+            receipt.setIngestionId(identity);
+            receipt.setEventId(event.eventId());
+            // A row can hold several items, so its state summarises them: confirmed only when every
+            // item is, failed as soon as one is. The per-item truth lives in batch_items.
+            receipt.setPublishState(summarise(entries));
+            receipt.setBatch(true);
+            receipt.setBatchItems(batchPayload(batchId, entries));
+            Instant now = Instant.now();
+            receipt.setCreatedAt(receipt.getCreatedAt() == null ? now : receipt.getCreatedAt());
+            receipt.setExpiresAt(receipt.getExpiresAt() == null ? now.plus(IDEMPOTENCY_WINDOW) : receipt.getExpiresAt());
+            if (!existed) {
+                entityManager.persist(receipt);
+            }
+        });
+    }
+
+    /** Stored item entries keyed by batch index, in index order. */
+    private static TreeMap<Integer, ObjectNode> itemEntries(JsonNode batchItems) {
+        TreeMap<Integer, ObjectNode> entries = new TreeMap<>();
+        if (batchItems != null && batchItems.isObject() && batchItems.path("items").isArray()) {
+            for (JsonNode entry : batchItems.path("items")) {
+                if (entry.isObject()) {
+                    entries.put(entry.path("index").asInt(), (ObjectNode) entry);
                 }
             }
         }
+        return entries;
+    }
+
+    private JsonNode batchPayload(String batchId, TreeMap<Integer, ObjectNode> entries) {
+        ArrayNode items = objectMapper.createArrayNode();
+        for (ObjectNode entry : entries.values()) {
+            items.add(entry);
+        }
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("batch_id", batchId);
+        payload.set("items", items);
+        return payload;
+    }
+
+    private ObjectNode itemEntry(int index, DataEvent event, String identity, Instant receivedAt, String status) {
         ObjectNode item = objectMapper.createObjectNode();
         item.put("index", index);
         item.put("event_id", event.eventId());
         item.put("ingestion_id", identity);
         item.put("received_at", receivedAt.toString());
-        item.put("status", confirmed ? IngestionReceiptEntity.STATE_CONFIRMED
-                : IngestionReceiptEntity.STATE_FAILED);
-        items.add(item);
+        item.put("status", status);
+        return item;
+    }
 
-        ObjectNode payload = objectMapper.createObjectNode();
-        payload.put("batch_id", batchId);
-        payload.set("items", items);
-
-        receipt.setSource(event.source());
-        receipt.setEventType(event.eventType());
-        receipt.setIdempotencyKey(idempotencyKey);
-        receipt.setRequestDigest(batchDigest);
-        receipt.setIngestionId(identity);
-        receipt.setEventId(event.eventId());
-        // A row can hold several items, so its state summarises them: confirmed only when every
-        // item is, failed as soon as one is. The per-item truth lives in batch_items.
+    /** The row state implied by its items: CONFIRMED only when all are, FAILED once any is. */
+    private static String summarise(Map<Integer, ObjectNode> entries) {
         boolean allConfirmed = true;
         boolean anyFailed = false;
-        for (JsonNode entry : items) {
+        for (JsonNode entry : entries.values()) {
             String status = entry.path("status").asText();
             allConfirmed &= IngestionReceiptEntity.STATE_CONFIRMED.equals(status);
             anyFailed |= IngestionReceiptEntity.STATE_FAILED.equals(status);
         }
-        receipt.setPublishState(allConfirmed ? IngestionReceiptEntity.STATE_CONFIRMED
+        return allConfirmed ? IngestionReceiptEntity.STATE_CONFIRMED
                 : anyFailed ? IngestionReceiptEntity.STATE_FAILED
-                : IngestionReceiptEntity.STATE_PENDING);
-        receipt.setBatch(true);
-        receipt.setBatchItems(payload);
-        Instant now = Instant.now();
-        receipt.setCreatedAt(receipt.getCreatedAt() == null ? now : receipt.getCreatedAt());
-        receipt.setExpiresAt(receipt.getExpiresAt() == null ? now.plus(IDEMPOTENCY_WINDOW) : receipt.getExpiresAt());
-        receiptRepository.save(receipt);
+                : IngestionReceiptEntity.STATE_PENDING;
     }
 
-    /** The stored state of one batch item, matched by index and event id. */
-    private Optional<JsonNode> batchItem(IngestionReceiptEntity receipt, int index, String eventId) {
-        JsonNode items = receipt.getBatchItems();
-        if (items == null || !items.isObject() || !items.path("items").isArray()) {
+    /**
+     * The stored entry for one item, matched by index and event id, once it carries a reserved
+     * identity and receipt time.
+     */
+    private static Optional<JsonNode> storedItem(IngestionReceiptEntity row, int index, DataEvent event) {
+        if (row == null || row.getBatchItems() == null) {
             return Optional.empty();
         }
-        for (JsonNode entry : items.path("items")) {
-            if (entry.path("index").asInt() == index && eventId.equals(entry.path("event_id").asText())) {
+        for (JsonNode entry : row.getBatchItems().path("items")) {
+            if (entry.path("index").asInt() == index
+                    && Objects.equals(event.eventId(), entry.path("event_id").asText(null))
+                    && !entry.path("ingestion_id").asText("").isBlank()
+                    && !entry.path("received_at").asText("").isBlank()) {
                 return Optional.of(entry);
             }
         }
@@ -541,5 +735,13 @@ public class IngestionService {
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new IllegalArgumentException("event could not be serialised", e);
         }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markState(DataEvent event, String idempotencyKey, String state) {
+        receiptRepository.findById(receiptKey(event, idempotencyKey)).ifPresent(receipt -> {
+            receipt.setPublishState(state);
+            receiptRepository.save(receipt);
+        });
     }
 }
