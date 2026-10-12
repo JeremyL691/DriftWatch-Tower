@@ -83,14 +83,16 @@ final class AnomalySpikeProcessor implements Processor<String, PendingEvent, Str
             observationStore.delete(stateScope);
         }
         Long watermarkBefore = watermarkStore.get(stateScope);
-        long watermark = watermarkBefore == null ? eventMs : watermarkBefore;
+        Long seed = watermarkBefore == null
+                ? WindowStateNamespace.seed(watermarkStore, stateScope, context.currentSystemTimeMs()) : null;
+        long watermark = watermarkBefore != null ? watermarkBefore : seed != null ? seed : eventMs;
         WindowEvaluation.Outcome outcome = WindowPolicy.classify(
                 eventMs, windowSizeMs, settings.metricsGrace().toMillis(),
                 settings.metricsFutureTolerance().toMillis(), watermark, envelope.receivedAt());
         if (outcome != WindowEvaluation.Outcome.INCLUDED) {
             if (pending.evaluation == null) {
                 pending.evaluation = WindowPolicy.evaluation(scope, windowStartMs, windowSizeMs,
-                        outcome, watermarkBefore == null ? Long.MIN_VALUE : watermarkBefore,
+                        outcome, watermarkBefore != null ? watermarkBefore : seed != null ? seed : Long.MIN_VALUE,
                         outcome == WindowEvaluation.Outcome.EXPIRED ? "WINDOW_CLOSED" : "FUTURE_TIMESTAMP");
             }
             context.forward(record);

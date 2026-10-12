@@ -86,24 +86,28 @@ final class NullSpikeProcessor implements Processor<String, PendingEvent, String
             return;
         }
 
-        if (WindowStateNamespace.inactive(watermarkStore, stateScope, context.currentSystemTimeMs())) {
+        long nowMs = context.currentSystemTimeMs();
+        if (WindowStateNamespace.inactive(watermarkStore, stateScope, nowMs)) {
             WindowStateNamespace.clearScope(windowStore, stateScope);
-            watermarkStore.delete(stateScope);
+            WindowStateNamespace.retireWatermark(watermarkStore, stateScope, nowMs);
         }
         Long watermarkBefore = watermarkStore.get(stateScope);
-        long watermark = watermarkBefore == null ? eventMs : watermarkBefore;
+        // After an idle period the window counts are gone, but the retired watermark still decides
+        // whether an event belongs to a window that closed long ago.
+        Long seed = watermarkBefore == null ? WindowStateNamespace.seed(watermarkStore, stateScope, nowMs) : null;
+        long watermark = watermarkBefore != null ? watermarkBefore : seed != null ? seed : eventMs;
         WindowEvaluation.Outcome outcome = WindowPolicy.classify(
                 eventMs, windowSizeMs, settings.metricsGrace().toMillis(),
                 settings.metricsFutureTolerance().toMillis(), watermark, envelope.receivedAt());
 
         if (outcome == WindowEvaluation.Outcome.INCLUDED && watermarkBefore == null) {
-            watermarkStore.put(stateScope, eventMs);
-            watermark = eventMs;
+            watermark = seed == null ? eventMs : Math.max(seed, eventMs);
+            watermarkStore.put(stateScope, watermark);
         }
 
         if (outcome != WindowEvaluation.Outcome.INCLUDED) {
             pending.evaluation = WindowPolicy.evaluation(scope, windowStartMs, windowSizeMs,
-                    outcome, watermarkBefore == null ? Long.MIN_VALUE : watermarkBefore,
+                    outcome, watermarkBefore != null ? watermarkBefore : seed != null ? seed : Long.MIN_VALUE,
                     outcome == WindowEvaluation.Outcome.EXPIRED ? "WINDOW_CLOSED" : "FUTURE_TIMESTAMP");
             context.forward(record);
             return;

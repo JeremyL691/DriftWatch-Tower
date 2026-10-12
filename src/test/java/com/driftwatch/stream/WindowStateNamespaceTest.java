@@ -76,7 +76,7 @@ class WindowStateNamespaceTest {
             h.driver.advanceWallClockTime(Duration.ofMinutes(16));
             assertThat(h.nullStates(policy.windowPolicyNamespace())).isEmpty();
             assertThat(h.capture().get(QualityStreamsTopology.ANOMALY_WINDOW_STORE)).isEmpty();
-            assertThat(h.capture().get(QualityStreamsTopology.SCOPE_WATERMARK_STORE)).isEmpty();
+            assertOnlyRetiredWatermarkSeeds(h);
             assertThat(h.capture().get(QualityStreamsTopology.ANOMALY_SCOPE_STORE)).isEmpty();
             h.pipe(envelope("new-after-expiry", T, 3));
             assertThat(h.nullStates(policy.windowPolicyNamespace())).singleElement().satisfies(s -> assertThat(s.total()).isEqualTo(1));
@@ -113,8 +113,41 @@ class WindowStateNamespaceTest {
             assertThat(switched.capture().get(QualityStreamsTopology.NULL_WINDOW_STORE)).isEmpty();
             assertThat(switched.capture().get(QualityStreamsTopology.ANOMALY_WINDOW_STORE)).isEmpty();
             assertThat(switched.capture().get(QualityStreamsTopology.ANOMALY_SCOPE_STORE)).isEmpty();
+            assertOnlyRetiredWatermarkSeeds(switched);
+            // Seeds are bounded too: after their retention the metadata store is empty.
+            switched.driver.advanceWallClockTime(Duration.ofMillis(WindowStateNamespace.SEED_RETENTION_MS));
             assertThat(switched.capture().get(QualityStreamsTopology.SCOPE_WATERMARK_STORE)).isEmpty();
         }
+    }
+
+    @Test void oldEventAfterAnIdleLeaseStaysExpiredInsteadOfReseedingTheScope() throws Exception {
+        var policy = settings(1, .6);
+        Instant wall = T.plus(Duration.ofHours(1));
+        try (Harness h = new Harness(policy, wall)) {
+            h.pipe(RawEnvelope.forRest(new DataEvent("current", "namespace-test", "probe", wall, Map.of("nonce", 1)), wall));
+            h.outputs();
+            // The scope goes quiet past its 15 minute lease: window counts are evicted.
+            h.driver.advanceWallClockTime(Duration.ofMinutes(20));
+            Instant now = wall.plus(Duration.ofMinutes(20));
+            // An event from 40 minutes before the last watermark belongs to a window closed long ago.
+            h.pipe(RawEnvelope.forRest(new DataEvent("stale", "namespace-test", "probe",
+                    wall.minus(Duration.ofMinutes(40)), Map.of("nonce", 2)), now));
+            assertThat(h.outputs()).singleElement().satisfies(p ->
+                    assertThat(p.windowEvaluation().outcome()).isEqualTo(WindowEvaluation.Outcome.EXPIRED));
+            assertThat(h.nullStates(policy.windowPolicyNamespace())).isEmpty();
+            // New traffic after the idle period is evaluated normally and the watermark never moves back.
+            h.pipe(RawEnvelope.forRest(new DataEvent("resumed", "namespace-test", "probe", now, Map.of("nonce", 3)), now));
+            assertThat(h.outputs()).singleElement().satisfies(p ->
+                    assertThat(p.windowEvaluation().outcome()).isEqualTo(WindowEvaluation.Outcome.INCLUDED));
+            assertThat(h.driver.<String, Long>getKeyValueStore(QualityStreamsTopology.SCOPE_WATERMARK_STORE)
+                    .get(WindowStateNamespace.key(policy, "namespace-test", "probe"))).isEqualTo(now.toEpochMilli());
+        }
+    }
+
+    private void assertOnlyRetiredWatermarkSeeds(Harness h) throws Exception {
+        assertThat(h.capture().get(QualityStreamsTopology.SCOPE_WATERMARK_STORE).keySet())
+                .as("only bounded watermark seeds outlive the inactivity lease")
+                .allMatch(k -> k.startsWith(WindowStateNamespace.SEED) || k.startsWith(WindowStateNamespace.SEED_AT));
     }
 
     @Test void missingLeaseNeverResurrectsCountersBetweenIndependentCleanupPunctuations() throws Exception {
