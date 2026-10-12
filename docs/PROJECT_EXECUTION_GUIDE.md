@@ -146,7 +146,7 @@ POST 重试身份的存储、采集 outbox 和 sink receipt 是不同职责，�
 
 schema 按 event_type 管理，保持既有契约。registry 在 sink 事务中对 event_type 使用 PostgreSQL advisory transaction lock；ACTIVE 使用部分唯一索引保证最多一行。
 
-新类型第一次成功观察成为 ACTIVE；后续结构为 DRIFTING，包含 missing/added/type_changed 证据。NULL/missing 不自动覆盖已经确定的非空字段类型。已有多 ACTIVE 行升级时按最早 ACTIVE 主键保留，其余改 DRIFTING并保存迁移记录，不删除版本。
+新类型第一次成功观察成为 ACTIVE；后续结构为 DRIFTING，包含 missing/added/type_changed 证据。NULL/missing 不自动覆盖已经确定的非空字段类型。反向是细化而非漂移：基线中记录为 NULL 的叶子尚无确定类型，该路径首次出现具体值时，细化后的结构成为 ACTIVE、原版本标记 SUPERSEDED，并写 baseline outbox，不产生 drift 告警。已有多 ACTIVE 行升级时按最早 ACTIVE 主键保留，其余改 DRIFTING并保存迁移记录，不删除版本。
 
 基线发生创建或明确激活时，同事务写 baseline_outbox；relay 发布到 compacted topic schema-baselines-v1，以 event_type 为 key。Streams 通过本地 global state 获取 active leaf types，不查询 JPA。尚未获得基线的事件明确标记 BASELINE_PENDING，只跳过依赖基线的窗口检查，不能宣称它通过全部检测；不进行隐式重新计数。
 

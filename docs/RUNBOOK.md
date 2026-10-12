@@ -88,11 +88,11 @@ An admin-only endpoint exercises the detectors with generated events, which is u
 confirming that alerting works before real traffic arrives:
 
 ```bash
-admin_post /api/v1/demo/run-scenario/duplicate
+admin_post /api/v1/demo/run-scenario/duplicate-events
 ```
 
-Scenarios: `duplicate`, `normal`, `schema-drift`, `late`, `null-spike`, `anomaly-spike`,
-`stale-source`, `field-range`. Their events carry `source` values starting with `demo` (for
+Scenarios: `normal-flow`, `duplicate-events`, `late-events`, `null-spike`, `anomaly-spike`,
+`stale-source`, `mixed-incident`, `schema-drift`, `field-range`, `field-format`. Their events carry `source` values starting with `demo` (for
 example `demo-api`), so they stay distinguishable from real source data everywhere. Nothing
 collected from the GitHub source is ever synthesised, and the acceptance evidence counts only
 rows whose origin is `GITHUB`. Treat those rows as test data: ignore them when reading the
@@ -140,7 +140,7 @@ admin_post() {
   return "$dwt_status"
 }
 
-admin_post /api/v1/demo/run-scenario/duplicate
+admin_post /api/v1/demo/run-scenario/duplicate-events
 # Choose an actual ID from the dead-letter list before running replay:
 # admin_post "/api/v1/dead-letters/$DWT_DLT_ID/replay"
 admin_post /api/v1/operations/retention/run
@@ -187,8 +187,10 @@ of every downstream consumer completing.
 
 Retention runs daily in batches of at most 1000 rows: raw events and metric windows after 30
 days, resolved alerts and incidents and recovered dead letters after 90 days, source inbox
-identities after 35 days. Unresolved alerts and incidents, unrecovered dead letters, pending
-outbox rows and collector state are never pruned. Run it manually with
+identities after 35 days. Collector poll runs older than 35 days are pruned once nothing references
+them (pending checkpoint, inbox row or gap) and they fall outside the newest 20 per source; collector
+gaps older than 90 days are pruned except the newest 20 per source. Unresolved alerts and incidents,
+unrecovered dead letters, pending outbox rows and collector state are never pruned. Run it manually with
 `POST /api/v1/operations/retention/run` when you want the counts immediately.
 
 ## Troubleshooting
