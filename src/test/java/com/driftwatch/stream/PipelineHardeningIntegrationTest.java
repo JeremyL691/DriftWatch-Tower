@@ -101,7 +101,9 @@ class PipelineHardeningIntegrationTest extends ContainerIntegrationTest {
                 "SELECT field_path FROM quality_alerts WHERE event_type = ? AND alert_type = 'SCHEMA_DRIFT'",
                 String.class, type);
         assertThat(fieldPaths).isNotEmpty().allSatisfy(path -> assertThat(path).hasSizeLessThanOrEqualTo(256));
-        assertThat(alertCount(AlertType.SCHEMA_DRIFT)).isGreaterThan(driftBefore);
+        // The raw row can be visible before the sink has incremented the Micrometer counter.
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+                assertThat(alertCount(AlertType.SCHEMA_DRIFT)).isGreaterThan(driftBefore));
     }
 
     @Test
