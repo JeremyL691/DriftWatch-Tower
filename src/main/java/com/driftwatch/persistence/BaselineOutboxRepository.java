@@ -10,5 +10,7 @@ public interface BaselineOutboxRepository extends JpaRepository<BaselineOutboxEn
 
     long countByStatus(String status);
 
+    boolean existsByEventTypeAndIdGreaterThan(String eventType, Long id);
+
     java.util.Optional<BaselineOutboxEntity> findFirstByEventTypeAndVersionIdOrderByIdDesc(String eventType, Long versionId);
 }

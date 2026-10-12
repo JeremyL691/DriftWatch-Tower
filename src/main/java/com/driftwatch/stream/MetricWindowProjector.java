@@ -49,14 +49,26 @@ public class MetricWindowProjector {
             return;
         }
         Map<String, String> observed = SchemaInferrer.infer(objectMapper.valueToTree(p.event().payload()));
-        for (String field : expected.keySet()) {
+        for (Map.Entry<String, String> expectedField : expected.entrySet()) {
+            // A leaf the baseline recorded as NULL has never been populated for this type; like the
+            // null-spike processor, it is not a confirmed field, so it must not read as 100% null.
+            if ("NULL".equals(expectedField.getValue())) {
+                continue;
+            }
+            String field = expectedField.getKey();
             boolean nullish = !observed.containsKey(field) || "NULL".equals(observed.get(field));
             MetricWindowRecorder.MetricUpdate total = metrics.increment(
-                    source, eventType, "NULL_TOTAL:" + field, p.event().eventTimestamp(), 1.0d);
+                    source, eventType, metricName("NULL_TOTAL:", field), p.event().eventTimestamp(), 1.0d);
             MetricWindowRecorder.MetricUpdate nulls = metrics.increment(
-                    source, eventType, "NULL_COUNT:" + field, p.event().eventTimestamp(), nullish ? 1.0d : 0.0d);
+                    source, eventType, metricName("NULL_COUNT:", field), p.event().eventTimestamp(),
+                    nullish ? 1.0d : 0.0d);
             double rate = total.currentValue() <= 0 ? 0.0d : nulls.currentValue() / total.currentValue();
-            metrics.set(source, eventType, "NULL_RATE:" + field, p.event().eventTimestamp(), rate);
+            metrics.set(source, eventType, metricName("NULL_RATE:", field), p.event().eventTimestamp(), rate);
         }
+    }
+
+    /** metric_windows.metric_name is VARCHAR(256); long field paths keep a stable hashed suffix. */
+    private static String metricName(String prefix, String field) {
+        return ColumnBounds.fit(prefix + field, 256);
     }
 }

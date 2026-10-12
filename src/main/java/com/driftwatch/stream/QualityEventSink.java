@@ -44,7 +44,6 @@ public class QualityEventSink {
     private final DltPublisher dltPublisher;
     private final ObjectMapper objectMapper;
     private final Counter eventCounter;
-    private final Counter alertCounter;
     private final Counter deadLetterCounter;
     private final DriftwatchMetrics metrics;
 
@@ -75,9 +74,6 @@ public class QualityEventSink {
         this.eventCounter = Counter.builder("driftwatch.events.ingested")
                 .description("Total events ingested")
                 .register(meterRegistry);
-        this.alertCounter = Counter.builder("driftwatch.alerts.fired")
-                .description("Total alerts fired")
-                .register(meterRegistry);
         this.deadLetterCounter = Counter.builder("driftwatch_sink_dead_letters_total")
                 .description("Records that failed persistence and were written to the dead-letter topic")
                 .register(meterRegistry);
@@ -102,7 +98,6 @@ public class QualityEventSink {
                     return;
                 }
                 eventCounter.increment();
-                alertCounter.increment(result.alerts().size());
                 metrics.recordProcessing(java.time.Duration.between(p.receivedAt(), java.time.Instant.now()));
                 result.alerts().forEach(alert -> metrics.recordAlert(alert.getAlertType(),
                         String.valueOf(alert.getSeverity())));
@@ -134,7 +129,7 @@ public class QualityEventSink {
                 retryDelaysMs.length,
                 KafkaTopics.QUALITY_EVENTS_V1,
                 null, null,
-                DltMessage.truncate(serialize(p), DltMessage.MAX_PAYLOAD_LENGTH),
+                DltMessage.truncatePayload(serialize(p)),
                 Instant.now());
         if (!dltPublisher.publish(deadLetter)) {
             // The dead letter is not durable either: keep the offset uncommitted and let the

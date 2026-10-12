@@ -40,20 +40,23 @@ public class DeadLetterProjectionConsumer {
             })
     @Transactional
     public void onDeadLetter(DltMessage message) {
-        if (repository.findByDiagnosticId(message.diagnosticId()).isPresent()) {
+        if (repository.findByDiagnosticId(clip(message.diagnosticId(), 128)).isPresent()) {
             return;
         }
         DeadLetterRecordEntity row = new DeadLetterRecordEntity();
-        row.setDiagnosticId(message.diagnosticId());
+        // Column widths bound every identifying field: a dead letter exists precisely because its
+        // record may be malformed (an over-long source is a sink failure), so the projection must
+        // never fail on it - an endless retry here would block every later dead letter.
+        row.setDiagnosticId(clip(message.diagnosticId(), 128));
         row.setStage(message.stage() == null ? DltStage.STREAM.name() : message.stage().name());
-        row.setIngestionId(message.ingestionId());
-        row.setSource(message.source());
-        row.setEventType(message.eventType());
+        row.setIngestionId(clip(message.ingestionId(), 64));
+        row.setSource(clip(message.source(), 128));
+        row.setEventType(clip(message.eventType(), 128));
         row.setReason(DltMessage.truncate(message.reason(), DltMessage.MAX_REASON_LENGTH));
         row.setPayload(payloadNode(message.payload()));
         row.setAttempts(message.attempts());
         row.setRecoveryState(DeadLetterRecordEntity.STATE_OPEN);
-        row.setKafkaTopic(message.kafkaTopic());
+        row.setKafkaTopic(clip(message.kafkaTopic(), 128));
         row.setKafkaPartition(message.kafkaPartition());
         row.setKafkaOffset(message.kafkaOffset());
         row.setCreatedAt(message.occurredAt() == null ? java.time.Instant.now() : message.occurredAt());
@@ -62,11 +65,15 @@ public class DeadLetterProjectionConsumer {
                 row.getDiagnosticId(), row.getStage(), row.getReason());
     }
 
+    private static String clip(String value, int max) {
+        return value == null || value.length() <= max ? value : value.substring(0, max);
+    }
+
     /** The payload is stored as text inside JSON so a truncated record is still queryable. */
     private ObjectNode payloadNode(String payload) {
         ObjectNode node = objectMapper.createObjectNode();
         if (payload != null) {
-            node.put("raw", DltMessage.truncate(payload, DltMessage.MAX_PAYLOAD_LENGTH));
+            node.put("raw", DltMessage.truncatePayload(payload));
         }
         return node;
     }

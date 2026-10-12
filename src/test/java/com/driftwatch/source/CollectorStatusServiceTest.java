@@ -7,6 +7,8 @@ import com.driftwatch.persistence.SourceGapEntity;
 import com.driftwatch.persistence.SourceGapRepository;
 import com.driftwatch.persistence.SourceOutboxEntity;
 import com.driftwatch.persistence.SourceOutboxRepository;
+import com.driftwatch.persistence.SourcePollRunEntity;
+import com.driftwatch.persistence.SourcePollRunRepository;
 import com.driftwatch.support.MutableClock;
 import org.junit.jupiter.api.Test;
 
@@ -31,8 +33,15 @@ class CollectorStatusServiceTest {
 
     private CollectorStatusService service(CollectorStateEntity state, long pendingOutbox, long openGaps,
                                            Duration pollInterval) {
+        return service(state, pendingOutbox, openGaps, pollInterval, List.of());
+    }
+
+    private CollectorStatusService service(CollectorStateEntity state, long pendingOutbox, long openGaps,
+                                           Duration pollInterval, List<SourcePollRunEntity> pollRuns) {
         CollectorStateRepository states = proxy(CollectorStateRepository.class, (method, args) ->
                 method.getName().equals("findAll") ? List.of(state) : throwUnsupported(method.getName()));
+        SourcePollRunRepository runs = proxy(SourcePollRunRepository.class, (method, args) ->
+                method.getName().equals("findTop20BySourceOrderByIdDesc") ? pollRuns : throwUnsupported(method.getName()));
         SourceOutboxRepository outbox = proxy(SourceOutboxRepository.class, (method, args) ->
                 method.getName().equals("countBySourceAndStatus") ? pendingOutbox : throwUnsupported(method.getName()));
         SourceGapRepository gaps = proxy(SourceGapRepository.class, (method, args) -> switch (method.getName()) {
@@ -59,7 +68,17 @@ class CollectorStatusServiceTest {
                         "https://api.github.com", pollInterval, 3, 100, Duration.ofSeconds(5),
                         Duration.ofSeconds(20), 300, "", "1.0.0", false, true)),
                 new DriftwatchProperties.Bridge(false, "raw-events", "", 10000, ""));
-        return new CollectorStatusService(states, outbox, gaps, properties, clock);
+        return new CollectorStatusService(states, outbox, gaps, runs, properties, clock);
+    }
+
+    private static SourcePollRunEntity run(String status, int newRecords) {
+        SourcePollRunEntity run = new SourcePollRunEntity();
+        run.setSource("github:apache/kafka");
+        run.setStatus(status);
+        run.setMode("LIVE");
+        run.setStartedAt(T0);
+        run.setNewRecords(newRecords);
+        return run;
     }
 
     private CollectorStateEntity state(String status, Instant lastSuccess, Instant lastEvent) {
@@ -84,6 +103,49 @@ class CollectorStatusServiceTest {
         assertThat(view.get("status")).isEqualTo("QUIET");
         assertThat(view.get("lost")).isEqualTo(false);
         assertThat(view.get("upstream_lag_seconds")).isEqualTo(1800L);
+    }
+
+    /**
+     * lastEventAt is the upstream created_at of the newest record and is always earlier than the
+     * wall-clock poll time, so RUNNING must come from whether the round delivered records.
+     */
+    @Test
+    void roundThatDeliveredRecordsIsRunningEvenThoughUpstreamEventsPredateThePoll() {
+        CollectorStateEntity state = state(CollectorStateEntity.STATUS_READY,
+                T0.minus(Duration.ofMinutes(1)), T0.minus(Duration.ofMinutes(30)));
+        Map<String, Object> view = service(state, 0, 0, Duration.ofMinutes(5),
+                List.of(run(SourcePollRunEntity.STATUS_APPLIED, 100))).collectors().get(0);
+        assertThat(view.get("status")).isEqualTo("RUNNING");
+    }
+
+    @Test
+    void notModifiedRoundIsQuietEvenAfterAnEarlierRoundDeliveredRecords() {
+        CollectorStateEntity state = state(CollectorStateEntity.STATUS_READY,
+                T0.minus(Duration.ofMinutes(1)), T0.minus(Duration.ofMinutes(30)));
+        // Newest first: the 304 round (QUIET) follows an applied round that had records.
+        Map<String, Object> view = service(state, 0, 0, Duration.ofMinutes(5), List.of(
+                run(SourcePollRunEntity.STATUS_QUIET, 0),
+                run(SourcePollRunEntity.STATUS_APPLIED, 100))).collectors().get(0);
+        assertThat(view.get("status")).isEqualTo("QUIET");
+    }
+
+    @Test
+    void roundWithOnlyKnownRecordsIsQuiet() {
+        CollectorStateEntity state = state(CollectorStateEntity.STATUS_READY,
+                T0.minus(Duration.ofMinutes(1)), T0.minus(Duration.ofMinutes(30)));
+        Map<String, Object> view = service(state, 0, 0, Duration.ofMinutes(5),
+                List.of(run(SourcePollRunEntity.STATUS_STAGED, 0))).collectors().get(0);
+        assertThat(view.get("status")).isEqualTo("QUIET");
+    }
+
+    @Test
+    void roundInProgressDoesNotHideTheLastFinishedRound() {
+        CollectorStateEntity state = state(CollectorStateEntity.STATUS_READY,
+                T0.minus(Duration.ofMinutes(1)), T0.minus(Duration.ofMinutes(30)));
+        Map<String, Object> view = service(state, 0, 0, Duration.ofMinutes(5), List.of(
+                run(SourcePollRunEntity.STATUS_RUNNING, 0),
+                run(SourcePollRunEntity.STATUS_APPLIED, 2))).collectors().get(0);
+        assertThat(view.get("status")).isEqualTo("RUNNING");
     }
 
     @Test

@@ -109,7 +109,8 @@ curl -fsS -u "$DWT_ADMIN_USERNAME:$DWT_ADMIN_PASSWORD" "$DWT_BASE/api/v1/dead-le
 
 A dead letter carries its original topic, partition, offset and a stable diagnostic id. Replay
 re-enters the pipeline at the stage that failed and returns a new attempt id; it is safe to run
-twice, because the sink's processed receipts make the second attempt a no-op.
+twice, because the sink's processed receipts make the second attempt a no-op. A replay the
+broker did not acknowledge answers 503 with outcome `FAILED`; the record stays open, so retry it.
 
 ## Protected administrative requests
 

@@ -81,7 +81,7 @@ EOF
 cmd_up() {
   load_env_file "$ENV_FILE"
   require_docker
-  compose up -d $BUILD_FLAG
+  compose up -d $BUILD_FLAG || die "docker compose up failed; the stack was not started"
   local port="${DWT_APP_PORT:-8080}"
   wait_http "http://127.0.0.1:${port}/actuator/health/readiness" 180 200 \
     || die "application did not become ready on 127.0.0.1:${port} within 180s"
@@ -116,7 +116,20 @@ cmd_backup() {
   load_env_file "$ENV_FILE"
   require_docker
   mkdir -p "$(dirname "$OUT_FILE")"
-  compose exec -T postgres pg_dump -U "$DWT_POSTGRES_USER" -d "$DWT_POSTGRES_DB" -Fc > "$OUT_FILE"
+  # Dump into a temp file beside OUT_FILE; only a successful, non-empty dump replaces it.
+  local tmp="${OUT_FILE}.partial.$$"
+  if ! compose exec -T postgres pg_dump -U "$DWT_POSTGRES_USER" -d "$DWT_POSTGRES_DB" -Fc > "$tmp"; then
+    rm -f "$tmp"
+    die "pg_dump failed; no dump was written to $OUT_FILE"
+  fi
+  if [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    die "pg_dump produced an empty file; no dump was written to $OUT_FILE"
+  fi
+  if ! mv "$tmp" "$OUT_FILE"; then
+    rm -f "$tmp"
+    die "could not move the dump into place at $OUT_FILE"
+  fi
   log "wrote custom-format dump to $OUT_FILE ($(wc -c < "$OUT_FILE") bytes)"
 }
 
@@ -124,11 +137,25 @@ cmd_restore() {
   [ -n "$DUMP_FILE" ] || die "restore requires --dump FILE"
   [ -f "$DUMP_FILE" ] || die "dump not found: $DUMP_FILE"
   [ -n "$TARGET_DB" ] || die "restore requires --target-db NAME (the dump is restored into a new database, never over an existing one)"
+  # The name is interpolated into SQL, so accept only plain identifiers.
+  case "$TARGET_DB" in
+    *[!A-Za-z0-9_]*|[0-9]*) die "--target-db must be letters, digits and underscores, not starting with a digit: $TARGET_DB" ;;
+  esac
   load_env_file "$ENV_FILE"
   require_docker
-  compose exec -T postgres psql -U "$DWT_POSTGRES_USER" -d postgres \
-    -c "CREATE DATABASE ${TARGET_DB};"
-  compose exec -T postgres pg_restore -U "$DWT_POSTGRES_USER" -d "$TARGET_DB" --no-owner < "$DUMP_FILE"
+  local existing
+  existing="$(compose exec -T postgres psql -U "$DWT_POSTGRES_USER" -d postgres -tAX \
+    -c "SELECT 1 FROM pg_database WHERE datname = '${TARGET_DB}';")" \
+    || die "could not check whether database $TARGET_DB exists; nothing was restored"
+  if [ -n "$(printf '%s' "$existing" | tr -d '[:space:]')" ]; then
+    die "database $TARGET_DB already exists; restore never overwrites an existing database. Choose a new --target-db name"
+  fi
+  compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$DWT_POSTGRES_USER" -d postgres \
+    -c "CREATE DATABASE ${TARGET_DB};" \
+    || die "CREATE DATABASE $TARGET_DB failed; nothing was restored"
+  if ! compose exec -T postgres pg_restore -U "$DWT_POSTGRES_USER" -d "$TARGET_DB" --no-owner < "$DUMP_FILE"; then
+    die "pg_restore into $TARGET_DB failed; the database may be partially restored and should be dropped before retrying"
+  fi
   log "restored $DUMP_FILE into database $TARGET_DB"
 }
 
