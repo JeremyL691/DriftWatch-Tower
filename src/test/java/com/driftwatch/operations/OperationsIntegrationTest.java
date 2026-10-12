@@ -23,6 +23,8 @@ class OperationsIntegrationTest extends ContainerIntegrationTest {
     RetentionService retentionService;
     @Autowired
     io.micrometer.core.instrument.MeterRegistry meterRegistry;
+    @Autowired
+    DriftwatchMetrics driftwatchMetrics;
 
     private Instant now = Instant.now();
 
@@ -201,6 +203,12 @@ class OperationsIntegrationTest extends ContainerIntegrationTest {
 
     @Test
     void registryExposesTheLowCardinalityMetricSet() {
+        // Exercise the labeled metric directly, independent of asynchronous Kafka test ordering.
+        var schemaCounter = meterRegistry.get("driftwatch_alerts_fired_total")
+                .tags("detector", "SCHEMA_DRIFT", "severity", "WARN").counter();
+        double before = schemaCounter.count();
+        driftwatchMetrics.recordAlert(com.driftwatch.quality.AlertType.SCHEMA_DRIFT, "WARN");
+        assertThat(schemaCounter.count()).isEqualTo(before + 1.0d);
         for (String meter : new String[]{
                 "driftwatch_ingestion_ack_duration_seconds",
                 "driftwatch_ingestion_failures_total",
