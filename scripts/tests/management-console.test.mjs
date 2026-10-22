@@ -10,7 +10,7 @@ const VALID_FORM = {
     null_threshold: '0.6',
     null_min_samples: '3',
     anomaly_baseline_windows: '2',
-    anomaly_min_history_windows: '1',
+    anomaly_min_history_windows: '2',
     anomaly_ratio: '3.0',
     anomaly_min_count: '5',
     window_size_ms: '60000',
@@ -43,7 +43,7 @@ test('composeAlertParams composes filters and pagination without blank values', 
   assert.equal(bare.get('page'), '0');
 });
 
-test('parseConfigForm accepts a valid document and couples min history to baseline', () => {
+test('parseConfigForm accepts a valid document with coupled min history', () => {
   const result = lib.parseConfigForm(VALID_FORM);
   assert.equal(result.ok, true, JSON.stringify(result.errors));
   assert.equal(result.config.duplicate_window_ms, 300000);
@@ -54,12 +54,16 @@ test('parseConfigForm accepts a valid document and couples min history to baseli
   assert.equal(result.config.github_enabled, false);
 });
 
-test('parseConfigForm rejects a legacy lesser min history by coupling, never sending it', () => {
+test('parseConfigForm preserves a legacy lesser min history faithfully', () => {
   const form = structuredClone(VALID_FORM);
   form.values.anomaly_min_history_windows = '1';
   const result = lib.parseConfigForm(form);
   assert.equal(result.ok, true);
-  assert.equal(result.config.anomaly_min_history_windows, 2);
+  assert.equal(result.config.anomaly_min_history_windows, 1);
+  const correction = lib.coupledHistoryCorrection({ anomaly_baseline_windows: 2, anomaly_min_history_windows: 1 }, result.config);
+  assert.equal(correction.required, true);
+  assert.equal(correction.from, 1);
+  assert.equal(correction.to, 2);
 });
 
 test('parseConfigForm rejects fractional integers and non-finite numbers', () => {
@@ -120,6 +124,10 @@ test('parseConfigForm validates ranges, regex grammar and repository', () => {
 });
 
 test('parseConfigForm mirrors the server format grammar for Java regex and blank entries', () => {
+  const jsonPatterns = structuredClone(VALID_FORM);
+  jsonPatterns.values.format_patterns = '{"code":"^[A-Z]{2,5}$","sku":"^SKU-[0-9]{3,6}$"}';
+  assert.equal(lib.parseConfigForm(jsonPatterns).ok, true, JSON.stringify(lib.parseConfigForm(jsonPatterns).errors));
+
   const inlineFlag = structuredClone(VALID_FORM);
   inlineFlag.values.format_patterns = 'sku=(?i)^abc';
   assert.equal(lib.parseConfigForm(inlineFlag).ok, true, JSON.stringify(lib.parseConfigForm(inlineFlag).errors));
@@ -201,6 +209,9 @@ test('schemaSyncLabel never equates publication with consumer application', () =
   assert.match(published.publication, /Published/);
   assert.match(published.application, /unconfirmed/);
   assert.match(lib.schemaSyncLabel({ state: 'UNKNOWN' }).publication, /unknown/);
+
+  const applied = lib.schemaSyncLabel({ state: 'PUBLISHED', consumer_application: 'APPLIED_LOCAL' });
+  assert.match(applied.application, /applied by local Streams instance/);
 });
 
 test('collectorViewModel prefers effective disabled over historical status', () => {
