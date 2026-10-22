@@ -450,11 +450,13 @@ public class GithubPoller {
             state.setLastEventAt(newestStaged);
         }
         metrics.recordCollectorUpstreamLag(state.getLastEventAt());
-        state.setNextPollAt(now.plus(nextInterval(state, null)));
+        var pendingRun = pollRunRepository.findById(pendingRunId);
+        Integer xPollInterval = pendingRun.map(SourcePollRunEntity::getXPollInterval).orElse(null);
+        state.setNextPollAt(now.plus(nextInterval(state, xPollInterval)));
         state.setUpdatedAt(now);
         stateRepository.save(state);
 
-        pollRunRepository.findById(pendingRunId).ifPresent(run -> {
+        pendingRun.ifPresent(run -> {
             run.setStatus(SourcePollRunEntity.STATUS_APPLIED);
             pollRunRepository.save(run);
         });

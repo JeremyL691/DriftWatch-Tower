@@ -39,8 +39,8 @@ jobs:
           cache: maven
       - name: Release tool false-positive regressions
         run: python3 -m unittest discover -s scripts/tests -v
-      - name: Browser health wait regressions
-        run: node --test scripts/tests/browser-health.test.mjs
+      - name: Browser health and management console regressions
+        run: npm test
       - name: Run unit and topology tests
         id: unit-tests
         continue-on-error: true

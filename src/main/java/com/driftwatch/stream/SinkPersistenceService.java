@@ -93,6 +93,7 @@ public class SinkPersistenceService {
         processedReceiptRepository.save(receipt);
 
         DataEvent event = p.event();
+        JsonNode payloadJson = objectMapper.valueToTree(event.payload());
         RawEventEntity raw = new RawEventEntity();
         raw.setEventId(event.eventId());
         raw.setIngestionId(ingestionId);
@@ -105,10 +106,8 @@ public class SinkPersistenceService {
         raw.setEventType(event.eventType());
         raw.setEventTimestamp(event.eventTimestamp());
         raw.setReceivedAt(now);
-        raw.setPayloadJson(objectMapper.valueToTree(event.payload()));
+        raw.setPayloadJson(payloadJson);
         raw.setPayloadHash(p.payloadHash());
-        raw.setQualityStatus(p.qualityStatus());
-        rawEventRepository.save(raw);
 
         List<QualityAlertEntity> alerts = new ArrayList<>();
         for (ProcessedEvent.ProcessedAlert a : p.alerts()) {
@@ -116,10 +115,18 @@ public class SinkPersistenceService {
         }
         // Schema observation runs in this transaction under an advisory lock (guide 4.4).
         SchemaObservationService.Observation observation =
-                schemaObservationService.observe(event.eventType(), raw.getPayloadJson(), now);
+                schemaObservationService.observe(event.eventType(), payloadJson, now);
         if (observation.drift() && !observation.changedFields().isEmpty()) {
             alerts.add(schemaDriftAlert(event, observation, ingestionId, now));
         }
+
+        String qualityStatus = p.qualityStatus();
+        if ("OK".equals(qualityStatus) && alerts.stream().anyMatch(a -> a.getAlertType() == AlertType.SCHEMA_DRIFT)) {
+            qualityStatus = "FLAGGED";
+        }
+        raw.setQualityStatus(qualityStatus);
+        rawEventRepository.save(raw);
+
         if (!alerts.isEmpty()) {
             alertRepository.saveAll(alerts);
         }

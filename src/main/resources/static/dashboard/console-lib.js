@@ -52,7 +52,7 @@
     { key: "ranges", label: "Numeric range rules", group: "rules", type: "ranges", live: true,
       hint: "Literal top-level payload keys only. A missing key is skipped, not failed." },
     { key: "format_patterns", label: "Format rules", group: "rules", type: "textarea", live: true,
-      hint: "Comma separated field=regex. The parser splits on every comma, so regex must not contain one." },
+      hint: "JSON object {\"field\": \"regex\"} or legacy comma-separated field=regex. Regex must have bounded complexity." },
 
     { key: "github_enabled", label: "GitHub collection enabled", group: "collector", type: "boolean", live: false,
       hint: "Restart required. Disabling is not an immediate stop: pending work keeps polling until restart." },
@@ -152,7 +152,10 @@
     config.null_threshold = finite("null_threshold", 0, 1, true);
     config.null_min_samples = integer("null_min_samples", 1, 1000000);
     config.anomaly_baseline_windows = integer("anomaly_baseline_windows", 1, 1000);
-    config.anomaly_min_history_windows = config.anomaly_baseline_windows;
+    const rawHistory = values.anomaly_min_history_windows;
+    config.anomaly_min_history_windows = (rawHistory !== undefined && rawHistory !== null && String(rawHistory).trim() !== "")
+      ? integer("anomaly_min_history_windows", 1, 1000)
+      : config.anomaly_baseline_windows;
     config.anomaly_ratio = finite("anomaly_ratio", 1, 1000000, true);
     config.anomaly_min_count = integer("anomaly_min_count", 1, 1000000);
     config.window_size_ms = duration("window_size_ms");
@@ -212,31 +215,64 @@
     if (patterns.length > 8192) {
       errors.format_patterns = "At most 8192 characters.";
     } else if (patterns.trim()) {
-      // Mirrors FieldFormatPatterns.parse: entries are trimmed and blank ones skipped. Regex syntax is
-      // Java's, so it is left to the server (the authority) rather than checked with JavaScript RegExp.
-      const entries = patterns.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
-      if (entries.length > 50) {
-        errors.format_patterns = "At most 50 format fields.";
-      }
-      for (const entry of entries) {
-        const separator = entry.indexOf("=");
-        if (separator <= 0) {
-          errors.format_patterns = `"${entry}" is not a field=regex pair.`;
-          break;
+      const trimmed = patterns.trim();
+      if (trimmed.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+            errors.format_patterns = "JSON format rules must be an object of {\"field\": \"regex\"}.";
+          } else {
+            const keys = Object.keys(parsed);
+            if (keys.length > 50) {
+              errors.format_patterns = "At most 50 format fields.";
+            } else {
+              for (const field of keys) {
+                if (!FIELD_NAME.test(field)) {
+                  errors.format_patterns = `"${field}" is not a valid field name.`;
+                  break;
+                }
+                const regex = parsed[field];
+                if (typeof regex !== "string" || !regex.trim()) {
+                  errors.format_patterns = `The pattern for ${field} is empty.`;
+                  break;
+                }
+                if (regex.length > 512) {
+                  errors.format_patterns = `The pattern for ${field} is longer than 512 characters.`;
+                  break;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          errors.format_patterns = "Invalid JSON in format rules: " + (e.message || "parse error");
         }
-        const field = entry.slice(0, separator).trim();
-        const regex = entry.slice(separator + 1).trim();
-        if (!FIELD_NAME.test(field)) {
-          errors.format_patterns = `"${field}" is not a valid field name.`;
-          break;
+      } else {
+        // Mirrors FieldFormatPatterns.parse: entries are trimmed and blank ones skipped. Regex syntax is
+        // Java's, so it is left to the server (the authority) rather than checked with JavaScript RegExp.
+        const entries = patterns.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+        if (entries.length > 50) {
+          errors.format_patterns = "At most 50 format fields.";
         }
-        if (!regex) {
-          errors.format_patterns = `The pattern for ${field} is empty.`;
-          break;
-        }
-        if (regex.length > 512) {
-          errors.format_patterns = `The pattern for ${field} is longer than 512 characters.`;
-          break;
+        for (const entry of entries) {
+          const separator = entry.indexOf("=");
+          if (separator <= 0) {
+            errors.format_patterns = `"${entry}" is not a field=regex pair.`;
+            break;
+          }
+          const field = entry.slice(0, separator).trim();
+          const regex = entry.slice(separator + 1).trim();
+          if (!FIELD_NAME.test(field)) {
+            errors.format_patterns = `"${field}" is not a valid field name.`;
+            break;
+          }
+          if (!regex) {
+            errors.format_patterns = `The pattern for ${field} is empty.`;
+            break;
+          }
+          if (regex.length > 512) {
+            errors.format_patterns = `The pattern for ${field} is longer than 512 characters.`;
+            break;
+          }
         }
       }
     }
@@ -353,10 +389,17 @@
         : state === "FAILED"
           ? "Publication failed."
           : "Publication state is unknown; re-query.";
+    const appStatus = sync && sync.consumer_application ? sync.consumer_application : "UNCONFIRMED";
+    const application = appStatus === "APPLIED_LOCAL"
+      ? "Active baseline applied by local Streams instance."
+      : appStatus === "PENDING_LOCAL"
+        ? `Local Streams instance has version ${sync.consumer_applied_version_id || "older"}; update pending.`
+        : "Consumer application is unconfirmed: Streams may use the previous baseline until it applies the new one.";
     return {
       state,
       publication,
-      application: "Consumer application is unconfirmed: Streams may use the previous baseline until it applies the new one."
+      application,
+      consumer_application: appStatus
     };
   }
 
@@ -395,7 +438,7 @@
     if (!collector) return "No gap data.";
     const open = Number(collector.open_gaps || 0);
     const recent = Array.isArray(collector.recent_gaps) ? collector.recent_gaps.length : 0;
-    return `${open} open gap(s); showing the newest ${recent} of at most 20.`;
+    return `${open} open gap(s); showing the newest ${recent} of at most 20 (suspected observation discontinuities).`;
   }
 
   function replayOutcomeLabel(body) {
@@ -416,11 +459,22 @@
     return `Completed; pruned ${names.map((name) => `${name}: ${pruned[name]}`).join(", ")}.`;
   }
 
+  function coupledHistoryCorrection(saved, config) {
+    if (!config) return { required: false, from: null, to: null };
+    const history = config.anomaly_min_history_windows;
+    const baseline = config.anomaly_baseline_windows;
+    if (history !== null && baseline !== null && history !== baseline) {
+      return { required: true, from: history, to: baseline };
+    }
+    return { required: false, from: history, to: baseline };
+  }
+
   return {
     CONFIG_FIELDS,
     FIELD_GROUPS,
     composeAlertParams,
     parseConfigForm,
+    coupledHistoryCorrection,
     buildSaveRequest,
     saveErrorMessage,
     mergeLoadedState,

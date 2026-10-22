@@ -84,6 +84,7 @@ services:
       DRIFTWATCH_SECURITY_ADMIN_USERNAME: ${DWT_ADMIN_USERNAME:-driftwatch}
       DRIFTWATCH_SECURITY_ADMIN_PASSWORD: ${DWT_ADMIN_PASSWORD:?set DWT_ADMIN_PASSWORD (see .env.example and scripts/selfhost.sh init)}
       DRIFTWATCH_SECURITY_INGEST_TOKENS: ${DWT_INGEST_TOKEN:-}
+      GITHUB_TOKEN: ${DWT_GITHUB_TOKEN:-}
     ports:
       - "127.0.0.1:${DWT_APP_PORT:-8080}:8080"
     volumes:

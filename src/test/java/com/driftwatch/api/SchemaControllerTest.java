@@ -48,4 +48,33 @@ class SchemaControllerTest {
         assertThat(sync.get("detail").toString()).doesNotContain("has not applied");
         verify(relay).publishNow(456L);
     }
+
+    @Test
+    void baselineStatusReportsAppliedLocalWhenStreamsStoreMatchesActiveVersion() {
+        var versions = mock(SchemaVersionRepository.class);
+        var service = mock(SchemaObservationService.class);
+        var relay = mock(BaselineOutboxRelay.class);
+        var outboxes = mock(BaselineOutboxRepository.class);
+        var inspector = mock(com.driftwatch.quality.schema.StreamsBaselineStatus.class);
+
+        var active = mock(SchemaVersionEntity.class);
+        when(active.getId()).thenReturn(123L);
+        when(versions.findFirstByEventTypeAndStatus("probe", "ACTIVE")).thenReturn(Optional.of(active));
+
+        var sent = mock(BaselineOutboxEntity.class);
+        when(sent.getStatus()).thenReturn("SENT");
+        when(sent.getId()).thenReturn(789L);
+        when(outboxes.findFirstByEventTypeAndVersionIdOrderByIdDesc("probe", 123L)).thenReturn(Optional.of(sent));
+
+        when(inspector.check("probe", 123L)).thenReturn(
+                new com.driftwatch.quality.schema.StreamsBaselineStatus.CheckResult("APPLIED_LOCAL", 123L, "Matches local Streams store"));
+
+        var controller = new SchemaController(versions, service, relay, outboxes, inspector);
+        var response = controller.baselineStatus("probe");
+        Map<?, ?> sync = (Map<?, ?>) response.getBody().get("baseline_sync");
+        assertThat(sync.get("state")).isEqualTo("PUBLISHED");
+        assertThat(sync.get("consumer_application")).isEqualTo("APPLIED_LOCAL");
+        assertThat(sync.get("consumer_applied_version_id")).isEqualTo(123L);
+        assertThat(sync.get("consumer_detail")).isEqualTo("Matches local Streams store");
+    }
 }

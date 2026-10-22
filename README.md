@@ -90,7 +90,7 @@ The unit gate includes real Kafka and PostgreSQL container tests. Missing Docker
   data and API contracts, processing rules, and source behavior.
 - [Runbook](docs/RUNBOOK.md): installation, upgrades, backup and restore, dead letters, retention, and troubleshooting.
 - [Management configuration API](docs/management-configuration-api.md): validated persisted detector/collector revisions, live versus pending-restart settings, secret-free history and restart-safe window policy state.
-- [Latest release notes](docs/RELEASE_NOTES.md): v1.0.2 artifacts, acceptance, and known limits.
+- [Latest release notes](docs/RELEASE_NOTES.md): v1.0.3 artifacts, acceptance, and known limits.
 - [Pinned runtime and dependency versions](docs/versions.md).
 - [Architecture diagram](docs/assets/driftwatch-architecture.svg).
 

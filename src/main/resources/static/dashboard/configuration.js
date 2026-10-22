@@ -276,7 +276,6 @@
         input.value = value === null || value === undefined ? "" : String(value);
       }
     });
-    syncCoupledHistory();
     if (!options.keepRangeRows) {
       renderRangeRows();
     }
@@ -309,12 +308,13 @@
 
   function readForm() {
     state.values = currentFormValues();
-    // The coupled field is always submitted equal to the baseline span.
-    state.values.anomaly_min_history_windows = state.values.anomaly_baseline_windows;
   }
 
   function markDirty(key) {
     state.dirty.add(key);
+    state.historyCorrectionConfirmed = false;
+    const button = document.getElementById("configSave");
+    if (button && !state.busy) button.textContent = "Save configuration";
     renderDirtyAndErrors();
   }
 
@@ -388,8 +388,8 @@
       notice.hidden = false;
       notice.textContent = `Saved legacy compatibility value: anomaly_min_history_windows is `
         + `${server.saved.anomaly_min_history_windows} while the baseline span is `
-        + `${server.saved.anomaly_baseline_windows}. Full baseline history is already required, so a save `
-        + `writes the coupled value ${server.saved.anomaly_baseline_windows}.`;
+        + `${server.saved.anomaly_baseline_windows}. Full baseline history is required for new saves; `
+        + `saving will prompt to confirm the coupled correction to ${server.saved.anomaly_baseline_windows}.`;
     } else {
       notice.hidden = true;
       notice.textContent = "";
@@ -516,6 +516,21 @@
       return;
     }
 
+    const correction = lib.coupledHistoryCorrection(state.server.saved, parsed.config);
+    if (correction.required && !state.historyCorrectionConfirmed) {
+      setBanner("warn", `anomaly_min_history_windows is currently ${correction.from} while the baseline span is ${correction.to}. `
+        + `New saves require full baseline history (${correction.to}); saving will update this coupled value and restart will `
+        + `warm up window state with the new policy namespace. Click "Confirm and save" to proceed.`);
+      state.historyCorrectionConfirmed = true;
+      const button = document.getElementById("configSave");
+      button.textContent = "Confirm and save";
+      return;
+    }
+    if (correction.required && state.historyCorrectionConfirmed) {
+      parsed.config.anomaly_min_history_windows = correction.to;
+      syncCoupledHistory();
+    }
+
     state.loadSeq += 1;
     state.busy = true;
     setFormBusy(true);
@@ -551,6 +566,7 @@
       setBanner("error", `Save failed before the server answered: ${error.message}. Nothing was reported as saved.`);
     } finally {
       state.busy = false;
+      state.historyCorrectionConfirmed = false;
       setFormBusy(false);
       button.textContent = "Save configuration";
       renderDirtyAndErrors();

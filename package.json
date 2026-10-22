@@ -1,6 +1,6 @@
 {
   "name": "driftwatch-tower",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Browser acceptance tooling for DriftWatch Tower.",
   "scripts": {

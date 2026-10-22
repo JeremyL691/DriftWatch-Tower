@@ -575,10 +575,11 @@ async function loadCollectorOps() {
     gaps.innerHTML = recent.length
       ? `<div class="table-shell" tabindex="0" role="region" aria-label="Recent collector gaps">
           <table class="data-table">
-            <thead><tr><th>Poll run</th><th>Reason</th><th>Visible from</th><th>Visible to</th><th>Missing</th><th>Recovery</th><th>Created</th><th>Recovered</th></tr></thead>
+            <thead><tr><th>Poll run</th><th>Reason</th><th>Evidence</th><th>Visible from</th><th>Visible to</th><th>Missing</th><th>Recovery</th><th>Created</th><th>Recovered</th></tr></thead>
             <tbody>${recent.map((gap) => `<tr>
               <td>${escapeHtml(gap.poll_run_id)}</td>
               <td>${escapeHtml(gap.reason)}</td>
+              <td><span class="status-chip">${escapeHtml(gap.evidence_level || "SUSPECTED")}</span></td>
               <td>${formatDate(gap.visible_from)}</td>
               <td>${formatDate(gap.visible_to)}</td>
               <td>${escapeHtml(gap.missing_count)}</td>

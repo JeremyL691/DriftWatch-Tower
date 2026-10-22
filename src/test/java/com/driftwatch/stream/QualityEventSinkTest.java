@@ -131,4 +131,33 @@ class QualityEventSinkTest {
 
         verify(metrics).recordAlert(AlertType.SCHEMA_DRIFT, "WARN");
     }
+
+    @Test
+    void schemaDriftChangesOkStatusToFlaggedOnRawEvent() {
+        RawEventRepository rawEventRepository = mock(RawEventRepository.class);
+        ProcessedReceiptRepository processedReceiptRepository = mock(ProcessedReceiptRepository.class);
+        QualityAlertRepository alertRepository = mock(QualityAlertRepository.class);
+        SchemaObservationService schemaObservationService = mock(SchemaObservationService.class);
+        MetricWindowProjector metricWindowProjector = mock(MetricWindowProjector.class);
+
+        Instant now = Instant.parse("2026-10-01T12:00:00Z");
+        DataEvent event = new DataEvent("evt-drift", "source-1", "order_created", now, Map.of("new_field", "val"));
+        ProcessedEvent processed = new ProcessedEvent(event, UUID.randomUUID(), now, "REST", "LIVE",
+                "hash-drift", "OK", "RULES", "APPLIED", null, List.of());
+
+        when(processedReceiptRepository.findById(anyString())).thenReturn(Optional.empty());
+        var observedRow = mock(com.driftwatch.persistence.SchemaVersionEntity.class);
+        when(observedRow.getId()).thenReturn(2L);
+        var diff = new SchemaInferrer.SchemaDiff(Set.of(), Set.of("new_field"), Map.of());
+        when(schemaObservationService.observe(anyString(), any(), any()))
+                .thenReturn(new SchemaObservationService.Observation(null, observedRow, Map.of(), "h", true, diff, false));
+
+        SinkPersistenceService persistence = new SinkPersistenceService(
+                rawEventRepository, processedReceiptRepository, alertRepository,
+                schemaObservationService, mock(AlertIncidentService.class), metricWindowProjector,
+                new ObjectMapper().findAndRegisterModules());
+
+        SinkPersistenceService.PersistResult result = persistence.persist(processed);
+        org.assertj.core.api.Assertions.assertThat(result.raw().getQualityStatus()).isEqualTo("FLAGGED");
+    }
 }

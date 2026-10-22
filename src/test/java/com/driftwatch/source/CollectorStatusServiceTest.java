@@ -38,6 +38,12 @@ class CollectorStatusServiceTest {
 
     private CollectorStatusService service(CollectorStateEntity state, long pendingOutbox, long openGaps,
                                            Duration pollInterval, List<SourcePollRunEntity> pollRuns) {
+        return service(state, pendingOutbox, openGaps, pollInterval, pollRuns, List.of());
+    }
+
+    private CollectorStatusService service(CollectorStateEntity state, long pendingOutbox, long openGaps,
+                                           Duration pollInterval, List<SourcePollRunEntity> pollRuns,
+                                           List<SourceGapEntity> recentGaps) {
         CollectorStateRepository states = proxy(CollectorStateRepository.class, (method, args) ->
                 method.getName().equals("findAll") ? List.of(state) : throwUnsupported(method.getName()));
         SourcePollRunRepository runs = proxy(SourcePollRunRepository.class, (method, args) ->
@@ -46,7 +52,7 @@ class CollectorStatusServiceTest {
                 method.getName().equals("countBySourceAndStatus") ? pendingOutbox : throwUnsupported(method.getName()));
         SourceGapRepository gaps = proxy(SourceGapRepository.class, (method, args) -> switch (method.getName()) {
             case "countBySourceAndRecoveryState" -> openGaps;
-            case "findTop20BySourceOrderByIdDesc" -> List.of();
+            case "findTop20BySourceOrderByIdDesc" -> recentGaps;
             default -> throwUnsupported(method.getName());
         });
         DriftwatchProperties properties = new DriftwatchProperties(
@@ -62,6 +68,42 @@ class CollectorStatusServiceTest {
                 new DriftwatchProperties.Streams(true),
                 new DriftwatchProperties.SourceHealth(Duration.ofMinutes(5), Duration.ofMinutes(30),
                         Duration.ofHours(24), Duration.ofMinutes(15)),
+                new DriftwatchProperties.Security(
+                        new DriftwatchProperties.Security.Admin("u", "a-long-enough-password"), List.of(), false),
+                new DriftwatchProperties.Source(new DriftwatchProperties.Source.Github(true, "apache/kafka",
+                        "https://api.github.com", pollInterval, 3, 100, Duration.ofSeconds(5),
+                        Duration.ofSeconds(20), 300, "", "1.0.0", false, true)),
+                new DriftwatchProperties.Bridge(false, "raw-events", "", 10000, ""));
+        return new CollectorStatusService(states, outbox, gaps, runs, properties, clock);
+    }
+
+    private CollectorStatusService serviceWithCollectorLostAfter(CollectorStateEntity state,
+                                                                 Duration pollInterval,
+                                                                 Duration collectorLostAfter) {
+        CollectorStateRepository states = proxy(CollectorStateRepository.class, (method, args) ->
+                method.getName().equals("findAll") ? List.of(state) : throwUnsupported(method.getName()));
+        SourcePollRunRepository runs = proxy(SourcePollRunRepository.class, (method, args) ->
+                method.getName().equals("findTop20BySourceOrderByIdDesc") ? List.of() : throwUnsupported(method.getName()));
+        SourceOutboxRepository outbox = proxy(SourceOutboxRepository.class, (method, args) ->
+                method.getName().equals("countBySourceAndStatus") ? 0L : throwUnsupported(method.getName()));
+        SourceGapRepository gaps = proxy(SourceGapRepository.class, (method, args) -> switch (method.getName()) {
+            case "countBySourceAndRecoveryState" -> 0L;
+            case "findTop20BySourceOrderByIdDesc" -> List.of();
+            default -> throwUnsupported(method.getName());
+        });
+        DriftwatchProperties properties = new DriftwatchProperties(
+                new DriftwatchProperties.Detector(
+                        new DriftwatchProperties.Detector.Duplicate(Duration.ofMinutes(5)),
+                        new DriftwatchProperties.Detector.Late(Duration.ofMinutes(5), Duration.ofHours(8)),
+                        new DriftwatchProperties.Detector.NullSpike(0.6, 3),
+                        new DriftwatchProperties.Detector.AnomalySpike(2, 2, 3.0, 5),
+                        new DriftwatchProperties.Detector.FieldRange(Map.of()),
+                        new DriftwatchProperties.Detector.FieldFormat("")),
+                new DriftwatchProperties.Metrics(Duration.ofMinutes(1), Duration.ofMinutes(10),
+                        Duration.ofMinutes(2), Duration.ofMinutes(15)),
+                new DriftwatchProperties.Streams(true),
+                new DriftwatchProperties.SourceHealth(Duration.ofMinutes(5), Duration.ofMinutes(30),
+                        Duration.ofHours(24), collectorLostAfter),
                 new DriftwatchProperties.Security(
                         new DriftwatchProperties.Security.Admin("u", "a-long-enough-password"), List.of(), false),
                 new DriftwatchProperties.Source(new DriftwatchProperties.Source.Github(true, "apache/kafka",
@@ -162,6 +204,41 @@ class CollectorStatusServiceTest {
         Map<String, Object> longView = service(longInterval, 0, 0, Duration.ofMinutes(30)).collectors().get(0);
         assertThat(longView.get("lost")).as("2x a 30 minute interval is 60 minutes").isEqualTo(false);
         assertThat(longView.get("lost_after_seconds")).isEqualTo(Duration.ofMinutes(60).getSeconds());
+    }
+
+    @Test
+    void collectorLostAfterRespectsCustomConfiguredThreshold() {
+        CollectorStateEntity state = state(CollectorStateEntity.STATUS_READY,
+                T0.minus(Duration.ofMinutes(20)), T0.minus(Duration.ofHours(2)));
+        CollectorStatusService svc = serviceWithCollectorLostAfter(state, Duration.ofMinutes(5), Duration.ofMinutes(30));
+        Map<String, Object> view = svc.collectors().get(0);
+        assertThat(view.get("lost")).as("20 minutes is not lost when collectorLostAfter is 30 minutes").isEqualTo(false);
+        assertThat(view.get("lost_after_seconds")).isEqualTo(Duration.ofMinutes(30).getSeconds());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void gapViewAnnotatesHeuristicGapsAsSuspected() {
+        CollectorStateEntity state = state(CollectorStateEntity.STATUS_READY,
+                T0.minus(Duration.ofMinutes(1)), T0.minus(Duration.ofMinutes(30)));
+        SourceGapEntity heuristicGap = new SourceGapEntity();
+        heuristicGap.setReason("NO_OVERLAP");
+        heuristicGap.setMissingCount("unknown");
+        heuristicGap.setRecoveryState("OPEN");
+
+        SourceGapEntity confirmedGap = new SourceGapEntity();
+        confirmedGap.setReason("EXPLICIT_LOSS");
+        confirmedGap.setMissingCount("5");
+        confirmedGap.setRecoveryState("OPEN");
+
+        Map<String, Object> view = service(state, 0, 2, Duration.ofMinutes(5), List.of(),
+                List.of(heuristicGap, confirmedGap)).collectors().get(0);
+        List<Map<String, Object>> recentGaps = (List<Map<String, Object>>) view.get("recent_gaps");
+        assertThat(recentGaps).hasSize(2);
+        assertThat(recentGaps.get(0).get("evidence_level")).isEqualTo("SUSPECTED");
+        assertThat(recentGaps.get(0).get("evidence_note").toString()).contains("unconfirmed");
+        assertThat(recentGaps.get(1).get("evidence_level")).isEqualTo("RECORDED");
+        assertThat(recentGaps.get(1).get("evidence_note").toString()).contains("as stored");
     }
 
     @Test
