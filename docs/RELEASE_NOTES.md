@@ -1,4 +1,4 @@
-# DriftWatch Tower v1.0.2
+# DriftWatch Tower v1.0.3
 
 DriftWatch Tower is a self-hosted event-quality service for HTTP event streams and the official
 GitHub public-events API. It combines Java 21, Spring Boot, Kafka Streams, and PostgreSQL with a
@@ -6,14 +6,23 @@ compact operations dashboard.
 
 ## Highlights
 
-- Duplicate checks keep repeated event IDs and repeated payloads as distinct findings, including
-  when both apply to the same ingestion. Each finding is persisted without collapsing the other.
-- Dashboard status badges keep readable text contrast in dark and light themes, including after
-  the source-health view refreshes into an unhealthy state.
-- Broker-acknowledged ingestion, stable idempotency receipts, transactional sink persistence,
-  bounded retries, and durable dead-letter replay keep event handling inspectable.
-- The GitHub collector persists its ETag, inbox identities, outbox, and checkpoints so restarts
-  resume from stored state. Bootstrap observations remain separate from live-event evaluation.
+- Upstream poll interval preservation: collector poll completions on HTTP 200 responses preserve
+  the upstream `X-Poll-Interval` when greater than the configured interval, preventing premature
+  polling and rate limits. The configurable `collector-lost-after` threshold is fully enforced.
+- Schema drift quality status synchronization: raw events that trigger `SCHEMA_DRIFT` alerts are
+  now marked as `FLAGGED` (preserving higher-priority `DUPLICATE` and `LATE` statuses), ensuring
+  consistency across raw events, incident correlation, and dashboard event details.
+- Management console configuration safety: legacy configuration values are faithfully displayed
+  without silent normalization, and require explicit confirmation when coupling history spans.
+  Format patterns support JSON object syntax `{"field": "regex"}` alongside legacy strings.
+- Upstream authentication support: `GITHUB_TOKEN` environment variable mapping is wired in
+  `application.yml` and Compose, allowing authenticated polling with 5,000 req/hr quota.
+- Collector failure detection: collectors that have never succeeded and encounter persistent failures
+  (HTTP 401/404 or 3 consecutive failures) now fire a `STALE_SOURCE` alert and correlate into incidents.
+- Local Streams baseline application status: operator API exposes whether the local Streams instance
+  has loaded and applied the active schema baseline (`APPLIED_LOCAL`).
+- Truthful gap evidence: collector gaps distinguish heuristic discontinuities (`SUSPECTED`) from
+  recorded entries (`RECORDED`).
 
 ## Runtime profile
 
