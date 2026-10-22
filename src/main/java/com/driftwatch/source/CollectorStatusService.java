@@ -79,8 +79,12 @@ public class CollectorStatusService {
      */
     Duration lostAfter() {
         Duration legalInterval = properties.source().github().pollInterval();
-        return legalInterval.multipliedBy(2).compareTo(MIN_LOST_AFTER) > 0
-                ? legalInterval.multipliedBy(2) : MIN_LOST_AFTER;
+        Duration configuredLost = properties.sourceHealth() != null && properties.sourceHealth().collectorLostAfter() != null
+                ? properties.sourceHealth().collectorLostAfter()
+                : MIN_LOST_AFTER;
+        Duration threshold = configuredLost.compareTo(MIN_LOST_AFTER) > 0 ? configuredLost : MIN_LOST_AFTER;
+        return legalInterval.multipliedBy(2).compareTo(threshold) > 0
+                ? legalInterval.multipliedBy(2) : threshold;
     }
 
     /** Lost means the last successful poll is older than {@link #lostAfter()} at {@code now}. */
@@ -129,6 +133,14 @@ public class CollectorStatusService {
         view.put("visible_to", gap.getVisibleTo()); view.put("confirmed_from", gap.getConfirmedFrom());
         view.put("missing_count", gap.getMissingCount()); view.put("recovery_state", gap.getRecoveryState());
         view.put("created_at", gap.getCreatedAt()); view.put("recovered_at", gap.getRecoveredAt());
+
+        boolean heuristic = "NO_OVERLAP".equalsIgnoreCase(gap.getReason())
+                || "DOWNTIME_BEYOND_VISIBLE_RANGE".equalsIgnoreCase(gap.getReason())
+                || "unknown".equalsIgnoreCase(gap.getMissingCount());
+        view.put("evidence_level", heuristic ? "SUSPECTED" : "RECORDED");
+        view.put("evidence_note", heuristic
+                ? "Discontinuity detected by poll timestamps; unconfirmed record loss"
+                : "Collector-recorded gap; missing record count is reported as stored");
         return view;
     }
 
