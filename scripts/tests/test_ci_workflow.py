@@ -150,5 +150,16 @@ class CheckReleaseCiTests(unittest.TestCase):
                 self.assertEqual(check_suite.main(), 1, 'missing report')
 
 
+    def test_ci_workflow_runs_unified_npm_test(self):
+        ci_path = ROOT / '.github' / 'workflows' / 'ci.yml'
+        content = ci_path.read_text(encoding='utf-8')
+        self.assertIn('run: npm test', content)
+
+    def test_docker_compose_maps_github_token_environment_variable(self):
+        compose_path = ROOT / 'docker-compose.yml'
+        content = compose_path.read_text(encoding='utf-8')
+        self.assertIn('GITHUB_TOKEN: ${DWT_GITHUB_TOKEN:-}', content)
+
+
 if __name__ == '__main__':
     unittest.main()
