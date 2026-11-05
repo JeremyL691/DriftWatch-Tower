@@ -77,7 +77,9 @@ public class SourceHealthService {
     @Transactional
     public List<QualityAlertEntity> refreshAllAndPersist(Instant now) {
         List<DraftAlert> drafts = new ArrayList<>();
-        for (String source : rawEventRepository.findDistinctSources()) {
+        java.util.Set<String> allSources = new java.util.LinkedHashSet<>(rawEventRepository.findDistinctSources());
+        collectorStateRepository.findAll().forEach(c -> allSources.add(c.getSource()));
+        for (String source : allSources) {
             refreshSource(source, now).ifPresent(drafts::add);
         }
         if (drafts.isEmpty()) {
@@ -117,13 +119,46 @@ public class SourceHealthService {
 
     private Optional<DraftAlert> refreshSource(String source, Instant now) {
         Optional<RawEventEntity> latestOpt = rawEventRepository.findFirstBySourceOrderByReceivedAtDescIdDesc(source);
+        Optional<CollectorStateEntity> collector = collectorStateRepository.findById(source);
         if (latestOpt.isEmpty()) {
+            if (collector.isEmpty()) {
+                return Optional.empty();
+            }
+            CollectorStateEntity c = collector.get();
+            boolean failing = c.getLastPollSuccess() == null
+                    && (CollectorStateEntity.STATUS_ERROR.equals(c.getStatus()) || c.getConsecutiveFailures() >= 3);
+            if (!failing) {
+                return Optional.empty();
+            }
+            Duration staleAfter = collectorStatusService.lostAfter();
+            Instant lastSeenAt = c.getLastPollAt() != null ? c.getLastPollAt() : now;
+            double healthScore = 65.0d;
+            String status = SourceHealthEntity.STATUS_STALE;
+
+            SourceHealthEntity previous = sourceHealthRepository.findById(source).orElse(null);
+            boolean wasStale = previous != null
+                    && SourceHealthEntity.STATUS_STALE.equals(previous.getStatus());
+            SourceHealthEntity row = previous != null ? previous : new SourceHealthEntity();
+            row.setSource(source);
+            row.setStatus(status);
+            row.setLastSeenAt(lastSeenAt);
+            row.setEventsLast5m(0L);
+            row.setEventsLast1h(0L);
+            row.setDuplicateRate(0.0d);
+            row.setLateEventRate(0.0d);
+            row.setNullRate(0.0d);
+            row.setHealthScore(healthScore);
+            row.setUpdatedAt(now);
+            sourceHealthRepository.save(row);
+
+            if (!wasStale) {
+                return Optional.of(collectorNeverSucceededAlert(source, lastSeenAt, c, staleAfter, status, healthScore));
+            }
             return Optional.empty();
         }
 
         RawEventEntity latest = latestOpt.get();
         Instant lastReceivedAt = latest.getReceivedAt();
-        Optional<CollectorStateEntity> collector = collectorStateRepository.findById(source);
         Duration staleAfter;
         boolean stale;
         String basis;
@@ -207,6 +242,37 @@ public class SourceHealthService {
                 Severity.WARN,
                 source,
                 eventType,
+                null,
+                message,
+                evidence
+        );
+    }
+
+    private DraftAlert collectorNeverSucceededAlert(String source,
+                                                   Instant lastSeenAt,
+                                                   CollectorStateEntity collector,
+                                                   Duration staleAfter,
+                                                   String status,
+                                                   double healthScore) {
+        ObjectNode evidence = objectMapper.createObjectNode();
+        evidence.put("source", source);
+        evidence.put("last_seen_at", lastSeenAt.toString());
+        evidence.put("freshness_basis", "collector_never_succeeded");
+        evidence.put("stale_after", staleAfter.toString());
+        evidence.put("status", status);
+        evidence.put("health_score", healthScore);
+        evidence.put("collector_status", collector.getStatus());
+        evidence.put("consecutive_failures", collector.getConsecutiveFailures());
+        if (collector.getLastError() != null) {
+            evidence.put("last_error", collector.getLastError());
+        }
+        String message = "Collector for source " + source + " has never succeeded and is failing (status="
+                + collector.getStatus() + ", consecutive_failures=" + collector.getConsecutiveFailures() + ")";
+        return new DraftAlert(
+                AlertType.STALE_SOURCE,
+                Severity.WARN,
+                source,
+                "collector",
                 null,
                 message,
                 evidence

@@ -14,7 +14,7 @@
 
     <groupId>com.driftwatch</groupId>
     <artifactId>driftwatch-tower</artifactId>
-    <version>1.0.2</version>
+    <version>1.0.3</version>
     <name>driftwatch-tower</name>
     <description>Streaming data quality observability platform</description>
 

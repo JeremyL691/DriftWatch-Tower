@@ -169,6 +169,29 @@ class GithubPollerRoundStateTest {
         assertThat(after.getEtagApplied()).as("the checkpoint is not applied by a failed round").isEqualTo("\"e0\"");
     }
 
+    @Test
+    void roundFollowsUpstreamPollIntervalWhenLargerThanConfigured() throws Exception {
+        when(client.fetchPage(anyString(), any())).thenReturn(new GithubFetchResult(
+                GithubFetchResult.Status.OK, "\"e2\"", 900, null, null, 100, null,
+                new ObjectMapper().readTree(GithubStubServer.array(
+                        GithubStubServer.event("7002", "PushEvent", now.minusSeconds(30).toString(), null))),
+                null));
+
+        DriftwatchProperties properties = CollectorStatusFixtures.properties(Duration.ofMinutes(5));
+        GithubPoller customPoller = new GithubPoller(properties, client, new GithubEventConverter(new ObjectMapper()),
+                stateRepository, inboxRepository, outboxRepository, pollRunRepository, gapRepository,
+                mock(KafkaTemplate.class), receiptRepository, deadLetterRepository,
+                mock(PlatformTransactionManager.class), mock(DriftwatchMetrics.class));
+
+        Instant before = Instant.now();
+        customPoller.pollNow();
+        CollectorStateEntity after = states.get(SOURCE);
+
+        assertThat(after.getNextPollAt())
+                .isAfterOrEqualTo(before.plus(Duration.ofSeconds(900)))
+                .isBeforeOrEqualTo(Instant.now().plus(Duration.ofSeconds(900)));
+    }
+
     private static void assignId(SourcePollRunEntity run, long id) {
         try {
             Field field = SourcePollRunEntity.class.getDeclaredField("id");

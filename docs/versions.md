@@ -12,7 +12,7 @@ maintained for reproducible builds; they are not a feed of the newest upstream v
 | Maven wrapper | 3.9.9 (`.mvn/wrapper/maven-wrapper.properties`) | enforcer requires >= 3.9 |
 | Spring Boot | 3.5.16 | manages Spring Framework, Spring Kafka, Micrometer, Testcontainers; upgraded from 3.3.5 to clear CVE-2026-22733 / CVE-2026-41731 |
 | Spring Kafka | 3.3.16 | from the Boot BOM |
-| Kafka clients / Streams | 3.9.2 | from the Boot BOM; broker is Apache Kafka 3.8.0 (client is backward compatible with older brokers) |
+| Kafka clients / Streams | 3.9.2 | from the Boot BOM; broker is Apache Kafka 3.9.2 (matches client version) |
 | PostgreSQL JDBC | 42.7.13 | property override: Boot 3.5.16 manages 42.7.11 and CVE-2026-54291 is fixed in 42.7.12 |
 | Flyway | 11.7.2 | from the Boot BOM |
 | Micrometer Prometheus registry | 1.15.12 | from the Boot BOM |

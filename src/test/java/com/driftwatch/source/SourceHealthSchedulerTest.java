@@ -93,8 +93,11 @@ class SourceHealthSchedulerTest {
             }
             default -> throw new UnsupportedOperationException(method.getName());
         });
-        CollectorStateRepository collectors = proxy(CollectorStateRepository.class, (method, args) ->
-                method.getName().equals("findById") ? Optional.empty() : throwUnsupported(method.getName()));
+        CollectorStateRepository collectors = proxy(CollectorStateRepository.class, (method, args) -> switch (method.getName()) {
+            case "findById" -> Optional.empty();
+            case "findAll" -> List.of();
+            default -> throwUnsupported(method.getName());
+        });
         AlertIncidentService incidents = new AlertIncidentService(null, null, clock) {
             @Override
             public Optional<AlertIncidentEntity> correlate(QualityAlertEntity alert) {

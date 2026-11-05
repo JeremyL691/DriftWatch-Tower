@@ -22,6 +22,8 @@ HELP.md
 # AI tools
 .claude/
 .mimocode/
+.opencode/
+.pi/
 
 # DriftWatch-Tower: AI tools working artifacts
 .codegraph/

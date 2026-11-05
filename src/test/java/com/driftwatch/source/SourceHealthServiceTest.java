@@ -141,6 +141,72 @@ class SourceHealthServiceTest {
         assertThat(lost.correlatedAlerts).singleElement().isSameAs(alerts.get(0));
     }
 
+    @Test
+    void collectorNeverSucceededWithStatusErrorTriggersStaleAlert() {
+        Instant now = Instant.now();
+        CollectorStateEntity errorCollector = new CollectorStateEntity();
+        errorCollector.setSource(GITHUB_SOURCE);
+        errorCollector.setStatus(CollectorStateEntity.STATUS_ERROR);
+        errorCollector.setLastPollSuccess(null);
+        errorCollector.setLastPollAt(now.minus(Duration.ofMinutes(10)));
+        errorCollector.setLastError("401 unauthorized: token rejected");
+        errorCollector.setConsecutiveFailures(1);
+
+        Harness harness = new Harness(now, null, errorCollector, null);
+        List<QualityAlertEntity> alerts = harness.service.refreshAllAndPersist(now);
+
+        assertThat(alerts).singleElement().satisfies(alert -> {
+            assertThat(alert.getAlertType()).isEqualTo(AlertType.STALE_SOURCE);
+            assertThat(alert.getSource()).isEqualTo(GITHUB_SOURCE);
+            assertThat(alert.getEventType()).isEqualTo("collector");
+            assertThat(alert.getEvidenceJson().path("freshness_basis").asText())
+                    .isEqualTo("collector_never_succeeded");
+            assertThat(alert.getEvidenceJson().path("collector_status").asText())
+                    .isEqualTo("ERROR");
+        });
+        assertThat(harness.savedHealth.get()).isNotNull();
+        assertThat(harness.savedHealth.get().getStatus()).isEqualTo(SourceHealthEntity.STATUS_STALE);
+
+        // Repeated refresh does not duplicate the transition alert
+        List<QualityAlertEntity> secondPass = harness.service.refreshAllAndPersist(now.plusSeconds(30));
+        assertThat(secondPass).isEmpty();
+    }
+
+    @Test
+    void collectorNeverSucceededWithFewFailuresDoesNotTriggerStaleAlert() {
+        Instant now = Instant.now();
+        CollectorStateEntity backoffCollector = new CollectorStateEntity();
+        backoffCollector.setSource(GITHUB_SOURCE);
+        backoffCollector.setStatus(CollectorStateEntity.STATUS_BACKOFF);
+        backoffCollector.setLastPollSuccess(null);
+        backoffCollector.setLastPollAt(now.minus(Duration.ofMinutes(5)));
+        backoffCollector.setConsecutiveFailures(2); // Less than 3
+
+        Harness harness = new Harness(now, null, backoffCollector, null);
+        List<QualityAlertEntity> alerts = harness.service.refreshAllAndPersist(now);
+
+        assertThat(alerts).isEmpty();
+    }
+
+    @Test
+    void collectorNeverSucceededWithThreeFailuresTriggersStaleAlert() {
+        Instant now = Instant.now();
+        CollectorStateEntity backoffCollector = new CollectorStateEntity();
+        backoffCollector.setSource(GITHUB_SOURCE);
+        backoffCollector.setStatus(CollectorStateEntity.STATUS_BACKOFF);
+        backoffCollector.setLastPollSuccess(null);
+        backoffCollector.setLastPollAt(now.minus(Duration.ofMinutes(5)));
+        backoffCollector.setConsecutiveFailures(3);
+
+        Harness harness = new Harness(now, null, backoffCollector, null);
+        List<QualityAlertEntity> alerts = harness.service.refreshAllAndPersist(now);
+
+        assertThat(alerts).singleElement().satisfies(alert -> {
+            assertThat(alert.getAlertType()).isEqualTo(AlertType.STALE_SOURCE);
+            assertThat(alert.getEvidenceJson().path("consecutive_failures").asInt()).isEqualTo(3);
+        });
+    }
+
     private static CollectorStateEntity collector(Instant lastPollSuccess) {
         CollectorStateEntity state = new CollectorStateEntity();
         state.setSource(GITHUB_SOURCE);
@@ -169,13 +235,13 @@ class SourceHealthServiceTest {
         final SourceHealthService service;
 
         Harness(Instant now, RawEventEntity latest, CollectorStateEntity collector, SourceHealthEntity previous) {
-            String source = latest.getSource();
+            String source = latest != null ? latest.getSource() : (collector != null ? collector.getSource() : "unknown");
             Clock clock = Clock.fixed(now, ZoneOffset.UTC);
 
             RawEventRepository rawEvents = proxy(RawEventRepository.class, (method, args) -> switch (method.getName()) {
-                case "findDistinctSources" -> List.of(source);
-                case "findFirstBySourceOrderByReceivedAtDescIdDesc" -> Optional.of(latest);
-                case "countBySourceAndReceivedAtAfter" -> 1L;
+                case "findDistinctSources" -> latest != null ? List.of(source) : List.of();
+                case "findFirstBySourceOrderByReceivedAtDescIdDesc" -> Optional.ofNullable(latest);
+                case "countBySourceAndReceivedAtAfter" -> latest != null ? 1L : 0L;
                 case "countBySourceAndReceivedAtAfterAndQualityStatus" -> 0L;
                 default -> unsupported(method.getName());
             });
@@ -194,19 +260,20 @@ class SourceHealthServiceTest {
                 default -> unsupported(method.getName());
             });
             SourceHealthRepository health = proxy(SourceHealthRepository.class, (method, args) -> switch (method.getName()) {
-                case "findById" -> Optional.ofNullable(previous);
+                case "findById" -> Optional.ofNullable(savedHealth.get() != null ? savedHealth.get() : previous);
                 case "save" -> {
                     savedHealth.set((SourceHealthEntity) args[0]);
                     yield args[0];
                 }
                 case "findAllByOrderByHealthScoreAscSourceAsc" -> {
-                    SourceHealthEntity row = savedHealth.get();
+                    SourceHealthEntity row = savedHealth.get() != null ? savedHealth.get() : previous;
                     yield row == null ? List.of() : List.of(row);
                 }
                 default -> unsupported(method.getName());
             });
             CollectorStateRepository collectors = proxy(CollectorStateRepository.class, (method, args) -> switch (method.getName()) {
                 case "findById" -> Optional.ofNullable(collector);
+                case "findAll" -> collector != null ? List.of(collector) : List.of();
                 default -> unsupported(method.getName());
             });
             AlertIncidentService incidents = new AlertIncidentService(null, null, clock) {
