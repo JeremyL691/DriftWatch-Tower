@@ -294,6 +294,22 @@ class ManagementConfigurationIntegrationTest extends ContainerIntegrationTest {
         assertThat(jdbcTemplate.queryForObject("select count(*) from management_configuration_history", Long.class)).isEqualTo(history);
     }
 
+    @Test void unsupportedFormatRegexReturnsBadRequestWithoutChangingConfiguration() throws Exception {
+        ObjectNode before = state();
+        long history = jdbcTemplate.queryForObject("select count(*) from management_configuration_history", Long.class);
+        ObjectNode request = request(before);
+        ((ObjectNode) request.get("config")).put("format_patterns", "sku=(?=ABC)ABC");
+
+        mockMvc.perform(put("/api/v1/configuration").with(asAdmin()).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(request.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_configuration"))
+                .andExpect(jsonPath("$.message").value("format_patterns contains an invalid or unsupported regular expression; use RE2 syntax"));
+
+        assertThat(state()).isEqualTo(before);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from management_configuration_history", Long.class)).isEqualTo(history);
+    }
+
     @Test void putOmittingRequiredFieldsIsBadRequestAndLeavesRevisionUntouched() throws Exception {
         ObjectNode before = state();
         long history = jdbcTemplate.queryForObject("select count(*) from management_configuration_history", Long.class);

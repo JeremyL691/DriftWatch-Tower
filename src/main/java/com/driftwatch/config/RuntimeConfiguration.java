@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.google.re2j.Pattern;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -20,7 +21,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Pattern;
 
 /** No database access on the event path. Consumers depend on this bean to load before initialization. */
 @Component
@@ -85,7 +85,14 @@ public class RuntimeConfiguration {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "anomaly_min_history_windows must equal anomaly_baseline_windows; full baseline history is required for new saves");
         }
-        try { candidate.validate(); } catch (IllegalArgumentException e) { throw invalid(); }
+        try {
+            candidate.validate();
+        } catch (FieldFormatPatterns.InvalidRegexException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "format_patterns contains an invalid or unsupported regular expression; use RE2 syntax");
+        } catch (IllegalArgumentException e) {
+            throw invalid();
+        }
         long expected = request.get("expected_revision").longValue();
         Snapshot next = snapshot(expected + 1, effective.get().config().withLive(candidate));
         transaction.executeWithoutResult(status -> {
