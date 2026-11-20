@@ -74,7 +74,7 @@
         <dependency>
             <groupId>at.yawk.lz4</groupId>
             <artifactId>lz4-java</artifactId>
-            <version>1.11.4</version>
+            <version>1.14.1</version>
         </dependency>
         <!-- Override Kafka's transitive Snappy version: CVE-2026-93451 and CVE-2026-108106 are fixed in 1.1.10.9. -->
         <dependency>
