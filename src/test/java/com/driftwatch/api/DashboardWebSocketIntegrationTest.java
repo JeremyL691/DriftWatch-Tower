@@ -32,9 +32,10 @@ class DashboardWebSocketIntegrationTest extends ContainerIntegrationTest {
     @Autowired ObjectMapper objectMapper;
 
     @Test
-    void nativeUpgradeEstablishesStompWithoutBasicCredentials() throws Exception {
+    void nativeUpgradeEstablishesStompAndReceivesIdleHeartbeatWithoutBasicCredentials() throws Exception {
         try (HttpClient client = HttpClient.newHttpClient()) {
             var connected = new CompletableFuture<String>();
+            var heartbeat = new CompletableFuture<Void>();
             var socket = socket(client)
                     .header("Origin", "http://127.0.0.1:" + port)
                     .buildAsync(wsUri("?ticket=" + ticket(client)), new WebSocket.Listener() {
@@ -44,16 +45,23 @@ class DashboardWebSocketIntegrationTest extends ContainerIntegrationTest {
                         public CompletionStage<?> onText(WebSocket socket, CharSequence data, boolean last) {
                             frame.append(data);
                             if (last) {
-                                connected.complete(frame.toString());
+                                if ("\n".contentEquals(frame)) {
+                                    heartbeat.complete(null);
+                                } else {
+                                    connected.complete(frame.toString());
+                                }
+                                frame.setLength(0);
                             }
                             return WebSocket.Listener.super.onText(socket, data, last);
                         }
                     }).get(10, TimeUnit.SECONDS);
             try {
                 assertThat(socket.getSubprotocol()).isEqualTo("v11.stomp");
-                socket.sendText("CONNECT\naccept-version:1.1\nheart-beat:0,0\n\n\0", true)
+                socket.sendText("CONNECT\naccept-version:1.1\nheart-beat:0,10000\n\n\0", true)
                         .get(10, TimeUnit.SECONDS);
-                assertThat(connected.get(10, TimeUnit.SECONDS)).startsWith("CONNECTED\n");
+                assertThat(connected.get(10, TimeUnit.SECONDS)).startsWith("CONNECTED\n")
+                        .contains("\nheart-beat:10000,0\n");
+                heartbeat.get(25, TimeUnit.SECONDS);
             } finally {
                 socket.abort();
             }
