@@ -49,6 +49,25 @@ against a newer schema; startup is not evidence of a supported rollback. Stop ne
 save the current evidence and restore the pre-upgrade PostgreSQL and Kafka-volume backups
 with the historical image. Image-only rollback across this contract change is unsupported.
 
+Rolling back from Kafka Streams 4.x to a 3.9.2-based image also requires deleting the
+local Streams state before starting the older image. The [Kafka Streams upgrade guide](https://kafka.apache.org/40/streams/upgrade-guide/)
+documents that pre-4.0 RocksDB cannot read the newer on-disk format. Stop ingestion,
+stop and remove the app container to release its volume, then remove only the Streams
+state volume (for project `driftwatch`):
+
+```bash
+docker compose -p driftwatch --env-file .execution/selfhost.env stop app
+docker compose -p driftwatch --env-file .execution/selfhost.env rm -f app
+docker volume rm driftwatch_streams-state
+# Set DWT_APP_IMAGE in .execution/selfhost.env to the older image digest before restarting.
+docker compose -p driftwatch --env-file .execution/selfhost.env up -d app
+```
+
+Streams rebuilds local state from the retained changelog topics; keep the same Streams
+application ID and preserve the Kafka topics/volume and PostgreSQL data. Do not use
+`down -v`, which would also delete database and broker volumes. This state cleanup
+does not replace the paired backup/restore requirements for contract changes above.
+
 ## Backup and restore
 
 ```bash
