@@ -27,13 +27,13 @@ maintained for reproducible builds; they are not a feed of the newest upstream v
 |---|---|
 | `postgres:16.15` | `sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54` |
 | `apache/kafka:3.9.2` | `sha256:05b4616e0702ef2729327705d54ad6b50ea70b271c4b730fabd2320789fb7b02` |
-| `eclipse-temurin:21-jdk` (build stage) | `sha256:4d06038800655fe1211760cd561de70ef2ed7a47f5d69255e9834414602b7026` |
-| `eclipse-temurin:21-jre` (runtime stage) | `sha256:d7051a45dd955e4d5d1db4d3f4269fe13d1c6dff8cc6b7ef89fc8577b96c1982` |
+| `eclipse-temurin:21-jdk` (build stage) | See [Dockerfile](../Dockerfile) |
+| `eclipse-temurin:21-jre` (runtime stage) | See [Dockerfile](../Dockerfile) |
 
 Digests are manifest-list digests, so they resolve per architecture. The Kafka broker
 version matches the Kafka client version managed by the Boot BOM (3.9.2). The app
-image adds `curl` and applies pending Ubuntu security updates on top of the pinned
-`eclipse-temurin:21-jre` digest.
+image adds `curl` for its health check and gets base OS security updates by
+refreshing the pinned Temurin digest, not by upgrading all OS packages at build time.
 
 ### Upstream stack image findings (not published by this project)
 
@@ -53,6 +53,7 @@ rather than silently ignored. The project's own release image scans clean.
 
 ## Update policy
 
+- Dependabot checks Maven and npm weekly and the pinned Temurin base images daily.
 - Review compatibility and vulnerability impact before changing a pin.
 - Re-run the affected build, security, and integration checks after changing a pin. Release
   evidence applies only to the exact candidate recorded in its manifest.
