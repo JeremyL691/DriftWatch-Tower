@@ -3,12 +3,12 @@ package com.driftwatch.quality;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.re2j.Pattern;
+import com.google.re2j.PatternSyntaxException;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 
 /**
  * Parses the {@code field=regex} or JSON {@code {"field": "regex"}} specification
@@ -51,12 +51,7 @@ public final class FieldFormatPatterns {
                 throw new IllegalArgumentException(
                         "field-format entry '" + item + "' must have a non-empty field and regex");
             }
-            try {
-                compiled.put(field, Pattern.compile(regex));
-            } catch (PatternSyntaxException e) {
-                throw new IllegalArgumentException(
-                        "field-format regex for field '" + field + "' is invalid: " + e.getDescription());
-            }
+            compiled.put(field, compile(field, regex));
         }
         return compiled;
     }
@@ -86,13 +81,22 @@ public final class FieldFormatPatterns {
                 throw new IllegalArgumentException(
                         "field-format entry for field '" + field + "' must have a non-empty field and regex");
             }
-            try {
-                compiled.put(field, Pattern.compile(regex));
-            } catch (PatternSyntaxException e) {
-                throw new IllegalArgumentException(
-                        "field-format regex for field '" + field + "' is invalid: " + e.getDescription());
-            }
+            compiled.put(field, compile(field, regex));
         }
         return compiled;
+    }
+
+    private static Pattern compile(String field, String regex) {
+        try {
+            return Pattern.compile(regex);
+        } catch (PatternSyntaxException e) {
+            throw new InvalidRegexException(field, e.getDescription());
+        }
+    }
+
+    public static final class InvalidRegexException extends IllegalArgumentException {
+        private InvalidRegexException(String field, String description) {
+            super("field-format regex for field '" + field + "' is invalid in RE2 syntax: " + description);
+        }
     }
 }

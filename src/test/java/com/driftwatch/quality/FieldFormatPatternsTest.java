@@ -1,9 +1,9 @@
 package com.driftwatch.quality;
 
+import com.google.re2j.Pattern;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
-import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -102,5 +102,15 @@ class FieldFormatPatternsTest {
         assertThatThrownBy(() -> FieldFormatPatterns.parse("{\"code\": \"(unclosed\"}"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("invalid");
+    }
+
+    @Test
+    void rejectsUnsupportedRe2SyntaxInEitherFormat() {
+        assertThatThrownBy(() -> FieldFormatPatterns.parse("code=(?=ABC)ABC"))
+                .isInstanceOf(FieldFormatPatterns.InvalidRegexException.class)
+                .hasMessageContaining("field 'code' is invalid in RE2 syntax");
+        assertThatThrownBy(() -> FieldFormatPatterns.parse("{\"code\": \"(ABC)\\\\1\"}"))
+                .isInstanceOf(FieldFormatPatterns.InvalidRegexException.class)
+                .hasMessageContaining("field 'code' is invalid in RE2 syntax");
     }
 }

@@ -4,11 +4,13 @@ import com.driftwatch.event.DataEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 class FieldFormatDetectorTest {
 
@@ -36,6 +38,17 @@ class FieldFormatDetectorTest {
         assertThat(a.fieldPath()).isEqualTo("email");
         assertThat(a.evidence().get("reason").asText()).isEqualTo("PATTERN_MISMATCH");
         assertThat(a.evidence().get("value").asText()).isEqualTo("not-an-email");
+    }
+
+    @Test
+    void rejectsLongNearMatchQuicklyWithNestedQuantifiers() {
+        FieldFormatDetector detector = new FieldFormatDetector(mapper, "code=(a+)+$");
+        DetectionContext context = ctx("nested-quantifiers", Map.of("code", "a".repeat(32_768) + "b"));
+
+        List<DraftAlert> alerts = assertTimeoutPreemptively(Duration.ofSeconds(2), () -> detector.detect(context));
+
+        assertThat(alerts).extracting(DraftAlert::type).containsExactly(AlertType.FIELD_FORMAT_MISMATCH);
+        assertThat(alerts.getFirst().evidence().get("pattern").asText()).isEqualTo("(a+)+$");
     }
 
     @Test

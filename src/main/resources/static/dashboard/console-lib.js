@@ -52,7 +52,7 @@
     { key: "ranges", label: "Numeric range rules", group: "rules", type: "ranges", live: true,
       hint: "Literal top-level payload keys only. A missing key is skipped, not failed." },
     { key: "format_patterns", label: "Format rules", group: "rules", type: "textarea", live: true,
-      hint: "JSON object {\"field\": \"regex\"} or legacy comma-separated field=regex. Regex must have bounded complexity." },
+      hint: "JSON object {\"field\": \"regex\"} or legacy comma-separated field=regex. Use RE2 syntax (no lookaround or backreferences)." },
 
     { key: "github_enabled", label: "GitHub collection enabled", group: "collector", type: "boolean", live: false,
       hint: "Restart required. Disabling is not an immediate stop: pending work keeps polling until restart." },
@@ -248,7 +248,7 @@
         }
       } else {
         // Mirrors FieldFormatPatterns.parse: entries are trimmed and blank ones skipped. Regex syntax is
-        // Java's, so it is left to the server (the authority) rather than checked with JavaScript RegExp.
+        // RE2, so it is left to the server (the authority) rather than checked with JavaScript RegExp.
         const entries = patterns.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
         if (entries.length > 50) {
           errors.format_patterns = "At most 50 format fields.";
