@@ -248,6 +248,24 @@ class CollectorStatusServiceTest {
     }
 
     @Test
+    void freshnessClassifiesEveryCollectorState() {
+        CollectorStatusService svc = serviceWithCollectorLostAfter(
+                state(CollectorStateEntity.STATUS_READY, T0, T0), Duration.ofMinutes(5), Duration.ofMinutes(15));
+
+        assertThat(svc.freshness(state(CollectorStateEntity.STATUS_READY, T0.minus(Duration.ofMinutes(1)), T0), T0))
+                .isEqualTo(CollectorStatusService.Freshness.FRESH);
+        assertThat(svc.freshness(state(CollectorStateEntity.STATUS_READY, T0.minus(Duration.ofMinutes(20)), T0), T0))
+                .isEqualTo(CollectorStatusService.Freshness.LOST);
+        assertThat(svc.freshness(state(CollectorStateEntity.STATUS_ERROR, null, null), T0))
+                .isEqualTo(CollectorStatusService.Freshness.NEVER_SUCCEEDED_FAILING);
+        CollectorStateEntity retrying = state(CollectorStateEntity.STATUS_BACKOFF, null, null);
+        retrying.setConsecutiveFailures(2);
+        assertThat(svc.freshness(retrying, T0)).isEqualTo(CollectorStatusService.Freshness.NEVER_SUCCEEDED_PENDING);
+        retrying.setConsecutiveFailures(3);
+        assertThat(svc.freshness(retrying, T0)).isEqualTo(CollectorStatusService.Freshness.NEVER_SUCCEEDED_FAILING);
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void gapViewAnnotatesHeuristicGapsAsSuspected() {
         CollectorStateEntity state = state(CollectorStateEntity.STATUS_READY,
