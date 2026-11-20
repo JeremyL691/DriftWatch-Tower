@@ -207,6 +207,23 @@ class SourceHealthServiceTest {
         });
     }
 
+    @Test
+    void eventlessCollectorRecoversFromStaleAfterSuccessfulPoll() {
+        Instant now = Instant.now();
+        CollectorStateEntity recovered = collector(now.minus(Duration.ofMinutes(1)));
+        SourceHealthEntity previous = new SourceHealthEntity();
+        previous.setSource(GITHUB_SOURCE);
+        previous.setStatus(SourceHealthEntity.STATUS_STALE);
+        previous.setHealthScore(65.0d);
+
+        Harness harness = new Harness(now, null, recovered, previous);
+        List<QualityAlertEntity> alerts = harness.service.refreshAllAndPersist(now);
+
+        assertThat(alerts).isEmpty();
+        assertThat(harness.savedHealth.get().getStatus()).isNotEqualTo(SourceHealthEntity.STATUS_STALE);
+        assertThat(harness.savedHealth.get().getLastSeenAt()).isEqualTo(recovered.getLastPollSuccess());
+    }
+
     private static CollectorStateEntity collector(Instant lastPollSuccess) {
         CollectorStateEntity state = new CollectorStateEntity();
         state.setSource(GITHUB_SOURCE);

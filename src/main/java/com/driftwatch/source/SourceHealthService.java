@@ -117,6 +117,30 @@ public class SourceHealthService {
         return refreshAllAndPersist(now);
     }
 
+    /**
+     * Keeps an existing health row current for a collector that polls successfully but has not
+     * produced any event yet, so a recovered quiet source does not stay STALE until its first event.
+     */
+    private void refreshEventlessCollector(String source, CollectorStateEntity collector, Instant now) {
+        SourceHealthEntity previous = sourceHealthRepository.findById(source).orElse(null);
+        if (previous == null || collector.getLastPollSuccess() == null) {
+            return;
+        }
+        boolean stale = collectorStatusService.isLost(collector, now);
+        long recentAlerts = alertRepository.countBySourceAndCreatedAtAfter(source, now.minus(Duration.ofHours(1)));
+        double healthScore = calculator.score(new SourceHealthCalculator.Inputs(0.0d, 0.0d, 0.0d, recentAlerts, stale));
+        previous.setStatus(calculator.status(healthScore, stale));
+        previous.setLastSeenAt(collector.getLastPollSuccess());
+        previous.setEventsLast5m(0L);
+        previous.setEventsLast1h(0L);
+        previous.setDuplicateRate(0.0d);
+        previous.setLateEventRate(0.0d);
+        previous.setNullRate(0.0d);
+        previous.setHealthScore(healthScore);
+        previous.setUpdatedAt(now);
+        sourceHealthRepository.save(previous);
+    }
+
     private Optional<DraftAlert> refreshSource(String source, Instant now) {
         Optional<RawEventEntity> latestOpt = rawEventRepository.findFirstBySourceOrderByReceivedAtDescIdDesc(source);
         Optional<CollectorStateEntity> collector = collectorStateRepository.findById(source);
@@ -128,6 +152,7 @@ public class SourceHealthService {
             boolean failing = c.getLastPollSuccess() == null
                     && (CollectorStateEntity.STATUS_ERROR.equals(c.getStatus()) || c.getConsecutiveFailures() >= 3);
             if (!failing) {
+                refreshEventlessCollector(source, c, now);
                 return Optional.empty();
             }
             Duration staleAfter = collectorStatusService.lostAfter();

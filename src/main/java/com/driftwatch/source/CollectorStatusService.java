@@ -87,10 +87,25 @@ public class CollectorStatusService {
                 ? legalInterval.multipliedBy(2) : threshold;
     }
 
-    /** Lost means the last successful poll is older than {@link #lostAfter()} at {@code now}. */
+    /**
+     * Lost means the last successful poll is older than {@link #lostAfter()} at {@code now}. A healthy
+     * collector waiting on a longer upstream {@code X-Poll-Interval} keeps the same grace after its
+     * scheduled next poll, so an honoured upstream wait is not reported as an outage.
+     */
     boolean isLost(CollectorStateEntity state, Instant now) {
-        return state.getLastPollSuccess() != null
-                && state.getLastPollSuccess().isBefore(now.minus(lostAfter()));
+        if (state.getLastPollSuccess() == null) {
+            return false;
+        }
+        Duration lostAfter = lostAfter();
+        Instant deadline = state.getLastPollSuccess().plus(lostAfter);
+        if (state.getConsecutiveFailures() == 0 && state.getNextPollAt() != null) {
+            Instant scheduledDeadline = state.getNextPollAt()
+                    .plus(lostAfter.minus(properties.source().github().pollInterval()));
+            if (scheduledDeadline.isAfter(deadline)) {
+                deadline = scheduledDeadline;
+            }
+        }
+        return now.isAfter(deadline);
     }
 
     Map<String, Object> view(CollectorStateEntity state) {

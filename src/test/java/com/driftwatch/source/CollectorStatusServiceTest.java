@@ -217,6 +217,27 @@ class CollectorStatusServiceTest {
     }
 
     @Test
+    void upstreamPollIntervalWaitIsNotLost() {
+        CollectorStateEntity state = state(CollectorStateEntity.STATUS_READY,
+                T0.minus(Duration.ofMinutes(20)), T0.minus(Duration.ofHours(2)));
+        state.setNextPollAt(T0.plus(Duration.ofMinutes(10)));
+        CollectorStatusService svc = serviceWithCollectorLostAfter(state, Duration.ofMinutes(5), Duration.ofMinutes(15));
+        assertThat(svc.collectors().get(0).get("lost"))
+                .as("a 30 minute X-Poll-Interval wait is not an outage").isEqualTo(false);
+        assertThat(svc.isLost(state, T0.plus(Duration.ofMinutes(21)))).isTrue();
+    }
+
+    @Test
+    void failingCollectorWithFutureRetryIsStillLost() {
+        CollectorStateEntity state = state(CollectorStateEntity.STATUS_BACKOFF,
+                T0.minus(Duration.ofMinutes(20)), T0.minus(Duration.ofHours(2)));
+        state.setConsecutiveFailures(2);
+        state.setNextPollAt(T0.plus(Duration.ofMinutes(10)));
+        CollectorStatusService svc = serviceWithCollectorLostAfter(state, Duration.ofMinutes(5), Duration.ofMinutes(15));
+        assertThat(svc.collectors().get(0).get("lost")).isEqualTo(true);
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void gapViewAnnotatesHeuristicGapsAsSuspected() {
         CollectorStateEntity state = state(CollectorStateEntity.STATUS_READY,
