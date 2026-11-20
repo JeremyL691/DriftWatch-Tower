@@ -37,6 +37,11 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Cache Maven wrapper distribution
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.m2/wrapper/dists
+          key: ${{ runner.os }}-${{ runner.arch }}-maven-wrapper-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}
       - name: Release tool false-positive regressions
         run: python3 -m unittest discover -s scripts/tests -v
       - name: Browser health and management console regressions
@@ -71,6 +76,11 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Cache Maven wrapper distribution
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.m2/wrapper/dists
+          key: ${{ runner.os }}-${{ runner.arch }}-maven-wrapper-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}
       - name: Run container-backed integration tests
         id: integration-tests
         continue-on-error: true
@@ -109,6 +119,11 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Cache Maven wrapper distribution
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.m2/wrapper/dists
+          key: ${{ runner.os }}-${{ runner.arch }}-maven-wrapper-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}
       - name: Run migration and fault tests
         id: fault-tests
         continue-on-error: true
