@@ -127,3 +127,4 @@ driftwatch:
   source:
     github:
       enabled: false
+      token: ${GITHUB_TOKEN:}

@@ -53,4 +53,28 @@ class ManagementSupportingApiIntegrationTest extends ContainerIntegrationTest {
                 .andExpect(jsonPath("$.baseline_sync.state").value("PUBLISHED"))
                 .andExpect(jsonPath("$.baseline_sync.consumer_application").value("UNCONFIRMED"));
     }
+
+    @Test void activateBaselinePublishesToKafkaAndUpdatesLocalStreamsStore() throws Exception {
+        jdbcTemplate.update("""
+                INSERT INTO schema_versions(event_type,schema_hash,schema_json,first_seen_at,last_seen_at,status)
+                VALUES ('kafka_stream_probe','probe_hash','{"field":"STRING"}'::jsonb,?,?,'DRIFTING')
+                """, Timestamp.from(Instant.now()), Timestamp.from(Instant.now()));
+        Long version = jdbcTemplate.queryForObject(
+                "SELECT id FROM schema_versions WHERE event_type='kafka_stream_probe'", Long.class);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/schemas/kafka_stream_probe/baseline")
+                .with(asAdmin()).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content("{\"version_id\":" + version + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.baseline_sync.state").value("PUBLISHED"));
+
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(25)).untilAsserted(() -> {
+            mockMvc.perform(get("/api/v1/schemas/kafka_stream_probe/baseline").with(asAdmin()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.baseline_sync.consumer_application").value("APPLIED_LOCAL"))
+                    .andExpect(jsonPath("$.baseline_sync.consumer_applied_version_id").value(version));
+        });
+    }
 }

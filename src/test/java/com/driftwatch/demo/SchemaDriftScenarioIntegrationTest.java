@@ -30,6 +30,12 @@ class SchemaDriftScenarioIntegrationTest extends ContainerIntegrationTest {
             var alerts = qualityAlertRepository.findAllByOrderByCreatedAtDesc(
                     org.springframework.data.domain.PageRequest.of(0, 20)).getContent();
             assertThat(alerts).anyMatch(a -> a.getAlertType() == AlertType.SCHEMA_DRIFT);
+
+            var driftEvents = rawEventRepository.findAll().stream()
+                    .filter(e -> "demo_schema_event".equals(e.getEventType()) && e.getEventId().endsWith("-drift"))
+                    .toList();
+            assertThat(driftEvents).isNotEmpty();
+            assertThat(driftEvents).allMatch(e -> "FLAGGED".equals(e.getQualityStatus()));
         });
     }
 }

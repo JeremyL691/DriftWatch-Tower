@@ -23,3 +23,5 @@ __pycache__
 **/*.p12
 **/*.pfx
 !.env.example
+.opencode
+.pi

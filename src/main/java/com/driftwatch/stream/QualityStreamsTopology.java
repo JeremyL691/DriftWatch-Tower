@@ -66,7 +66,7 @@ public class QualityStreamsTopology {
     static final Duration DIGEST_RETENTION = Duration.ofDays(35);
     static final Duration DIGEST_EVICTION_INTERVAL = Duration.ofHours(6);
     static final char DIGEST_TIME_SEPARATOR = '@';
-    static final String SCHEMA_BASELINE_STORE = "schema-baseline-store";
+    public static final String SCHEMA_BASELINE_STORE = "schema-baseline-store";
     static final String DUPLICATE_EVENT_ID_STORE = "duplicate-event-id-store";
     static final String DUPLICATE_PAYLOAD_STORE = "duplicate-payload-store";
 

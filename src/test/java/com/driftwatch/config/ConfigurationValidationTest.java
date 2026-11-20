@@ -127,4 +127,13 @@ class ConfigurationValidationTest {
                     .hasStackTraceContaining("driftwatch.source-health");
         });
     }
+
+    @Test
+    void githubTokenBindsFromEnvironmentVariable() {
+        runner.withPropertyValues("GITHUB_TOKEN=test-token-value-12345").run(context -> {
+            assertThat(context).hasNotFailed();
+            DriftwatchProperties props = context.getBean(DriftwatchProperties.class);
+            assertThat(props.source().github().token()).isEqualTo("test-token-value-12345");
+        });
+    }
 }

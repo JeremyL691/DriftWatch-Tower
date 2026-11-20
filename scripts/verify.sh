@@ -242,6 +242,9 @@ cmd_sca() {
       "$TRIVY_IMAGE" image --scanners vuln --severity HIGH,CRITICAL --format json \
       --output /dev/stdout "$image" > "$OUT_DIR/sca-image.json" 2> "$OUT_DIR/sca-image.err" \
       || { finish_gate SCA NOT_RUN "$started" 2 >/dev/null; die "Trivy image scan failed; see $OUT_DIR/sca-image.err"; }
+  elif [ -n "$IMAGE" ]; then
+    finish_gate SCA NOT_RUN "$started" 2 >/dev/null
+    die "explicit image $image not present locally; run docker compose build first or check image tag"
   else
     log "image $image not present locally; scanning dependencies only (run docker compose build first for image coverage)"
     echo '{"Results": [], "note": "image not present locally"}' > "$OUT_DIR/sca-image.json"

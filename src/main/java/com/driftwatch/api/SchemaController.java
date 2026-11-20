@@ -24,15 +24,26 @@ public class SchemaController {
     private final SchemaObservationService schemaObservationService;
     private final BaselineOutboxRelay outboxRelay;
     private final BaselineOutboxRepository outboxRepository;
+    private final com.driftwatch.quality.schema.StreamsBaselineStatus streamsBaselineStatus;
 
     public SchemaController(SchemaVersionRepository repository,
                             SchemaObservationService schemaObservationService,
                             BaselineOutboxRelay outboxRelay,
                             BaselineOutboxRepository outboxRepository) {
+        this(repository, schemaObservationService, outboxRelay, outboxRepository, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SchemaController(SchemaVersionRepository repository,
+                            SchemaObservationService schemaObservationService,
+                            BaselineOutboxRelay outboxRelay,
+                            BaselineOutboxRepository outboxRepository,
+                            com.driftwatch.quality.schema.StreamsBaselineStatus streamsBaselineStatus) {
         this.repository = repository;
         this.schemaObservationService = schemaObservationService;
         this.outboxRelay = outboxRelay;
         this.outboxRepository = outboxRepository;
+        this.streamsBaselineStatus = streamsBaselineStatus;
     }
 
     @GetMapping
@@ -56,7 +67,16 @@ public class SchemaController {
             Map<String, Object> sync = new java.util.LinkedHashMap<>();
             String state = outbox.map(row -> "SENT".equals(row.getStatus()) ? "PUBLISHED" : row.getStatus()).orElse("UNKNOWN");
             sync.put("state", state);
-            sync.put("consumer_application", "UNCONFIRMED");
+            var checkResult = streamsBaselineStatus != null
+                    ? streamsBaselineStatus.check(eventType, active.getId())
+                    : new com.driftwatch.quality.schema.StreamsBaselineStatus.CheckResult("UNCONFIRMED", null, "Inspector not configured");
+            sync.put("consumer_application", checkResult.status());
+            if (checkResult.appliedVersionId() != null) {
+                sync.put("consumer_applied_version_id", checkResult.appliedVersionId());
+            }
+            if (checkResult.detail() != null) {
+                sync.put("consumer_detail", checkResult.detail());
+            }
             sync.put("outbox_id", outbox.map(com.driftwatch.persistence.BaselineOutboxEntity::getId).orElse(null));
             sync.put("published_at", outbox.map(com.driftwatch.persistence.BaselineOutboxEntity::getSentAt).orElse(null));
             return ResponseEntity.ok(Map.<String, Object>of("event_type", eventType, "version_id", active.getId(), "baseline_sync", sync));
@@ -86,15 +106,22 @@ public class SchemaController {
         boolean published = outboxRow.map(row -> "SENT".equals(row.getStatus())
                 || outboxRelay.publishNow(row.getId())).orElse(false);
         String syncState = published ? "PUBLISHED" : outboxRow.map(row -> row.getStatus()).orElse("UNKNOWN");
+        var checkResult = streamsBaselineStatus != null
+                ? streamsBaselineStatus.check(eventType, activated.getId())
+                : new com.driftwatch.quality.schema.StreamsBaselineStatus.CheckResult("UNCONFIRMED", null, "consumer application is unconfirmed");
+        Map<String, Object> syncMap = new java.util.LinkedHashMap<>();
+        syncMap.put("state", syncState);
+        syncMap.put("consumer_application", checkResult.status());
+        if (checkResult.appliedVersionId() != null) {
+            syncMap.put("consumer_applied_version_id", checkResult.appliedVersionId());
+        }
+        syncMap.put("detail", published
+                ? "published to schema-baselines-v1; " + checkResult.detail()
+                : "publication is not confirmed; re-query baseline status; " + checkResult.detail());
         return ResponseEntity.ok(Map.of(
                 "event_type", eventType,
                 "version_id", activated.getId(),
                 "status", activated.getStatus(),
-                "baseline_sync", Map.of(
-                        "state", syncState,
-                        "consumer_application", "UNCONFIRMED",
-                        "detail", published
-                                ? "published to schema-baselines-v1; consumer application is unconfirmed"
-                                : "publication is not confirmed; re-query baseline status; consumer application is unconfirmed")));
+                "baseline_sync", syncMap));
     }
 }

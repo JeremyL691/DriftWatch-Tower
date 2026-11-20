@@ -178,7 +178,8 @@ identity store, schema baseline, DB checkpoint/outbox, Kafka topic or store name
 
 GET `/api/v1/configuration/history` is bounded and records authenticated actor, revision, changed
 field names, result and time only. GET `/api/v1/schemas/{eventType}/baseline` shows durable
-publication evidence and explicitly UNCONFIRMED consumer application. Collector reads expose
+publication evidence and whether the local Streams instance has applied the baseline (`APPLIED_LOCAL`)
+or remains `UNCONFIRMED`. Collector reads expose
 checkpoint/pending-run evidence, source-scoped backlog/gap counts and newest20 gap records;
 unknown missing counts remain unknown. Never interpret publication/replay acceptance as proof
 of every downstream consumer completing.
