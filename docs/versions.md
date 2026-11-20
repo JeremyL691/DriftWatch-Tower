@@ -32,7 +32,7 @@ maintained for reproducible builds; they are not a feed of the newest upstream v
 
 Digests are manifest-list digests, so they resolve per architecture. The Kafka broker
 version matches the Kafka client version managed by the Boot BOM (3.9.2). The app
-image adds `curl` and the Ubuntu openssl security update on top of the pinned
+image adds `curl` and applies pending Ubuntu security updates on top of the pinned
 `eclipse-temurin:21-jre` digest.
 
 ### Upstream stack image findings (not published by this project)
