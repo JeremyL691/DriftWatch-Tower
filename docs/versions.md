@@ -12,7 +12,8 @@ maintained for reproducible builds; they are not a feed of the newest upstream v
 | Maven wrapper | 3.9.9 (`.mvn/wrapper/maven-wrapper.properties`) | enforcer requires >= 3.9 |
 | Spring Boot | 3.5.16 | manages Spring Framework, Spring Kafka, Micrometer, Testcontainers; upgraded from 3.3.5 to clear CVE-2026-22733 / CVE-2026-41731 |
 | Spring Kafka | 3.3.16 | from the Boot BOM |
-| Kafka clients / Streams | 3.9.2 | from the Boot BOM; broker is Apache Kafka 3.9.2 (matches client version) |
+| Kafka clients / Streams | 4.3.2 | `kafka.version` override; retains Boot 3.5.16 / Spring Kafka 3.3.16; broker remains Apache Kafka 3.9.2 |
+| LZ4 / Snappy | 1.11.4 / 1.1.10.11 | Kafka 4.3.2 runtime transitives; replace the manual CVE pins of 1.11.4 / 1.1.10.9 without downgrading |
 | PostgreSQL JDBC | 42.7.13 | property override: Boot 3.5.16 manages 42.7.11 and CVE-2026-54291 is fixed in 42.7.12 |
 | Flyway | 11.7.2 | from the Boot BOM |
 | Micrometer Prometheus registry | 1.15.12 | from the Boot BOM |
@@ -30,8 +31,11 @@ maintained for reproducible builds; they are not a feed of the newest upstream v
 | `eclipse-temurin:21-jdk` (build stage) | `sha256:4d06038800655fe1211760cd561de70ef2ed7a47f5d69255e9834414602b7026` |
 | `eclipse-temurin:21-jre` (runtime stage) | `sha256:d7051a45dd955e4d5d1db4d3f4269fe13d1c6dff8cc6b7ef89fc8577b96c1982` |
 
-Digests are manifest-list digests, so they resolve per architecture. The Kafka broker
-version matches the Kafka client version managed by the Boot BOM (3.9.2). The app
+Digests are manifest-list digests, so they resolve per architecture. The Kafka 3.9.2
+broker is retained in Compose and integration tests: it exceeds the Kafka 4.x client
+minimum broker version of 2.1. Kafka 4.3.2 is selected instead of 4.4.0 because
+4.4.0 declares older LZ4 (1.11.2) and Snappy (1.1.10.7) dependencies than the
+removed security pins. The app
 image adds `curl` and applies pending Ubuntu security updates on top of the pinned
 `eclipse-temurin:21-jre` digest.
 
