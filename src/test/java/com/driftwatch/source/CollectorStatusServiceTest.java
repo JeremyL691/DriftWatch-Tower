@@ -238,6 +238,16 @@ class CollectorStatusServiceTest {
     }
 
     @Test
+    void authenticationErrorAfterSuccessIsLostAtOriginalThreshold() {
+        CollectorStateEntity state = state(CollectorStateEntity.STATUS_ERROR,
+                T0.minus(Duration.ofMinutes(20)), T0.minus(Duration.ofHours(2)));
+        state.setConsecutiveFailures(0);
+        state.setNextPollAt(T0.plus(Duration.ofMinutes(5)));
+        CollectorStatusService svc = serviceWithCollectorLostAfter(state, Duration.ofMinutes(5), Duration.ofMinutes(15));
+        assertThat(svc.collectors().get(0).get("lost")).isEqualTo(true);
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void gapViewAnnotatesHeuristicGapsAsSuspected() {
         CollectorStateEntity state = state(CollectorStateEntity.STATUS_READY,

@@ -98,7 +98,10 @@ public class CollectorStatusService {
         }
         Duration lostAfter = lostAfter();
         Instant deadline = state.getLastPollSuccess().plus(lostAfter);
-        if (state.getConsecutiveFailures() == 0 && state.getNextPollAt() != null) {
+        boolean failing = state.getConsecutiveFailures() > 0
+                || CollectorStateEntity.STATUS_ERROR.equals(state.getStatus())
+                || CollectorStateEntity.STATUS_BACKOFF.equals(state.getStatus());
+        if (!failing && state.getNextPollAt() != null) {
             Instant scheduledDeadline = state.getNextPollAt()
                     .plus(lostAfter.minus(properties.source().github().pollInterval()));
             if (scheduledDeadline.isAfter(deadline)) {
