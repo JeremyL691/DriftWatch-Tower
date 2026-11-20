@@ -1,6 +1,7 @@
 package com.driftwatch.config;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.socket.WebSocketHandler;
@@ -29,8 +30,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                .addInterceptors(new TicketHandshakeInterceptor(ticketService))
-                .withSockJS();
+                .addInterceptors(new TicketHandshakeInterceptor(ticketService));
     }
 
     /**
@@ -60,6 +60,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             }
             String username = ticketService.verify(ticket);
             if (username == null) {
+                response.setStatusCode(HttpStatus.FORBIDDEN);
                 return false;
             }
             attributes.put("wsUser", username);
