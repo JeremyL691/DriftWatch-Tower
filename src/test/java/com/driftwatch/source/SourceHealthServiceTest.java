@@ -224,6 +224,34 @@ class SourceHealthServiceTest {
         assertThat(harness.savedHealth.get().getLastSeenAt()).isEqualTo(recovered.getLastPollSuccess());
     }
 
+    @Test
+    void eventlessCollectorGoingLostRaisesOneStaleAlert() {
+        Instant now = Instant.now();
+        CollectorStateEntity lost = collector(now.minus(Duration.ofHours(2)));
+
+        Harness harness = new Harness(now, null, lost, null);
+        List<QualityAlertEntity> first = harness.service.refreshAllAndPersist(now);
+        List<QualityAlertEntity> second = harness.service.refreshAllAndPersist(now.plus(Duration.ofMinutes(1)));
+
+        assertThat(first).singleElement().satisfies(alert -> {
+            assertThat(alert.getAlertType()).isEqualTo(AlertType.STALE_SOURCE);
+            assertThat(alert.getEvidenceJson().path("freshness_basis").asText()).isEqualTo("collector_last_poll_success");
+            assertThat(alert.getEvidenceJson().path("last_poll_success_at").asText())
+                    .isEqualTo(lost.getLastPollSuccess().toString());
+        });
+        assertThat(second).as("a source already STALE does not alert again").isEmpty();
+        assertThat(harness.savedHealth.get().getStatus()).isEqualTo(SourceHealthEntity.STATUS_STALE);
+    }
+
+    @Test
+    void freshEventlessCollectorWithoutHealthRowStaysUnreported() {
+        Instant now = Instant.now();
+        Harness harness = new Harness(now, null, collector(now.minus(Duration.ofMinutes(1))), null);
+
+        assertThat(harness.service.refreshAllAndPersist(now)).isEmpty();
+        assertThat(harness.savedHealth.get()).isNull();
+    }
+
     private static CollectorStateEntity collector(Instant lastPollSuccess) {
         CollectorStateEntity state = new CollectorStateEntity();
         state.setSource(GITHUB_SOURCE);

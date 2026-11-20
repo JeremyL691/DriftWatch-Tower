@@ -87,6 +87,29 @@ public class CollectorStatusService {
                 ? legalInterval.multipliedBy(2) : threshold;
     }
 
+    /** Freshness verdict of one collector, shared by the operator view and source health. */
+    enum Freshness {
+        /** Polled successfully within {@link #lostAfter()}. */
+        FRESH,
+        /** Has succeeded before, but not within {@link #lostAfter()}. */
+        LOST,
+        /** Has never succeeded and is failing: ERROR status or at least three consecutive failures. */
+        NEVER_SUCCEEDED_FAILING,
+        /** Has never succeeded and is still within its first attempts. */
+        NEVER_SUCCEEDED_PENDING
+    }
+
+    static final int NEVER_SUCCEEDED_FAILURE_THRESHOLD = 3;
+
+    Freshness freshness(CollectorStateEntity state, Instant now) {
+        if (state.getLastPollSuccess() == null) {
+            boolean failing = CollectorStateEntity.STATUS_ERROR.equals(state.getStatus())
+                    || state.getConsecutiveFailures() >= NEVER_SUCCEEDED_FAILURE_THRESHOLD;
+            return failing ? Freshness.NEVER_SUCCEEDED_FAILING : Freshness.NEVER_SUCCEEDED_PENDING;
+        }
+        return isLost(state, now) ? Freshness.LOST : Freshness.FRESH;
+    }
+
     /**
      * Lost means the last successful poll is older than {@link #lostAfter()} at {@code now}. A healthy
      * collector waiting on a longer upstream {@code X-Poll-Interval} keeps the same grace after its
