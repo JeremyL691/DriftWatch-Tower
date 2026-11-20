@@ -222,7 +222,7 @@ unrecovered dead letters, pending outbox rows and collector state are never prun
 | ingestion answers `503` | the broker did not acknowledge within the timeout; retry with the same `Idempotency-Key` — the identity is reserved, so a retry cannot duplicate the event |
 | ingestion answers `409` | the same `Idempotency-Key` was used with different content; use a new key for a new event |
 | disk filling up | `GET /api/v1/operations/retention` shows protected counts; raise retention frequency or lower the windows deliberately |
-| dashboard shows `Disconnected` | the socket reconnects with backoff and re-queries; check that `/ws` is reachable through your reverse proxy (it must allow WebSocket upgrades) |
+| dashboard shows `Disconnected` | the dashboard reconnects with backoff and re-queries; the browser and reverse proxy must support native WebSocket upgrades at `/ws` (STOMP over `ws://` or `wss://`, with no HTTP fallback) |
 
 ## Uninstall
 

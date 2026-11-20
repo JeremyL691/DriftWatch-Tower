@@ -80,26 +80,33 @@ async function connectWebSocket() {
     scheduleReconnect();
     return;
   }
-  const socket = new SockJS(`/ws?ticket=${encodeURIComponent(ticket)}`);
-  state.stompClient = Stomp.over(socket);
-  state.stompClient.debug = null;
+  const url = new URL("/ws", window.location.href);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.searchParams.set("ticket", ticket);
+  const socket = new WebSocket(url, ["v11.stomp", "v10.stomp"]);
+  const client = Stomp.over(socket);
+  state.stompClient = client;
+  client.debug = null;
 
-  state.stompClient.connect({}, () => {
+  client.connect({}, () => {
     wsAttempt = 0;
     updateWsStatus(true);
     refreshDashboard();
-    state.stompClient.subscribe("/topic/alerts", (message) => {
+    client.subscribe("/topic/alerts", (message) => {
       const alert = JSON.parse(message.body);
       prependLiveAlert(alert);
       pulseWsDot();
       refreshDashboard();
     });
-    state.stompClient.subscribe("/topic/events", (message) => {
+    client.subscribe("/topic/events", (message) => {
       const event = JSON.parse(message.body);
       prependLiveEvent(event);
       pulseWsDot();
     });
   }, () => {
+    if (state.stompClient !== client) return;
+    state.stompClient = null;
+    socket.close();
     updateWsStatus(false);
     scheduleReconnect();
   });

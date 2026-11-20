@@ -85,7 +85,7 @@ public class SecurityConfig {
                         .hasAnyAuthority("ROLE_ADMIN", "INGEST")
                         // The socket path is guarded by the ticket handshake interceptor instead:
                         // browsers cannot attach Basic credentials to a WebSocket handshake.
-                        .requestMatchers("/ws/**").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/ws").permitAll()
                         .requestMatchers("/api/**", "/actuator/**", "/api-docs/**", "/swagger-ui/**",
                                 "/swagger-ui.html", "/", "/dashboard/**")
                         .hasAuthority("ROLE_ADMIN")

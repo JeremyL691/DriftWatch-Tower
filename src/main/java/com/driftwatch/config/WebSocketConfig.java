@@ -1,8 +1,12 @@
 package com.driftwatch.config;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
@@ -15,22 +19,27 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final WsTicketService ticketService;
+    private final TaskScheduler brokerScheduler;
 
-    public WebSocketConfig(WsTicketService ticketService) {
+    public WebSocketConfig(WsTicketService ticketService,
+                           @Lazy @Qualifier("messageBrokerTaskScheduler") TaskScheduler brokerScheduler) {
         this.ticketService = ticketService;
+        this.brokerScheduler = brokerScheduler;
     }
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
-        config.enableSimpleBroker("/topic");
+        // Keep quiet connections open through proxies without requiring timers in background tabs.
+        config.enableSimpleBroker("/topic")
+                .setTaskScheduler(brokerScheduler)
+                .setHeartbeatValue(new long[] {10_000, 0});
         config.setApplicationDestinationPrefixes("/app");
     }
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                .addInterceptors(new TicketHandshakeInterceptor(ticketService))
-                .withSockJS();
+                .addInterceptors(new TicketHandshakeInterceptor(ticketService));
     }
 
     /**
@@ -60,6 +69,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             }
             String username = ticketService.verify(ticket);
             if (username == null) {
+                response.setStatusCode(HttpStatus.FORBIDDEN);
                 return false;
             }
             attributes.put("wsUser", username);
