@@ -1,7 +1,7 @@
 # Dependabot proposes updates to these base image digests.
 ARG APP_VERSION=1.0.3
 
-FROM eclipse-temurin:21-jdk@sha256:db5cc6341a1d7bc40cdb51e1f0d9824f3bb2cc8107d29da421dc4df7d11f05f1 AS build
+FROM eclipse-temurin:21-jdk@sha256:8ad118b146aa92da815b576441acd6b42b38236797ad0b6edc8c200b85bb0734 AS build
 ARG APP_VERSION
 WORKDIR /workspace
 
@@ -13,7 +13,7 @@ RUN ./mvnw -q -DskipTests dependency:go-offline
 COPY src/ src/
 RUN ./mvnw -q -DskipTests package
 
-FROM eclipse-temurin:21-jre@sha256:ca73b4d3961703d6d7830a4361f49ef0478f8f28b39defc07bb72f4cc7f834f6
+FROM eclipse-temurin:21-jre@sha256:d77e090ae1f6970c047b443c6f0a6c1358b0426d44432bb5a7753408cd43de0d
 ARG APP_VERSION
 WORKDIR /app
 
